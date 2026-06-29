@@ -1,0 +1,6 @@
+{
+  "name": "MetaEdge V1",
+  "description": "Sovereign social agent-wallet trading room. Play with paper strategies, coordinate in vault clubs, and audit evidence securely.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

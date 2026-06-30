@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId, sanitizeText } from './storage.js';
+import { hydrateNewUserDemoState } from './demo.js';
 import type { User, AuditEvent, GraphEvent } from '../src/types';
 
 export const authRouter = Router();
@@ -50,6 +51,7 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
       timestamp: Date.now()
     };
     db.graphEvents.push(graphEvent);
+    hydrateNewUserDemoState(db, newUser);
 
     writeDatabase(db);
     res.cookie('metaedge_session', userId, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' });

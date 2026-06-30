@@ -11,7 +11,9 @@
 
 ## Database Reset
 - The database is a local JSON file at `data/db.json`. 
-- To seed or reset it to the initial state with demo data, run: `npm run seed`
+- To seed or reset it to the curated demo state, run: `npm run seed` or `npm run reset-demo`.
+- The demo seed is intentionally small and replaces the old committed `db.json` runtime dump. It includes demo users, rooms, agents, strategies, trades, a vault club, evidence events, and prediction markets.
+- New anonymous preview users join the seeded demo world by default. Set `METAEDGE_DEMO_AUTOSTART=false` to disable that behavior.
 
 ## Build
 - Run `npm run build` to compile both the frontend and backend.

@@ -3,9 +3,51 @@ import { GoogleGenAI } from '@google/genai';
 
 export const quantRouter = Router();
 
+function calculateRSI(prices: number[], period: number = 14) {
+  const rsi = new Array(prices.length).fill(50);
+  if (prices.length <= period) return rsi;
+  let gains = 0;
+  let losses = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff >= 0) gains += diff;
+    else losses -= diff;
+  }
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+  for (let i = period + 1; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    const gain = diff >= 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = ((avgGain * (period - 1)) + gain) / period;
+    avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
+  }
+  return rsi;
+}
+
+function calculateEMA(prices: number[], period: number) {
+  const k = 2 / (period + 1);
+  const ema = new Array(prices.length).fill(prices[0]);
+  for (let i = 1; i < prices.length; i++) {
+    ema[i] = prices[i] * k + ema[i - 1] * (1 - k);
+  }
+  return ema;
+}
+
+function calculateMACD(prices: number[], shortPeriod = 12, longPeriod = 26, signalPeriod = 9) {
+  const shortEma = calculateEMA(prices, shortPeriod);
+  const longEma = calculateEMA(prices, longPeriod);
+  const macdLine = prices.map((_, i) => shortEma[i] - longEma[i]);
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  const histogram = macdLine.map((val, i) => val - signalLine[i]);
+  return { macdLine, signalLine, histogram };
+}
+
 quantRouter.post('/api/quant/backtest', async (req, res) => {
   try {
-    const { symbol } = req.body;
+    const { symbol, indicators = {}, feeds = {} } = req.body;
     if (!symbol) return res.status(400).json({ error: 'Symbol required' });
 
     // Clean symbol (e.g., 'SOL' -> 'SOLUSDT')
@@ -61,6 +103,9 @@ quantRouter.post('/api/quant/backtest', async (req, res) => {
       }
     }
 
+    const rsiArr = calculateRSI(closes, 14);
+    const macdArr = calculateMACD(closes);
+
     // Phase 2 & 3: Backtesting Engine (Quant) & Risk Management using OPTIMIZED params
     let balance = 10000;
     const initialBalance = balance;
@@ -80,11 +125,33 @@ quantRouter.post('/api/quant/backtest', async (req, res) => {
       const currentPrice = closes[i];
 
       // Execution Logic
-      if (shortSma > longSma && position === 0) {
+      let buySignal = false;
+      let sellSignal = false;
+
+      if (indicators.sma !== false) {
+        if (shortSma > longSma) buySignal = true;
+        if (shortSma < longSma) sellSignal = true;
+      } else {
+        const sma20 = closes.slice(i - 20, i).reduce((a, b) => a + b, 0) / 20;
+        if (currentPrice > sma20) buySignal = true;
+        if (currentPrice < sma20) sellSignal = true;
+      }
+
+      if (indicators.rsi) {
+        if (rsiArr[i] > 70) buySignal = false; 
+        if (rsiArr[i] < 30) sellSignal = false; 
+      }
+
+      if (indicators.macd) {
+        if (macdArr.histogram[i] <= 0) buySignal = false; 
+        if (macdArr.histogram[i] >= 0) sellSignal = false; 
+      }
+
+      if (buySignal && position === 0) {
         position = balance / currentPrice;
         balance = 0;
         entryPrice = currentPrice;
-      } else if (shortSma < longSma && position > 0) {
+      } else if (sellSignal && position > 0) {
         balance = position * currentPrice;
         position = 0;
         trades++;
@@ -111,7 +178,15 @@ quantRouter.post('/api/quant/backtest', async (req, res) => {
 
     // AI Engine Evaluation (incorporating sentiment simulation)
     let horizonScore = Math.floor(Math.random() * 20 + 70); 
-    const sentimentBoost = Math.random() > 0.5 ? 'Bullish Social Sentiment' : 'Neutral On-Chain Flows';
+    
+    let sentimentBoosts = [];
+    if (feeds.social) sentimentBoosts.push(Math.random() > 0.5 ? 'Bullish Social Sentiment' : 'Neutral Social Tone');
+    if (feeds.onChain) sentimentBoosts.push(Math.random() > 0.5 ? 'Positive On-Chain Flows' : 'Bearish Exchange Inflows');
+    if (feeds.optionsFlow) sentimentBoosts.push('Heavy Call Options Gamma');
+    if (feeds.darkPool) sentimentBoosts.push('Dark Pool Accumulation Prints');
+    if (feeds.macro) sentimentBoosts.push('Dovish Macro Backdrop');
+    
+    const sentimentBoost = sentimentBoosts.length > 0 ? sentimentBoosts.join(' | ') : 'No Alternative Feeds Enabled';
 
     try {
       if (process.env.GEMINI_API_KEY) {

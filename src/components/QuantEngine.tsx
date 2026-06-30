@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Database, TrendingUp, Activity, BarChart2, Shield, Settings } from 'lucide-react';
+import { Database, TrendingUp, Activity, BarChart2, Shield, Settings, Zap } from 'lucide-react';
 import { TradingAgent } from '../types';
 
 interface QuantEngineProps {
@@ -10,6 +10,20 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [isSimulating, setIsSimulating] = useState(false);
   const [results, setResults] = useState<any>(null);
+
+  const [enabledIndicators, setEnabledIndicators] = useState({
+    sma: true,
+    rsi: true,
+    macd: true
+  });
+
+  const [enabledFeeds, setEnabledFeeds] = useState({
+    onChain: true,
+    social: true,
+    macro: true,
+    optionsFlow: true,
+    darkPool: true
+  });
 
   const activeAgents = agents.filter(a => a.status === 'active');
 
@@ -25,7 +39,11 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
       const res = await fetch('/api/quant/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbol: agent.assetSymbol })
+        body: JSON.stringify({ 
+          symbol: agent.assetSymbol,
+          indicators: enabledIndicators,
+          feeds: enabledFeeds
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Quant simulation failed');
@@ -68,18 +86,44 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           </div>
 
           <div className="space-y-3">
+            <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Technical Indicators</label>
+            <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={enabledIndicators.sma} onChange={e => setEnabledIndicators(prev => ({...prev, sma: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <span className="text-slate-300">SMA Cross</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={enabledIndicators.rsi} onChange={e => setEnabledIndicators(prev => ({...prev, rsi: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <span className="text-slate-300">RSI (14)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={enabledIndicators.macd} onChange={e => setEnabledIndicators(prev => ({...prev, macd: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <span className="text-slate-300">MACD</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-3">
             <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Alternative Data Ingestion (Phase 1)</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
               <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" defaultChecked className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <input type="checkbox" checked={enabledFeeds.onChain} onChange={e => setEnabledFeeds(prev => ({...prev, onChain: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
                 <span className="text-slate-300">On-Chain Metrics (MVRV, Flows)</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" defaultChecked className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <input type="checkbox" checked={enabledFeeds.social} onChange={e => setEnabledFeeds(prev => ({...prev, social: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
                 <span className="text-slate-300">Social Sentiment (X, News)</span>
               </label>
               <label className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" defaultChecked className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <input type="checkbox" checked={enabledFeeds.optionsFlow} onChange={e => setEnabledFeeds(prev => ({...prev, optionsFlow: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <span className="text-slate-300">Options Flow (Gamma Exposure)</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={enabledFeeds.darkPool} onChange={e => setEnabledFeeds(prev => ({...prev, darkPool: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
+                <span className="text-slate-300">Dark Pool Prints (Whale Txns)</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={enabledFeeds.macro} onChange={e => setEnabledFeeds(prev => ({...prev, macro: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
                 <span className="text-slate-300">Macro Catalysts (Fed, CPI)</span>
               </label>
             </div>

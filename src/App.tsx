@@ -15,7 +15,10 @@ import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
-import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database } from 'lucide-react';
+import AgenticAutopilot from './components/AgenticAutopilot';
+import IntentSolver from './components/IntentSolver';
+import SwarmCopilot from './components/SwarmCopilot';
+import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal } from 'lucide-react';
 import { apiFetch } from './lib/api';
 
 export default function App() {
@@ -23,14 +26,16 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot'>('dashboard');
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [proModeEnabled, setProModeEnabled] = useState(false);
+
   
   // Mode Selection
   const [paperLiveMode, setPaperLiveMode] = useState<'paper' | 'live'>('paper');
   const [showReadiness, setShowReadiness] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
+  const [isGlobalAutopilotEnabled, setIsGlobalAutopilotEnabled] = useState(false);
 
   // Entities state
   const [rooms, setRooms] = useState<FriendRoom[]>([]);
@@ -408,248 +413,388 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#060813] text-slate-100 flex flex-col justify-between relative overflow-hidden">
+    <div className="h-screen bg-[#060813] text-slate-100 flex flex-col lg:flex-row relative overflow-hidden">
       {/* Ambient glowing background meshes */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-orange-600/5 rounded-full blur-[150px] pointer-events-none" />
 
-      {/* Dynamic Header */}
-      <header className="sticky top-0 z-40 bg-[#060813]/85 backdrop-blur-xl border-b border-slate-900/80 px-4 py-3 md:px-8 shadow-sm">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4 relative z-10">
-          
-          {/* Logo */}
-          <div className="flex items-center gap-2.5">
-            <div className="bg-indigo-600/10 border border-indigo-500/20 p-2 rounded-xl text-indigo-400">
-              <Shield className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-                MetaEdge <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V1</span>
-              </h1>
-              <span className="text-[9px] text-slate-500 font-mono block">Autonomous Social Trade Space</span>
-            </div>
+      {/* Sidebar (Desktop) */}
+      <aside className="w-64 border-r border-slate-900/80 bg-[#060813]/90 backdrop-blur-xl hidden lg:flex flex-col relative z-40">
+        <div className="p-4 border-b border-slate-900/80 flex items-center gap-2.5">
+          <div className="bg-indigo-600/10 border border-indigo-500/20 p-2 rounded-xl text-indigo-400 shrink-0">
+            <Shield className="w-5 h-5" />
           </div>
+          <div>
+            <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
+              MetaEdge <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V1</span>
+            </h1>
+            <span className="text-[9px] text-slate-500 font-mono block">Autonomous Social Trade</span>
+          </div>
+        </div>
 
-          {/* Navigation Tab Group */}
-          <div className="flex items-center gap-2">
-            <nav className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800/80 overflow-x-auto max-w-full shadow-inner">
-              {[
-                { id: 'dashboard', label: 'Dashboard', icon: Info },
-                { id: 'rooms', label: 'Rooms', icon: Users },
-                { id: 'agents', label: 'Agents', icon: Bot },
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {[
+            {
+              title: 'Overview',
+              items: [
+                { id: 'dashboard', label: 'Dashboard', icon: Info }
+              ]
+            },
+            {
+              title: 'Swarm Intelligence',
+              items: [
+                { id: 'copilot', label: 'Swarm Copilot', icon: Terminal },
+                { id: 'intent', label: 'Intent Solver', icon: Search },
+                { id: 'autopilot', label: 'Autopilot', icon: Cpu },
+                { id: 'agents', label: 'Trading Agents', icon: Bot },
+              ]
+            },
+            {
+              title: 'Markets & Trading',
+              items: [
                 { id: 'trading', label: 'Trading Desk', icon: ArrowRightLeft },
                 { id: 'charts', label: 'Market Charts', icon: TrendingUp },
                 { id: 'predictions', label: 'Predictions', icon: Coins },
+              ]
+            },
+            {
+              title: 'Community & Vaults',
+              items: [
+                { id: 'rooms', label: 'Rooms', icon: Users },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
+              ]
+            },
+            {
+              title: 'Analytics & Evidence',
+              items: [
                 { id: 'graph', label: 'Evidence Map', icon: Network },
                 { id: 'specs', label: 'Specs Hub', icon: Award },
                 ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
-              ].map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                      isActive
-                        ? 'bg-slate-800/80 text-white shadow-sm shadow-black/50 border border-slate-700/50'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span className="hidden md:inline">{tab.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-            <button
-              onClick={() => setCmdPaletteOpen(true)}
-              className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-slate-950/80 border border-slate-800/80 rounded-xl text-slate-400 hover:text-slate-200 transition-colors shadow-inner"
-              title="Command Palette"
-            >
-              <Command className="w-3.5 h-3.5" />
-              <span className="text-xs font-mono">⌘K</span>
-            </button>
-          </div>
-
-          {/* Mode switch & Wallet */}
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setProModeEnabled(!proModeEnabled);
-                if (proModeEnabled && activeTab === 'quant') {
-                  setActiveTab('dashboard');
-                }
-              }}
-              className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-colors cursor-pointer ${
-                proModeEnabled 
-                  ? 'bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-fuchsia-400 shadow-sm shadow-fuchsia-900/20' 
-                  : 'bg-slate-950 border-slate-900 hover:bg-slate-900 text-slate-500'
-              }`}
-              title="Toggle Advanced Quant Mode"
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span className="text-xs font-mono hidden md:inline">Pro Mode</span>
-            </button>
-            <button
-              onClick={() => setShowWalletModal(true)}
-              className="flex items-center gap-1.5 bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 hover:bg-slate-900 transition-colors cursor-pointer"
-              title="MetaMask Agent Wallet"
-            >
-              <Wallet className="w-3.5 h-3.5 text-orange-500" />
-              <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
-            </button>
-            <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Current Authority:</span>
-            <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
-              <button
-                onClick={() => setPaperLiveMode('paper')}
-                className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
-                  paperLiveMode === 'paper'
-                    ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-900/20'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Paper
-              </button>
-              <button
-                onClick={handleModeToggle}
-                className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
-                  paperLiveMode === 'live'
-                    ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 shadow-sm shadow-rose-900/20'
-                    : 'text-slate-500 hover:text-slate-300'
-                }`}
-              >
-                Live
-              </button>
+              ]
+            }
+          ].map((group, idx) => (
+            <div key={idx}>
+              <h3 className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider mb-2 px-2">
+                {group.title}
+              </h3>
+              <div className="space-y-1">
+                {group.items.map(tab => {
+                  const Icon = tab.icon;
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id as any)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-mono font-medium flex items-center gap-2.5 transition-all cursor-pointer ${
+                        isActive
+                          ? 'bg-slate-800/80 text-white shadow-sm shadow-black/50 border border-slate-700/50'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/50 border border-transparent'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-
+          ))}
         </div>
-      </header>
 
-      {/* Main Body */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-8 relative z-10">
-        {/* Verification Alert when switching modes */}
-        {paperLiveMode === 'live' && (
-          <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">LIVE AUTHORITY BLOCKED</h4>
-              <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
-                Smart contract safety guards remain globally locked pending formal multi-signature validation. The workspace is active as read-only. Return to Paper Mode to simulated full bot interactions.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Tab Router Panels */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+        <div className="p-4 border-t border-slate-900/80">
+          <button
+            onClick={() => setCmdPaletteOpen(true)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-slate-950/80 border border-slate-800/80 rounded-xl text-slate-400 hover:text-slate-200 transition-colors shadow-inner"
+            title="Command Palette"
           >
-            {currentUser && activeTab === 'dashboard' && (
-              <Dashboard
-                user={currentUser}
-                onClaimFaucet={handleClaimFaucet}
-                audits={audits}
-                onRefreshAudits={fetchEntities}
-                trades={trades}
-                onEditProfile={handleProfileClaimed}
-              />
-            )}
-
-            {currentUser && activeTab === 'rooms' && (
-              <TradingRoom
-                currentUser={currentUser}
-                rooms={rooms}
-                onRoomCreated={handleRoomCreated}
-                onJoinRoomByInvite={handleJoinRoomByInvite}
-              />
-            )}
-
-            {currentUser && activeTab === 'agents' && (
-              <AgentWorkshop
-                currentUser={currentUser}
-                agents={agents}
-                strategies={strategies}
-                rooms={rooms}
-                trades={trades}
-                onAgentCreated={handleAgentCreated}
-                onAgentStatusChanged={handleAgentStatusChanged}
-                onAgentDeleted={handleAgentDeleted}
-                onCopyStrategy={handleCopyStrategy}
-                onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
-              />
-            )}
-
-             {currentUser && activeTab === 'trading' && (
-              <TradingHub
-                currentUser={currentUser}
-                agents={agents}
-                trades={trades}
-                onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
-                onDeleteTrade={handleTradeDeleted}
-                onClearAllTrades={handleClearAllTrades}
-              />
-            )}
-
-            {currentUser && activeTab === 'charts' && (
-              <TokenMarketChart />
-            )}
-
-            {currentUser && activeTab === 'predictions' && (
-              <PredictionMarkets
-                currentUser={currentUser}
-                markets={predictionMarkets}
-                onPlacePredictionBet={handlePlacePredictionBet}
-                onResolveMarket={handleResolveMarket}
-              />
-            )}
-
-            {currentUser && activeTab === 'vaults' && (
-              <VaultClubs
-                currentUser={currentUser}
-                vaults={vaults}
-                onVaultCreated={handleVaultCreated}
-                onContributeToVault={handleContributeToVault}
-              />
-            )}
-
-            {currentUser && activeTab === 'graph' && (
-              <GraphEvidence
-                currentUser={currentUser}
-                paperLiveMode={paperLiveMode}
-              />
-            )}
-
-            {currentUser && activeTab === 'specs' && (
-              <SpecsCatalog />
-            )}
-
-            {currentUser && activeTab === 'quant' && proModeEnabled && (
-              <QuantEngine agents={agents} />
-            )}
-          </motion.div>
-        </AnimatePresence>
-      </main>
-
-      {/* Safety Compliance Footer */}
-      <footer className="border-t border-slate-900/60 py-6 px-4 md:px-8 bg-slate-950/20 text-center text-xs text-slate-500 font-mono">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <span className="flex items-center gap-1.5 text-[11px]">
-            <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
-            MetaEdge V1 Sovereign Room Ledger Active
-          </span>
-          <span className="text-[10px]">
-            No custody or guaranteed returns. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.
-          </span>
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <Command className="w-3.5 h-3.5" /> Search
+            </div>
+            <span className="text-[10px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">⌘K</span>
+          </button>
         </div>
-      </footer>
+      </aside>
+
+      <div className="flex-1 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
+        {/* Dynamic Header */}
+        <header className="sticky top-0 z-40 bg-[#060813]/85 backdrop-blur-xl border-b border-slate-900/80 px-4 py-3 md:px-8 shadow-sm">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            
+            {/* Mobile Nav Top */}
+            <div className="flex items-center gap-2.5 lg:hidden">
+              <div className="bg-indigo-600/10 border border-indigo-500/20 p-2 rounded-xl text-indigo-400">
+                <Shield className="w-5 h-5" />
+              </div>
+              <span className="text-sm font-bold text-white tracking-tight flex items-center gap-1.5">
+                MetaEdge
+              </span>
+            </div>
+            
+            {/* Nav select for mobile */}
+            <div className="lg:hidden w-full order-last mt-2">
+               <select
+                 value={activeTab}
+                 onChange={(e) => setActiveTab(e.target.value as any)}
+                 className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl px-3 py-2 focus:outline-none focus:border-indigo-500/50"
+               >
+                 <optgroup label="Overview">
+                   <option value="dashboard">Dashboard</option>
+                 </optgroup>
+                 <optgroup label="Swarm Intelligence">
+                   <option value="copilot">Swarm Copilot</option>
+                   <option value="intent">Intent Solver</option>
+                   <option value="autopilot">Autopilot</option>
+                   <option value="agents">Trading Agents</option>
+                 </optgroup>
+                 <optgroup label="Markets & Trading">
+                   <option value="trading">Trading Desk</option>
+                   <option value="charts">Market Charts</option>
+                   <option value="predictions">Predictions</option>
+                 </optgroup>
+                 <optgroup label="Community & Vaults">
+                   <option value="rooms">Rooms</option>
+                   <option value="vaults">Vaults</option>
+                 </optgroup>
+                 <optgroup label="Analytics & Evidence">
+                   <option value="graph">Evidence Map</option>
+                   <option value="specs">Specs Hub</option>
+                   {proModeEnabled && <option value="quant">Quant Engine</option>}
+                 </optgroup>
+               </select>
+            </div>
+
+            {/* Empty div to push items to right on desktop */}
+            <div className="hidden lg:block flex-1" />
+
+            {/* Mode switch & Wallet */}
+            <div className="flex items-center gap-3 ml-auto">
+              <button
+                onClick={() => setIsGlobalAutopilotEnabled(!isGlobalAutopilotEnabled)}
+                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-all cursor-pointer shadow-inner ${
+                  isGlobalAutopilotEnabled 
+                    ? 'bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.2)]' 
+                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-400'
+                }`}
+                title="Toggle Global Autopilot"
+              >
+                <Cpu className={`w-3.5 h-3.5 ${isGlobalAutopilotEnabled ? 'animate-pulse' : ''}`} />
+                <span className="text-xs font-mono hidden md:inline">
+                  Autopilot {isGlobalAutopilotEnabled ? 'ON' : 'OFF'}
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setProModeEnabled(!proModeEnabled);
+                  if (proModeEnabled && activeTab === 'quant') {
+                    setActiveTab('dashboard');
+                  }
+                }}
+                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-colors cursor-pointer ${
+                  proModeEnabled 
+                    ? 'bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-fuchsia-400 shadow-sm shadow-fuchsia-900/20' 
+                    : 'bg-slate-950 border-slate-900 hover:bg-slate-900 text-slate-500'
+                }`}
+                title="Toggle Advanced Quant Mode"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span className="text-xs font-mono hidden md:inline">Pro Mode</span>
+              </button>
+              <button
+                onClick={() => setShowWalletModal(true)}
+                className="flex items-center gap-1.5 bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 hover:bg-slate-900 transition-colors cursor-pointer"
+                title="MetaMask Agent Wallet"
+              >
+                <Wallet className="w-3.5 h-3.5 text-orange-500" />
+                <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
+              </button>
+              <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Current Authority:</span>
+              <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
+                <button
+                  onClick={() => setPaperLiveMode('paper')}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                    paperLiveMode === 'paper'
+                      ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 shadow-sm shadow-emerald-900/20'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  Paper
+                </button>
+                <button
+                  onClick={handleModeToggle}
+                  className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                    paperLiveMode === 'live'
+                      ? 'bg-rose-500/10 border border-rose-500/30 text-rose-400 shadow-sm shadow-rose-900/20'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  Live
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </header>
+
+        {/* Main Body */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 relative z-10">
+          <div className="max-w-7xl mx-auto space-y-8">
+            {/* Verification Alert when switching modes */}
+            {paperLiveMode === 'live' && (
+              <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">LIVE AUTHORITY BLOCKED</h4>
+                  <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
+                    Smart contract safety guards remain globally locked pending formal multi-signature validation. The workspace is active as read-only. Return to Paper Mode to simulated full bot interactions.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Tab Router Panels */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                {currentUser && activeTab === 'dashboard' && (
+                  <Dashboard
+                    user={currentUser}
+                    onClaimFaucet={handleClaimFaucet}
+                    audits={audits}
+                    onRefreshAudits={fetchEntities}
+                    trades={trades}
+                    onEditProfile={handleProfileClaimed}
+                  />
+                )}
+
+                {currentUser && activeTab === 'rooms' && (
+                  <TradingRoom
+                    currentUser={currentUser}
+                    rooms={rooms}
+                    onRoomCreated={handleRoomCreated}
+                    onJoinRoomByInvite={handleJoinRoomByInvite}
+                  />
+                )}
+
+                {currentUser && activeTab === 'agents' && (
+                  <AgentWorkshop
+                    currentUser={currentUser}
+                    agents={agents}
+                    strategies={strategies}
+                    rooms={rooms}
+                    trades={trades}
+                    onAgentCreated={handleAgentCreated}
+                    onAgentStatusChanged={handleAgentStatusChanged}
+                    onAgentDeleted={handleAgentDeleted}
+                    onCopyStrategy={handleCopyStrategy}
+                    onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
+                  />
+                )}
+
+                 {currentUser && activeTab === 'trading' && (
+                  <TradingHub
+                    currentUser={currentUser}
+                    agents={agents}
+                    trades={trades}
+                    onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
+                    onDeleteTrade={handleTradeDeleted}
+                    onClearAllTrades={handleClearAllTrades}
+                  />
+                )}
+
+                {currentUser && activeTab === 'charts' && (
+                  <TokenMarketChart />
+                )}
+
+                {currentUser && activeTab === 'predictions' && (
+                  <PredictionMarkets
+                    currentUser={currentUser}
+                    markets={predictionMarkets}
+                    onPlacePredictionBet={handlePlacePredictionBet}
+                    onResolveMarket={handleResolveMarket}
+                  />
+                )}
+
+                {currentUser && activeTab === 'vaults' && (
+                  <VaultClubs
+                    currentUser={currentUser}
+                    vaults={vaults}
+                    onVaultCreated={handleVaultCreated}
+                    onContributeToVault={handleContributeToVault}
+                  />
+                )}
+
+                {currentUser && activeTab === 'graph' && (
+                  <GraphEvidence
+                    currentUser={currentUser}
+                    paperLiveMode={paperLiveMode}
+                  />
+                )}
+
+                {currentUser && activeTab === 'specs' && (
+                  <SpecsCatalog />
+                )}
+
+                {currentUser && activeTab === 'quant' && proModeEnabled && (
+                  <QuantEngine agents={agents} />
+                )}
+                
+                {currentUser && activeTab === 'autopilot' && (
+                  <AgenticAutopilot user={currentUser} />
+                )}
+                
+                {currentUser && activeTab === 'intent' && (
+                  <IntentSolver user={currentUser} />
+                )}
+                
+                {currentUser && activeTab === 'copilot' && (
+                  <SwarmCopilot user={currentUser} />
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
+        </main>
+
+        {/* Safety Compliance Footer */}
+        <footer className="border-t border-slate-900/60 py-6 px-4 md:px-8 bg-slate-950/20 text-center text-xs text-slate-500 font-mono relative z-10">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-[11px]">
+              <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
+              MetaEdge V1 Sovereign Room Ledger Active
+            </span>
+            <span className="text-[10px]">
+              No custody or guaranteed returns. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.
+            </span>
+          </div>
+        </footer>
+      </div>
+
+      {/* Global Autopilot Active Indicator */}
+      <AnimatePresence>
+        {isGlobalAutopilotEnabled && (
+          <motion.div
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none"
+          >
+            <div className="bg-slate-900/90 backdrop-blur-md border border-blue-500/30 p-3 rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-3">
+              <div className="relative">
+                <Cpu className="w-5 h-5 text-blue-400" />
+                <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white font-mono tracking-tight">AUTOPILOT GLOBAL</p>
+                <p className="text-[10px] text-blue-300/80 font-mono">Running Swarm Background Directives</p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Safety Compliance Readiness Sheet */}
       {showReadiness && (

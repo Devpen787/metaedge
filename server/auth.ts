@@ -131,7 +131,8 @@ authRouter.get('/api/dashboard-data', (req: any, res) => {
   
   const rooms = Object.values(db.rooms).filter(r => r.memberIds.includes(userId));
   const agents = Object.values(db.agents).filter((a: any) => a.ownerId === userId);
-  const strategies = Object.values(db.strategies).filter((s: any) => s.authorId === userId);
+  const roomIds = new Set(rooms.map(r => r.id));
+  const strategies = Object.values(db.strategies).filter((s: any) => s.authorId === userId || (s.roomId && roomIds.has(s.roomId)));
   const vaults = Object.values(db.vaultClubs).filter(v => v.ownerId === userId || v.memberContributions[userId] !== undefined);
   const audits = db.auditEvents.filter(a => a.userId === userId).sort((a, b) => b.timestamp - a.timestamp);
   const trades = db.trades.filter(t => t.userId === userId).sort((a, b) => b.timestamp - a.timestamp);

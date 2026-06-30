@@ -8,22 +8,33 @@ export const agentsRouter = Router();
 agentsRouter.post('/api/agents', (req: any, res) => {
   const userId = req.userId;
   const { name, description, assetSymbol, tradeType, strategyType, leverage, roomId } = req.body;
+  const agentName = sanitizeText(name || '', 50);
+  const agentAssetSymbol = sanitizeText(assetSymbol || '', 10).toUpperCase();
 
-  if (!name || !assetSymbol) {
+  if (!agentName || !agentAssetSymbol) {
     res.status(400).json({ error: 'Agent name and asset are required' });
     return;
   }
 
   const db = readDatabase();
+  const sharedRoomId = sanitizeText(roomId || '', 50);
+  if (sharedRoomId) {
+    const room = db.rooms[sharedRoomId];
+    if (!room || !room.memberIds.includes(userId)) {
+      res.status(403).json({ error: 'Join the room before sharing an agent there.' });
+      return;
+    }
+  }
+
   const agentId = 'agt_' + generateId();
 
   const newAgent: TradingAgent = {
     id: agentId,
-    name: sanitizeText(name, 50),
+    name: agentName,
     description: sanitizeText(description || '', 150),
     ownerId: userId,
-    roomId: roomId ? sanitizeText(roomId, 50) : undefined,
-    assetSymbol: sanitizeText(assetSymbol, 10).toUpperCase(),
+    roomId: sharedRoomId || undefined,
+    assetSymbol: agentAssetSymbol,
     tradeType: tradeType === 'perp' ? 'perp' : 'token',
     strategyType: ['momentum', 'grid', 'mean_reversion', 'custom_ai'].includes(strategyType) ? strategyType : 'momentum',
     leverage: Number(leverage) || 1,
@@ -34,7 +45,7 @@ agentsRouter.post('/api/agents', (req: any, res) => {
   db.agents[agentId] = newAgent;
 
   // Track shared strategy immediately if roomId is specified
-  if (roomId && db.rooms[roomId] && db.rooms[roomId].memberIds.includes(userId)) {
+  if (sharedRoomId) {
     const stratId = 'str_' + generateId();
     const newStrategy: PaperStrategy = {
       id: stratId,
@@ -42,6 +53,7 @@ agentsRouter.post('/api/agents', (req: any, res) => {
       name: newAgent.name,
       description: newAgent.description,
       authorId: userId,
+      roomId: sharedRoomId,
       assetSymbol: newAgent.assetSymbol,
       tradeType: newAgent.tradeType,
       status: 'active',
@@ -56,7 +68,7 @@ agentsRouter.post('/api/agents', (req: any, res) => {
       userId,
       targetId: stratId,
       targetType: 'Strategy',
-      metadata: { roomId, agentId },
+      metadata: { roomId: sharedRoomId, agentId },
       timestamp: Date.now()
     });
   }
@@ -186,8 +198,10 @@ agentsRouter.delete('/api/agents/:id', (req: any, res) => {
 
 // List strategies
 agentsRouter.get('/api/strategies', (req, res) => {
+  const userId = (req as any).userId;
   const db = readDatabase();
-  res.json({ strategies: Object.values(db.strategies) });
+  const strategies = Object.values(db.strategies).filter(strategy => canAccessStrategy(db, userId, strategy));
+  res.json({ strategies });
 });
 
 // Copy a Strategy
@@ -200,6 +214,11 @@ agentsRouter.post('/api/strategies/copy', (req: any, res) => {
 
   if (!sourceStrategy) {
     res.status(404).json({ error: 'Strategy not found' });
+    return;
+  }
+
+  if (!canAccessStrategy(db, userId, sourceStrategy)) {
+    res.status(403).json({ error: 'Join the room before copying this strategy.' });
     return;
   }
 
@@ -243,3 +262,9 @@ agentsRouter.post('/api/strategies/copy', (req: any, res) => {
   writeDatabase(db);
   res.json({ success: true, agent: newAgent });
 });
+
+function canAccessStrategy(db: ReturnType<typeof readDatabase>, userId: string, strategy: PaperStrategy): boolean {
+  if (strategy.authorId === userId) return true;
+  if (!strategy.roomId) return false;
+  return Boolean(db.rooms[strategy.roomId]?.memberIds.includes(userId));
+}

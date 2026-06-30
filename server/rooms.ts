@@ -92,7 +92,7 @@ roomsRouter.get('/api/rooms/:id', (req: any, res) => {
   });
 
   // Get strategies shared with this room
-  const sharedStrategies = Object.values(db.strategies).filter(s => s.roomId === roomId || s.id === roomId); // Simple fallback
+  const sharedStrategies = Object.values(db.strategies).filter(s => s.roomId === roomId);
 
   res.json({ room, members, sharedStrategies });
 });

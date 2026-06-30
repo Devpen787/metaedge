@@ -12,6 +12,7 @@
 - [x] Support for second-user joining via token parameters on load
 - [x] Room membership is server-side, second-session invite joins persist, non-members are blocked, and only owners can disable invites
 - [x] Server-authoritative paper balances and simulated transaction filling
+- [x] Room-scoped paper agent strategy sharing and member-only copy flow
 - [x] Agent workshop with leverage limits, perpetual/spot engines, status pausing, and strategy copying
 - [x] Simulated read-only Vault Clubs tracking contributions and milestone achievements
 - [x] High-fidelity MetaMask Readiness sheet detailing real-time browser scanning and live block reasons
@@ -22,10 +23,10 @@
 - [x] Verified build output, zero linter warnings, compiled green.
 
 ## Failed Checks
-- None for journeys 1, 2, 3, and 4.
+- None for journeys 1, 2, 3, 4, and 5.
 
 ## Next Fix
-- Journey 5: paper agent creation and room-scoped strategy sharing.
+- Journey 6: paper trade fill integrity and room attribution.
 
 ## Remaining Blockers
-- None for journeys 1, 2, 3, and 4.
+- None for journeys 1, 2, 3, 4, and 5.

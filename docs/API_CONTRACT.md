@@ -54,6 +54,20 @@ Enables or disables a room invite.
 ### `POST /api/agents`
 Creates a new trading agent.
 - Body: `{ name, description, assetSymbol, tradeType, strategyType, leverage, roomId }`
+- The server trims/sanitizes agent text, rejects blank names/assets, derives `ownerId` from the cookie session, and only accepts `roomId` when the current user is a room member.
+- When a valid `roomId` is provided, MetaEdge creates a room-scoped paper strategy that room members can review and copy.
+
+### `GET /api/agents`
+Lists only agents owned by the current user.
+
+### `GET /api/strategies`
+Lists strategies authored by the current user or shared in rooms where the current user is a member.
+
+### `POST /api/strategies/copy`
+Copies an accessible paper strategy into the current user's agent book.
+- Body: `{ strategyId }`
+- The copied agent owner is derived from the cookie session and starts `paused` for review.
+- Non-members cannot copy private room strategies by guessing IDs.
 
 ### `POST /api/mm/transfer`
 Executes a live transfer using MetaMask agent. Requires `LIVE_EXECUTION_ENABLED=true` server-side, otherwise returns 403.

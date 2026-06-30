@@ -23,6 +23,12 @@ Claims or edits the current profile.
 Executes a simulated paper trade.
 - Body: `{ agentId, assetSymbol, side, size, price, leverage, roomId }`
 
+### `POST /api/faucet`
+Claims exactly `$10,000` in Paper money for the current user.
+- The server ignores body fields such as `amount`, `paperBalance`, `faucetClaimedCount`, and `userId`.
+- Each session user can claim at most 10 times.
+- Successful claims emit `FAUCET_CLAIM` audit events and `paper_action` graph events.
+
 ### `POST /api/agents`
 Creates a new trading agent.
 - Body: `{ name, description, assetSymbol, tradeType, strategyType, leverage, roomId }`

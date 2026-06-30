@@ -7,6 +7,7 @@
 - [x] Persistent JSON-based database (`db.json`) enabling durability across browser reloads
 - [x] Opaque cookie-based anonymous sessions preventing spoofing and securing identities
 - [x] Profile claim/edit flow persists on the server and ignores spoofed body ownership
+- [x] Paper balance and faucet flow is server-authoritative, capped, and isolated per session
 - [x] Room creation with signed unguessable invitation links
 - [x] Support for second-user joining via token parameters on load
 - [x] Server-authoritative paper balances and simulated transaction filling
@@ -20,10 +21,10 @@
 - [x] Verified build output, zero linter warnings, compiled green.
 
 ## Failed Checks
-- None for journeys 1 and 2.
+- None for journeys 1, 2, and 3.
 
 ## Next Fix
-- Journey 3: paper balance and faucet integrity.
+- Journey 4: rooms and invite join integrity.
 
 ## Remaining Blockers
-- None for journeys 1 and 2.
+- None for journeys 1, 2, and 3.

@@ -1,7 +1,9 @@
 # API Contract
 
 ## Authentication
-All API requests automatically identify the user via the `metaedge_session` `httpOnly` cookie. If not present, the server provisions a new anonymous user identity.
+All API requests automatically identify the user via the `metaedge_session` `httpOnly` cookie. The cookie contains an opaque server-issued token, not a user id. If the cookie is missing, expired, or invalid, the server provisions a new anonymous user identity.
+
+Client-provided `userId` values and `x-metaedge-session-id` headers are ignored for ownership. The server derives the acting user only from the cookie-backed session record.
 
 ## Common Endpoints
 

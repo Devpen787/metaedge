@@ -48,7 +48,7 @@ export default function App() {
       const data = await res.json();
       if (data.user) {
         setCurrentUser(data.user);
-        localStorage.setItem('metaedge_session_id', data.user.id);
+        localStorage.removeItem('metaedge_session_id');
       }
     } catch (e) {
       console.error('Error fetching session', e);
@@ -134,7 +134,7 @@ export default function App() {
       const data = await res.json();
       if (data.success && data.user) {
         setCurrentUser(data.user);
-        localStorage.setItem('metaedge_session_id', data.user.id);
+        localStorage.removeItem('metaedge_session_id');
       }
     } catch (err) {
       console.error('Error updating profile', err);

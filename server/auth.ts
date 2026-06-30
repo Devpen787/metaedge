@@ -1,66 +1,117 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { readDatabase, writeDatabase, generateId, sanitizeText } from './storage.js';
-import type { User, AuditEvent, GraphEvent } from '../src/types';
+import type { User, AuditEvent, GraphEvent, DatabaseState } from '../src/types';
 
 export const authRouter = Router();
 
-// Middleware to resolve or create anonymous session
+const SESSION_COOKIE = 'metaedge_session';
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const SESSION_COOKIE_OPTIONS = {
+  maxAge: SESSION_TTL_MS,
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: process.env.NODE_ENV === 'production'
+};
+
+function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('base64url');
+}
+
+function createSessionToken(): string {
+  return `mes_${crypto.randomBytes(32).toString('base64url')}`;
+}
+
+function createAnonymousUser(userId: string): User {
+  const now = Date.now();
+  return {
+    id: userId,
+    username: `Trader_${Math.floor(1000 + Math.random() * 9000)}`,
+    profile: {
+      displayName: `MetaEdge Agent`,
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${userId}`,
+      bio: 'Self-custodial agent room member.',
+      updatedAt: now
+    },
+    createdAt: now,
+    lastActiveAt: now,
+    paperBalance: 100000,
+    faucetClaimedCount: 0
+  };
+}
+
+function attachNewSession(db: DatabaseState, userId: string, res: any) {
+  const now = Date.now();
+  const token = createSessionToken();
+  const tokenHash = hashSessionToken(token);
+  db.sessions ||= {};
+  db.sessions[tokenHash] = {
+    id: 'ses_' + generateId(),
+    tokenHash,
+    userId,
+    createdAt: now,
+    lastSeenAt: now,
+    expiresAt: now + SESSION_TTL_MS
+  };
+  res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+  return tokenHash;
+}
+
+function recordLoginEvents(db: DatabaseState, user: User, req: any) {
+  const auditEvent: AuditEvent = {
+    id: 'aud_' + generateId(),
+    userId: user.id,
+    username: user.username,
+    action: 'LOGIN',
+    details: 'Created anonymous user session.',
+    timestamp: Date.now()
+  };
+  db.auditEvents.push(auditEvent);
+
+  const graphEvent: GraphEvent = {
+    id: 'gph_' + generateId(),
+    type: 'login',
+    userId: user.id,
+    targetId: user.id,
+    targetType: 'User',
+    metadata: { browser: req.headers['user-agent'] || 'unknown' },
+    timestamp: Date.now()
+  };
+  db.graphEvents.push(graphEvent);
+}
+
+// Middleware to resolve or create anonymous session.
 export const sessionMiddleware = (req: any, res: any, next: any) => {
-  // Use httpOnly cookie, fallback to header only if necessary but prefer cookie for identity
-  let userId = req.cookies.metaedge_session || (req.headers['x-metaedge-session-id'] as string);
   const db = readDatabase();
+  db.sessions ||= {};
+  const now = Date.now();
+  const cookieToken = typeof req.cookies?.[SESSION_COOKIE] === 'string' ? req.cookies[SESSION_COOKIE] : '';
+  let userId: string | undefined;
 
-  if (!userId || !db.users[userId]) {
-    // Generate new anonymous user
-    userId = 'usr_' + generateId();
-    const newUser: User = {
-      id: userId,
-      username: `Trader_${Math.floor(1000 + Math.random() * 9000)}`,
-      profile: {
-        displayName: `MetaEdge Agent`,
-        avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${userId}`,
-        bio: 'Self-custodial agent room member.',
-        updatedAt: Date.now()
-      },
-      createdAt: Date.now(),
-      lastActiveAt: Date.now(),
-      paperBalance: 100000, // $100,000 initial balance
-      faucetClaimedCount: 0
-    };
-    db.users[userId] = newUser;
-
-    // Log login audit & graph events
-    const auditEvent: AuditEvent = {
-      id: 'aud_' + generateId(),
-      userId,
-      username: newUser.username,
-      action: 'LOGIN',
-      details: 'Created anonymous user session.',
-      timestamp: Date.now()
-    };
-    db.auditEvents.push(auditEvent);
-
-    const graphEvent: GraphEvent = {
-      id: 'gph_' + generateId(),
-      type: 'login',
-      userId,
-      targetId: userId,
-      targetType: 'User',
-      metadata: { browser: req.headers['user-agent'] || 'unknown' },
-      timestamp: Date.now()
-    };
-    db.graphEvents.push(graphEvent);
-
-    writeDatabase(db);
-    res.cookie('metaedge_session', userId, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' });
-  } else {
-    // Update last active time
-    db.users[userId].lastActiveAt = Date.now();
-    writeDatabase(db);
-    // ensure cookie is set
-    res.cookie('metaedge_session', userId, { maxAge: 30 * 24 * 60 * 60 * 1000, httpOnly: true, secure: process.env.NODE_ENV === 'production' });
+  if (cookieToken && cookieToken.startsWith('mes_')) {
+    const tokenHash = hashSessionToken(cookieToken);
+    const session = db.sessions[tokenHash];
+    if (session && session.expiresAt > now && db.users[session.userId]) {
+      userId = session.userId;
+      session.lastSeenAt = now;
+      session.expiresAt = now + SESSION_TTL_MS;
+      db.users[userId].lastActiveAt = now;
+      res.cookie(SESSION_COOKIE, cookieToken, SESSION_COOKIE_OPTIONS);
+      writeDatabase(db);
+      req.userId = userId;
+      return next();
+    }
   }
 
+  if (!userId) {
+    userId = 'usr_' + generateId();
+    const newUser = createAnonymousUser(userId);
+    db.users[userId] = newUser;
+    recordLoginEvents(db, newUser, req);
+  }
+
+  attachNewSession(db, userId, res);
+  writeDatabase(db);
   req.userId = userId;
   next();
 };
@@ -70,7 +121,7 @@ authRouter.get('/api/session', (req: any, res) => {
   const userId = req.userId;
   const db = readDatabase();
   const user = db.users[userId];
-  res.json({ user });
+  res.json({ user, session: { mode: 'anonymous', expiresInMs: SESSION_TTL_MS } });
 });
 
 // --- DASHBOARD DATA ENDPOINT (BATCHED) ---

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
 
 export const DB_FILE = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
@@ -48,6 +49,7 @@ export function readDatabase(): DatabaseState {
     if (!fs.existsSync(DB_FILE)) {
       const initialState: DatabaseState = {
         users: {},
+        sessions: {},
         rooms: {},
         agents: {},
         strategies: {},
@@ -67,6 +69,9 @@ export function readDatabase(): DatabaseState {
     }
     const data = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(data);
+    if (!parsed.sessions) {
+      parsed.sessions = {};
+    }
     if (!parsed.predictionMarkets) {
       parsed.predictionMarkets = defaultPredictions;
     }
@@ -75,6 +80,7 @@ export function readDatabase(): DatabaseState {
     console.error('Error reading database, resetting:', error);
     return {
       users: {},
+      sessions: {},
       rooms: {},
       agents: {},
       strategies: {},
@@ -101,7 +107,7 @@ export function writeDatabase(state: DatabaseState) {
 
 // Generate random unguessable IDs/tokens
 export function generateId() {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return crypto.randomBytes(16).toString('base64url');
 }
 
 // Helper for sanitizing text inputs to prevent XSS/unwanted rendering

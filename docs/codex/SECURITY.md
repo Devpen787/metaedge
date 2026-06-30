@@ -11,9 +11,10 @@ MetaEdge V1 establishes a clear cryptographic and logical division between two e
 ## 2. Server-Authoritative Identity & Request Ownership
 Sovereign user sessions are governed by secure, server-issued anonymous user identifiers rather than client-asserted states:
 
-1. **httpOnly Session Cookie**: At session start, the server issues a `metaedge_session` cookie marked with `httpOnly`. This protects the session token from cross-site scripting (XSS) extraction.
-2. **Derived Identity**: All protected endpoints (such as `/api/rooms/:id`, `/api/agents`, `/api/trades`, and `/api/vaults`) resolve the acting user’s identity directly from the `metaedge_session` cookie payload.
-3. **IDOR Prevention & Room Isolation**: 
+1. **httpOnly Session Cookie**: At session start, the server issues a `metaedge_session` cookie marked with `httpOnly` and `SameSite=Lax`. This protects the opaque session token from cross-site scripting (XSS) extraction.
+2. **Derived Identity**: All protected endpoints (such as `/api/rooms/:id`, `/api/agents`, `/api/trades`, and `/api/vaults`) resolve the acting user’s identity from a server-side session record. The cookie does not contain a user id.
+3. **No Header Identity**: Client-provided `userId` values and `x-metaedge-session-id` headers are ignored for ownership decisions.
+4. **IDOR Prevention & Room Isolation**:
    - A user cannot fetch, copy, or manipulate a trading room, strategy, or vault club without being a verified, active member of that specific space in the persistent state of `db.json`.
    - Before returning details or accepting trade telemetry, the server explicitly checks: `room.memberIds.includes(userId)`.
 

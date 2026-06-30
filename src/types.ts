@@ -19,6 +19,15 @@ export interface User {
   faucetClaimedCount: number;
 }
 
+export interface SessionRecord {
+  id: string;
+  tokenHash: string;
+  userId: string;
+  createdAt: number;
+  lastSeenAt: number;
+  expiresAt: number;
+}
+
 export interface WalletState {
   isInstalled: boolean;
   isConnected: boolean;
@@ -150,6 +159,7 @@ export interface PredictionMarket {
 
 export interface DatabaseState {
   users: { [id: string]: User };
+  sessions?: { [tokenHash: string]: SessionRecord };
   rooms: { [id: string]: FriendRoom };
   agents: { [id: string]: TradingAgent };
   strategies: { [id: string]: PaperStrategy };

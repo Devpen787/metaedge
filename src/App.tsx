@@ -838,7 +838,7 @@ export default function App() {
               MetaEdge V1 Sovereign Room Ledger Active
             </span>
             <span className="text-[10px]">
-              No custody or guaranteed returns. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.
+              No custody. Returns are simulated. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.
             </span>
           </div>
         </footer>

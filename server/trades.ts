@@ -1,16 +1,18 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId } from './storage.js';
 import type { PaperTrade } from '../src/types';
+import { createOrderIntent, executeOrderIntent } from '../src/secure-core/trading/intents.js';
+import { evaluateOrderRisk } from '../src/secure-core/trading/risk-engine.js';
 
 export const tradesRouter = Router();
 
 // Post simulated fill
 tradesRouter.post('/api/trades', (req: any, res) => {
   const userId = req.userId;
-  const { agentId, assetSymbol, side, size, price, leverage, roomId } = req.body;
+  const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = req.body;
 
-  if (!agentId || !assetSymbol || !side || !size || !price) {
-    res.status(400).json({ error: 'Incomplete fill telemetry' });
+  if (!agentId || !assetSymbol || !side || !size || !price || !nonce) {
+    res.status(400).json({ error: 'Incomplete fill telemetry or missing idempotency nonce' });
     return;
   }
 
@@ -30,37 +32,56 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   const executionPrice = Number(price);
   const tradeSize = Number(size);
   const tradeLeverage = Number(leverage) || 1;
-  const notional = tradeSize * executionPrice;
 
-  // Authoritative check on balances
   const user = db.users[userId];
-  const requiredMargin = agent.tradeType === 'perp' ? notional / tradeLeverage : notional;
 
-  if (side === 'buy' || side === 'long') {
-    if (user.paperBalance < requiredMargin) {
-      res.status(400).json({ error: 'Insufficient simulated paper balance to execute this trade.' });
-      return;
-    }
-    user.paperBalance -= requiredMargin;
-  } else {
-    // Sell / Close / Short credit back
-    user.paperBalance += requiredMargin * 1.02; // Arbitrary modest mock gain
+  // 1. Create order intent
+  let intent;
+  try {
+    intent = createOrderIntent(userId, {
+      agentId,
+      assetSymbol: assetSymbol.toUpperCase(),
+      side,
+      size: tradeSize,
+      tradeType: agent.tradeType,
+      leverage: tradeLeverage,
+      nonce
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+    return;
   }
 
-  const trade: PaperTrade = {
-    id: 'trd_' + generateId(),
-    agentId,
-    userId,
-    roomId: roomId || agent.roomId,
-    assetSymbol: assetSymbol.toUpperCase(),
-    tradeType: agent.tradeType,
-    side: side,
-    size: tradeSize,
-    price: executionPrice,
-    leverage: tradeLeverage,
-    pnl: side === 'sell' || side === 'short' ? Math.random() * 200 - 50 : undefined,
-    timestamp: Date.now()
-  };
+  // 2. Risk Evaluation
+  try {
+    evaluateOrderRisk(intent, {
+      userId,
+      availableBalance: user.paperBalance,
+      currentPrice: executionPrice
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+
+  // 3. Execution & Ledger Updates
+  let trade;
+  try {
+    trade = executeOrderIntent(intent.intentId, executionPrice);
+    trade.roomId = roomId || agent.roomId;
+    trade.pnl = side === 'sell' || side === 'short' ? Math.random() * 200 - 50 : undefined;
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+
+  const requiredMargin = agent.tradeType === 'perp' ? (tradeSize * executionPrice) / tradeLeverage : (tradeSize * executionPrice);
+
+  if (side === 'buy' || side === 'long') {
+    user.paperBalance -= requiredMargin;
+  } else {
+    user.paperBalance += requiredMargin * 1.02; // Mock gain
+  }
 
   db.trades.push(trade);
   agent.lastTradeAt = Date.now();

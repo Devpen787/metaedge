@@ -125,7 +125,8 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         side,
         size: positionSize,
         price: currentPrice,
-        leverage: tradeType === 'perp' ? leverage : 1
+        leverage: tradeType === 'perp' ? leverage : 1,
+        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
       setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
       setSize('');
@@ -460,7 +461,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                       : 'N/A (Asset must go to $0)'}
                   </span>
                   <span className="text-[9px] text-slate-500 mt-1 relative z-10">
-                    {tradeType === 'perp' ? 'Margin requirement boundary' : 'Zero liquidation risk in Spot'}
+                    {tradeType === 'perp' ? 'Margin requirement boundary' : 'No margin liquidation risk in Spot'}
                   </span>
                 </div>
               </div>

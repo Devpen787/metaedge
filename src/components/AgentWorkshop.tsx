@@ -133,7 +133,8 @@ export default function AgentWorkshop({
         assetSymbol: agents.find(a => a.id === simAgentId)?.assetSymbol || 'BTC',
         side: simSide,
         size: Number(simSize),
-        price: Number(simPrice)
+        price: Number(simPrice),
+        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
       setMsg({ text: 'Paper fill executed successfully. Balances deducted server-side.', type: 'success' });
     } catch (err: any) {
@@ -239,7 +240,7 @@ export default function AgentWorkshop({
                 <Info className="w-4 h-4 shrink-0 text-slate-500" />
                 <div className="text-[10px] text-slate-400 leading-tight">
                   {tradeType === 'token' 
-                    ? 'Spot Strategy: Accumulate tokens with zero liquidation risk. Ideal for long-term holding, swing trading, and riding macro trends up.'
+                    ? 'Spot Strategy: Accumulate tokens without margin liquidation risk. Ideal for long-term holding, swing trading, and riding macro trends up.'
                     : 'Perp Strategy: Amplifies gains/losses with leverage. Ideal for shorting down-trends and hedging, but strictly requires stop-loss risk management.'}
                 </div>
               </div>

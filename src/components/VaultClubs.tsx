@@ -180,7 +180,7 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
                   READ-ONLY COORDINATION DISCLOSURE
                 </div>
                 <p className="leading-relaxed text-[11px]">
-                  This Vault Club is entirely simulated. Contributions use mock Paper Balance credits. No custodial ownership, investment yields, or pooled funds guarantees exist. Live smart contracts remain locked.
+                  This Vault Club is entirely simulated. Contributions use mock Paper Balance credits. No custodial ownership, investment yields, or pooled funds claims exist. Live smart contracts remain locked.
                 </p>
               </div>
             </div>

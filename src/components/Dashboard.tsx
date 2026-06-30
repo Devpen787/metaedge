@@ -270,7 +270,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             </div>
           </div>
 
-          {/* Thoughtproof Verifier Firewall */}
+          {/* Verifier Firewall */}
           <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-amber-500/20 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-amber-500/40 transition-all">
              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-amber-500/10 transition-all duration-700" />
             <div>
@@ -311,7 +311,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             </div>
             <div className="mt-4 pt-4 border-t border-slate-700/50 text-[10px] font-mono text-slate-500 flex items-center gap-1.5 leading-tight">
               <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-              Join a cooperative Room to submit and share active strategy performance proof.
+              Join a cooperative Room to submit and share active strategy performance records.
             </div>
           </div>
 

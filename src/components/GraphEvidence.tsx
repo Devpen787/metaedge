@@ -111,7 +111,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
 
           <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 z-10 border-t border-slate-900 pt-2">
             <HelpCircle className="w-3.5 h-3.5" />
-            Click on any relation node above to inspect its cryptographic security proofs and owner relationships.
+            Click on any relation node above to inspect its security verifications and owner relationships.
           </div>
         </div>
 
@@ -142,10 +142,10 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/40 space-y-2">
                 <div className="text-[11px] font-mono text-slate-300 font-semibold flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-indigo-400" />
-                  Sovereignty Proof
+                  Sovereignty Verification
                 </div>
                 <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
-                  This {selectedNode.label.toLowerCase()} is bound to the verified owner session. It is completely isolated from other room participants and operates with zero client-side privilege escalation risk.
+                  This {selectedNode.label.toLowerCase()} is bound to the verified owner session. It is isolated from other room participants and operates within client-side execution boundaries.
                 </p>
               </div>
 

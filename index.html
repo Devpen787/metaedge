@@ -3,18 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>My Google AI Studio App</title>
+    <title>MetaEdge</title>
   </head>
   <body>
-    <div id="error-log" style="color: red; background: white; z-index: 9999; position: absolute; top: 0; left: 0; padding: 20px;"></div>
-    <script>
-      window.addEventListener('error', (event) => {
-        document.getElementById('error-log').innerHTML += `<p>${event.message} at ${event.filename}:${event.lineno}</p>`;
-      });
-      window.addEventListener('unhandledrejection', (event) => {
-        document.getElementById('error-log').innerHTML += `<p>Promise Rejection: ${event.reason}</p>`;
-      });
-    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -18,17 +18,30 @@ import QuantEngine from './components/QuantEngine';
 import AgenticAutopilot from './components/AgenticAutopilot';
 import IntentSolver from './components/IntentSolver';
 import SwarmCopilot from './components/SwarmCopilot';
-import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal } from 'lucide-react';
+import { AgentArena } from './components/AgentArena';
+import MetaedgeAnalytics from './components/MetaedgeAnalytics';
+import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal, Swords, Loader2, BarChart2 } from 'lucide-react';
 import { apiFetch } from './lib/api';
+
+import GuidedTour from './components/GuidedTour';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>('dashboard');
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [proModeEnabled, setProModeEnabled] = useState(false);
+  const [showTour, setShowTour] = useState(() => {
+    const hasSeenTour = localStorage.getItem('metaedge_tour_completed');
+    return !hasSeenTour;
+  });
+
+  const completeTour = () => {
+    localStorage.setItem('metaedge_tour_completed', 'true');
+    setShowTour(false);
+  };
 
   
   // Mode Selection
@@ -36,6 +49,8 @@ export default function App() {
   const [showReadiness, setShowReadiness] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isGlobalAutopilotEnabled, setIsGlobalAutopilotEnabled] = useState(false);
+  const [isAgentProcessing, setIsAgentProcessing] = useState(false);
+  const [agentProcessingAction, setAgentProcessingAction] = useState<string | null>(null);
 
   // Entities state
   const [rooms, setRooms] = useState<FriendRoom[]>([]);
@@ -106,7 +121,26 @@ export default function App() {
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+
+    const handleNavigate = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      if (customEvent.detail) {
+        setActiveTab(customEvent.detail as any);
+      }
+    };
+    window.addEventListener('navigate', handleNavigate);
+    
+    const handleAgentProcessing = (e: any) => {
+      setIsAgentProcessing(e.detail.isProcessing);
+      setAgentProcessingAction(e.detail.actionName || null);
+    };
+    window.addEventListener('agent-processing', handleAgentProcessing);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('navigate', handleNavigate);
+      window.removeEventListener('agent-processing', handleAgentProcessing);
+    };
   }, []);
 
   // Handle auto invite acceptance
@@ -462,11 +496,13 @@ export default function App() {
               items: [
                 { id: 'rooms', label: 'Rooms', icon: Users },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
+                { id: 'arena', label: 'Agent Arena', icon: Swords },
               ]
             },
             {
               title: 'Analytics & Evidence',
               items: [
+                { id: 'analytics', label: 'Platform Data', icon: BarChart2 },
                 { id: 'graph', label: 'Evidence Map', icon: Network },
                 { id: 'specs', label: 'Specs Hub', icon: Award },
                 ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
@@ -501,7 +537,7 @@ export default function App() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-slate-900/80">
+        <div className="p-4 border-t border-slate-900/80 space-y-2">
           <button
             onClick={() => setCmdPaletteOpen(true)}
             className="w-full flex items-center justify-between px-3 py-2 bg-slate-950/80 border border-slate-800/80 rounded-xl text-slate-400 hover:text-slate-200 transition-colors shadow-inner"
@@ -511,6 +547,15 @@ export default function App() {
               <Command className="w-3.5 h-3.5" /> Search
             </div>
             <span className="text-[10px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">⌘K</span>
+          </button>
+          
+          <button
+            onClick={() => setShowTour(true)}
+            className="w-full flex items-center justify-between px-3 py-2 bg-slate-950/80 border border-slate-800/80 rounded-xl text-slate-400 hover:text-indigo-300 hover:border-indigo-500/30 transition-all shadow-inner group"
+          >
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <Sparkles className="w-3.5 h-3.5 group-hover:text-indigo-400 transition-colors" /> Platform Tour
+            </div>
           </button>
         </div>
       </aside>
@@ -554,8 +599,10 @@ export default function App() {
                  <optgroup label="Community & Vaults">
                    <option value="rooms">Rooms</option>
                    <option value="vaults">Vaults</option>
+                   <option value="arena">Agent Arena</option>
                  </optgroup>
                  <optgroup label="Analytics & Evidence">
+                   <option value="analytics">Platform Data</option>
                    <option value="graph">Evidence Map</option>
                    <option value="specs">Specs Hub</option>
                    {proModeEnabled && <option value="quant">Quant Engine</option>}
@@ -563,8 +610,24 @@ export default function App() {
                </select>
             </div>
 
-            {/* Empty div to push items to right on desktop */}
-            <div className="hidden lg:block flex-1" />
+            {/* Empty div or loading state to push items to right on desktop */}
+            <div className="hidden lg:flex flex-1 items-center px-4">
+              <AnimatePresence>
+                {isAgentProcessing && (
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                    <span className="text-[10px] font-mono text-indigo-300 font-bold uppercase tracking-wider">
+                      {agentProcessingAction || 'AI Processing...'}
+                    </span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* Mode switch & Wallet */}
             <div className="flex items-center gap-3 ml-auto">
@@ -754,6 +817,14 @@ export default function App() {
                 {currentUser && activeTab === 'copilot' && (
                   <SwarmCopilot user={currentUser} />
                 )}
+
+                {currentUser && activeTab === 'arena' && (
+                  <AgentArena user={currentUser} />
+                )}
+
+                {currentUser && activeTab === 'analytics' && (
+                  <MetaedgeAnalytics />
+                )}
               </motion.div>
             </AnimatePresence>
           </div>
@@ -806,6 +877,9 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Guided Tour for new users */}
+      {showTour && <GuidedTour onComplete={completeTour} />}
 
       {/* MetaMask Agent Wallet Modal */}
       <AgentWalletModal

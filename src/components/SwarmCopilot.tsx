@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Send, Bot, User as UserIcon, ShieldCheck, Zap, Activity, ChevronRight, CheckCircle, AlertTriangle, Terminal, Cpu, Sparkles } from 'lucide-react';
 import { User } from '../types';
+import { setGlobalAgentProcessing } from '../lib/events';
 
 interface SwarmCopilotProps {
   user: User;
@@ -48,6 +49,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
+    setGlobalAgentProcessing(true, 'Swarm Copilot Reasoning');
 
     try {
       const res = await fetch('/api/mm/chat', {
@@ -79,11 +81,13 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
       }]);
     } finally {
       setIsTyping(false);
+      setGlobalAgentProcessing(false);
     }
   };
 
   const handleExecuteProposal = async (msgId: string) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'executing' } : m));
+    setGlobalAgentProcessing(true, 'Executing Proposal');
     
     // Simulate execution
     await new Promise(r => setTimeout(r, 2000));
@@ -96,6 +100,8 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
       content: 'Execution complete. Assets have been routed securely according to the proposal.',
       status: 'done'
     }]);
+    
+    setGlobalAgentProcessing(false);
   };
 
   return (
@@ -235,13 +241,25 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
             ))}
             
             {isTyping && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-4 max-w-[85%]">
                 <div className="shrink-0 w-8 h-8 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 flex items-center justify-center">
                   <Bot className="w-4 h-4 animate-pulse" />
                 </div>
-                <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 rounded-tl-sm flex gap-3 items-center shadow-inner">
-                  <Activity className="w-4 h-4 text-indigo-400 animate-spin" />
-                  <span className="text-xs font-mono text-indigo-300">Agents are formulating execution path...</span>
+                <div className="space-y-3 w-full">
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 w-fit space-y-2 min-w-[200px]">
+                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-2">
+                      <Activity className="w-3 h-3 animate-spin" /> Synthesizing Intent...
+                    </div>
+                    <div className="h-2 w-3/4 bg-indigo-500/20 rounded animate-pulse" />
+                    <div className="h-2 w-1/2 bg-indigo-500/20 rounded animate-pulse delay-75" />
+                  </div>
+                  <div className="p-4 rounded-2xl bg-slate-800 border border-slate-700 rounded-tl-sm shadow-xl min-w-[300px]">
+                    <div className="space-y-3">
+                       <div className="h-3 w-full bg-slate-700 rounded animate-pulse" />
+                       <div className="h-3 w-5/6 bg-slate-700 rounded animate-pulse delay-75" />
+                       <div className="h-3 w-4/6 bg-slate-700 rounded animate-pulse delay-150" />
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}

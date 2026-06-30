@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Zap, Activity, Network, Wallet, ArrowRightLeft, TrendingUp, Coins, ShieldCheck, Cpu } from 'lucide-react';
 import { User } from '../types';
+import { setGlobalAgentProcessing } from '../lib/events';
 
 interface AgenticAutopilotProps {
   user: User;
@@ -18,9 +19,11 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
   const handleToggleAutopilot = async () => {
     if (isAutopilotActive) {
       setIsAutopilotActive(false);
+      setGlobalAgentProcessing(false);
       setLogs(prev => [{ time: new Date().toLocaleTimeString(), message: 'Autopilot Engine deactivated. Portfolio secured.', type: 'info' }, ...prev]);
     } else {
       setIsAutopilotActive(true);
+      setGlobalAgentProcessing(true, 'Running Autopilot Tasks');
       setLogs([{ time: new Date().toLocaleTimeString(), message: 'Autopilot Engine activated. Scanning for yield opportunities...', type: 'info' }]);
       
       try {
@@ -36,9 +39,14 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
           data.logs.forEach((log: any, index: number) => {
             setTimeout(() => {
               setLogs(prev => [log, ...prev]);
+              if (index === data.logs.length - 1) {
+                setGlobalAgentProcessing(false);
+                setIsAutopilotActive(false);
+              }
             }, (index + 1) * 1500);
           });
         } else {
+          setGlobalAgentProcessing(false);
           throw new Error(data.error || 'Failed to execute autopilot');
         }
       } catch (err: any) {
@@ -47,6 +55,7 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
           ...prev
         ]);
         setIsAutopilotActive(false);
+        setGlobalAgentProcessing(false);
       }
     }
   };

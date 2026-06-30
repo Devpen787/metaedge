@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, AuditEvent, PaperTrade } from '../types';
-import { Landmark, RefreshCw, FileText, HelpCircle, Flame, TrendingUp, Activity, BarChart2, Edit3, X, Loader2, Shield } from 'lucide-react';
+import { Landmark, RefreshCw, FileText, HelpCircle, Flame, TrendingUp, Activity, BarChart2, Edit3, X, Loader2, Shield, Search, Swords, Terminal } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -316,6 +316,50 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
           </div>
 
         </div>
+      </div>
+
+      {/* Quick Navigation / Workflow Optimizations */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
+        <button 
+          onClick={() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }))}
+          className="bg-slate-900/60 border border-slate-700/50 hover:border-indigo-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all hover:-translate-y-1 shadow-lg group"
+        >
+          <div className="bg-indigo-500/10 p-3 rounded-xl group-hover:bg-indigo-500/20 transition-colors">
+            <Search className="w-6 h-6 text-indigo-400" />
+          </div>
+          <span className="text-sm font-bold text-slate-200">Command Palette</span>
+          <span className="text-[10px] font-mono text-slate-500">Cmd+K</span>
+        </button>
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'arena' }))}
+          className="bg-slate-900/60 border border-slate-700/50 hover:border-yellow-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all hover:-translate-y-1 shadow-lg group"
+        >
+          <div className="bg-yellow-500/10 p-3 rounded-xl group-hover:bg-yellow-500/20 transition-colors">
+            <Swords className="w-6 h-6 text-yellow-500" />
+          </div>
+          <span className="text-sm font-bold text-slate-200">Agent Arena</span>
+          <span className="text-[10px] font-mono text-slate-500">Compete & Earn</span>
+        </button>
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'intent' }))}
+          className="bg-slate-900/60 border border-slate-700/50 hover:border-emerald-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all hover:-translate-y-1 shadow-lg group"
+        >
+          <div className="bg-emerald-500/10 p-3 rounded-xl group-hover:bg-emerald-500/20 transition-colors">
+            <Terminal className="w-6 h-6 text-emerald-400" />
+          </div>
+          <span className="text-sm font-bold text-slate-200">Intent Solver</span>
+          <span className="text-[10px] font-mono text-slate-500">Text to Strategy</span>
+        </button>
+        <button 
+          onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'analytics' }))}
+          className="bg-slate-900/60 border border-slate-700/50 hover:border-blue-500/50 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all hover:-translate-y-1 shadow-lg group"
+        >
+          <div className="bg-blue-500/10 p-3 rounded-xl group-hover:bg-blue-500/20 transition-colors">
+            <BarChart2 className="w-6 h-6 text-blue-400" />
+          </div>
+          <span className="text-sm font-bold text-slate-200">Platform Data</span>
+          <span className="text-[10px] font-mono text-slate-500">Global Metrics</span>
+        </button>
       </div>
 
       {/* Recharts Area Performance Graph */}

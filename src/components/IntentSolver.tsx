@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ArrowRight, CheckCircle, Clock, Zap, Shield, ChevronRight, Settings2, Command } from 'lucide-react';
 import { User } from '../types';
+import { setGlobalAgentProcessing } from '../lib/events';
 
 interface IntentSolverProps {
   user: User;
@@ -34,6 +35,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
   const handleSolve = async () => {
     if (!prompt) return;
     setIsSolving(true);
+    setGlobalAgentProcessing(true, 'Solving Intent');
     setSteps([]);
     
     try {
@@ -59,11 +61,17 @@ export default function IntentSolver({ user }: IntentSolverProps) {
             setSteps(prev => prev.map((step, idx) => 
               idx === i ? { ...step, status: 'ready' } : step
             ));
+            if (i === data.steps.length - 1) {
+              setGlobalAgentProcessing(false);
+            }
           }, (i * 1500) + 1500);
         });
+      } else {
+        setGlobalAgentProcessing(false);
       }
     } catch (err) {
       console.error(err);
+      setGlobalAgentProcessing(false);
     } finally {
       setIsSolving(false);
     }
@@ -71,12 +79,14 @@ export default function IntentSolver({ user }: IntentSolverProps) {
 
   const handleExecute = async () => {
     setIsExecuting(true);
+    setGlobalAgentProcessing(true, 'Executing Steps');
     for (let i = 0; i < steps.length; i++) {
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'simulating' } : step));
       await new Promise(r => setTimeout(r, 1000));
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'executed' } : step));
     }
     setIsExecuting(false);
+    setGlobalAgentProcessing(false);
   };
 
   const allReady = steps.length > 0 && steps.every(s => s.status === 'ready' || s.status === 'executed');

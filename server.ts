@@ -12,6 +12,7 @@ import { vaultsRouter } from './server/vaults.js';
 import { predictionsRouter } from './server/predictions.js';
 import { graphRouter } from './server/graph.js';
 import { metamaskRouter } from './server/metamask.js';
+import { quantRouter } from './server/quant.js';
 
 const PORT = 3000;
 
@@ -43,6 +44,7 @@ app.use(vaultsRouter);
 app.use(predictionsRouter);
 app.use(graphRouter);
 app.use(metamaskRouter);
+app.use(quantRouter);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
 async function startServer() {

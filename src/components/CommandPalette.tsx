@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Info, Users, Bot, ArrowRightLeft, TrendingUp, Coins, Landmark, Network, Award, X } from 'lucide-react';
+import { Search, Info, Users, Bot, ArrowRightLeft, TrendingUp, Coins, Landmark, Network, Award, X, Database } from 'lucide-react';
 
 interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigate: (tabId: string) => void;
+  proModeEnabled?: boolean;
 }
 
-export default function CommandPalette({ isOpen, onClose, onNavigate }: CommandPaletteProps) {
+export default function CommandPalette({ isOpen, onClose, onNavigate, proModeEnabled }: CommandPaletteProps) {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
@@ -28,7 +29,8 @@ export default function CommandPalette({ isOpen, onClose, onNavigate }: CommandP
     { id: 'predictions', label: 'Predictions', icon: Coins, desc: 'Speculate on outcomes' },
     { id: 'vaults', label: 'Vaults', icon: Landmark, desc: 'Shared capital clubs' },
     { id: 'graph', label: 'Evidence Map', icon: Network, desc: 'Agent knowledge graph' },
-    { id: 'specs', label: 'Specs Hub', icon: Award, desc: 'Node operations catalog' }
+    { id: 'specs', label: 'Specs Hub', icon: Award, desc: 'Node operations catalog' },
+    ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database, desc: 'Advanced backtesting & matrix' }] : [])
   ];
 
   const filtered = tabs.filter(t => 

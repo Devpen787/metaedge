@@ -14,7 +14,8 @@ import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
 import CommandPalette from './components/CommandPalette';
-import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command } from 'lucide-react';
+import QuantEngine from './components/QuantEngine';
+import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database } from 'lucide-react';
 import { apiFetch } from './lib/api';
 
 export default function App() {
@@ -22,8 +23,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant'>('dashboard');
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
+  const [proModeEnabled, setProModeEnabled] = useState(false);
   
   // Mode Selection
   const [paperLiveMode, setPaperLiveMode] = useState<'paper' | 'live'>('paper');
@@ -440,7 +442,8 @@ export default function App() {
                 { id: 'predictions', label: 'Predictions', icon: Coins },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
                 { id: 'graph', label: 'Evidence Map', icon: Network },
-                { id: 'specs', label: 'Specs Hub', icon: Award }
+                { id: 'specs', label: 'Specs Hub', icon: Award },
+                ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
               ].map((tab) => {
                 const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
@@ -472,6 +475,23 @@ export default function App() {
 
           {/* Mode switch & Wallet */}
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setProModeEnabled(!proModeEnabled);
+                if (proModeEnabled && activeTab === 'quant') {
+                  setActiveTab('dashboard');
+                }
+              }}
+              className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-colors cursor-pointer ${
+                proModeEnabled 
+                  ? 'bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-fuchsia-400 shadow-sm shadow-fuchsia-900/20' 
+                  : 'bg-slate-950 border-slate-900 hover:bg-slate-900 text-slate-500'
+              }`}
+              title="Toggle Advanced Quant Mode"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span className="text-xs font-mono hidden md:inline">Pro Mode</span>
+            </button>
             <button
               onClick={() => setShowWalletModal(true)}
               className="flex items-center gap-1.5 bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 hover:bg-slate-900 transition-colors cursor-pointer"
@@ -610,6 +630,10 @@ export default function App() {
             {currentUser && activeTab === 'specs' && (
               <SpecsCatalog />
             )}
+
+            {currentUser && activeTab === 'quant' && proModeEnabled && (
+              <QuantEngine agents={agents} />
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -649,6 +673,7 @@ export default function App() {
         isOpen={cmdPaletteOpen}
         onClose={() => setCmdPaletteOpen(false)}
         onNavigate={(tab) => setActiveTab(tab as any)}
+        proModeEnabled={proModeEnabled}
       />
     </div>
   );

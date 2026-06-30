@@ -216,13 +216,13 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
             <div className="bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-emerald-400 text-[10px] font-mono">
-              Live Paper Sync
+              Paper balance synced
             </div>
           </div>
           <div className="relative z-10">
             <div className="flex items-center gap-2 text-xs font-mono text-slate-400 uppercase tracking-wider">
               <Landmark className="w-4 h-4 text-emerald-400" />
-              Sovereign Paper Balance
+              Paper money
             </div>
             <h2 className="text-5xl font-extrabold text-white tracking-tight mt-4 drop-shadow-sm flex items-baseline gap-1 font-mono">
               <span className="text-slate-500 text-3xl font-mono">$</span>
@@ -309,7 +309,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
           <div>
             <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-indigo-400" />
-              Sovereign Balance Performance
+              Paper balance performance
             </h3>
             <p className="text-xs text-slate-400 font-mono mt-1 max-w-lg">
               Simulated paper balance timeline tracking mint faucets and active strategy PnL fills.

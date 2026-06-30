@@ -45,7 +45,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/30 px-3 py-1 rounded-full text-indigo-400 text-xs font-mono mb-4">
             <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            MetaEdge V1 Sovereign Room
+            MetaEdge V1 Paper Room
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
             MetaEdge
@@ -110,7 +110,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
             disabled={isSubmitting || !displayName.trim()}
             className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm py-3 px-4 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all cursor-pointer"
           >
-            {isSubmitting ? 'Provisioning...' : 'Enter Sovereign Room'}
+            {isSubmitting ? 'Opening...' : 'Enter Paper Room'}
             <ArrowRight className="w-4 h-4" />
           </button>
           {error && (

@@ -69,6 +69,55 @@ Copies an accessible paper strategy into the current user's agent book.
 - The copied agent owner is derived from the cookie session and starts `paused` for review.
 - Non-members cannot copy private room strategies by guessing IDs.
 
+## MetaMask Agent Wallet v3 Endpoints
+
+These endpoints follow the MetaMask Agent Wallet v3 model: browser login first, readiness checks before review, quote/preview before execution, and live execution locked unless the server explicitly enables it.
+
+### `GET /api/mm/readiness`
+Returns a product-safe MetaMask Agent Wallet readiness summary.
+- Includes `mm login browser` guidance, Agent Wallet v3 health, wallet setup, wallet address, Base balance, trading mode, policy limits, 24h outflow policy, 2FA approval requirement, and live lock status.
+- Does not return raw policy YAML, stack traces, wallet secrets, session IDs, or CLI credentials.
+- Successful calls emit `METAMASK_READINESS_CHECK` audit events and `metamask_check` graph events.
+
+### `POST /api/mm/login-browser`
+Returns browser-login guidance for MetaMask Agent Wallet.
+- By default, the route does not launch an external login process and returns guidance to run `mm login browser` locally.
+- It never accepts or stores CLI tokens or wallet secrets.
+
+### `POST /api/mm/login`
+Deprecated and intentionally removed.
+- Always returns `410`.
+- This endpoint exists only to prevent old token-paste flows from silently working.
+
+### `POST /api/mm/swap/quote`
+Requests a swap or bridge preview.
+- Body: `{ from, to, amount, fromChain, toChain?, slippage?, refuel? }`
+- Validates symbols, amounts, and chain IDs before calling Agent Wallet.
+- Returns `executeLocked: true` unless `LIVE_EXECUTION_ENABLED=true`.
+
+### `POST /api/mm/swap/execute`
+Executes a previously reviewed quote only when live execution is explicitly enabled.
+- Body: `{ quoteId }`
+- Default response is `403 Live locked`.
+
+### `POST /api/mm/perps/quote`
+Requests a perps preview before opening a position.
+- Body: `{ symbol, side, size, leverage, type?, limitPx? }`
+- Requires `side` to be `long` or `short`.
+- Returns `openLocked: true` unless `LIVE_EXECUTION_ENABLED=true`.
+
+### `POST /api/mm/perps/open`
+Opens a perp position only when live execution is explicitly enabled.
+- Body: `{ symbol, side, size, leverage }`
+- Default response is `403 Live locked`.
+
+### `POST /api/mm/predict/quote`
+Requests a prediction-market order preview.
+- Body: `{ tokenId, side, size, limitPrice? }`
+- Requires `side` to be `buy` or `sell`.
+- Returns `placeLocked: true` unless `LIVE_EXECUTION_ENABLED=true`.
+
 ### `POST /api/mm/transfer`
-Executes a live transfer using MetaMask agent. Requires `LIVE_EXECUTION_ENABLED=true` server-side, otherwise returns 403.
+Executes a live transfer only when live execution is explicitly enabled.
 - Body: `{ to, amount, token, chainId }`
+- Default response is `403 Live locked`.

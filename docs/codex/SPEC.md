@@ -1,7 +1,7 @@
 # MetaEdge V1 Specification
 
 ## Product Thesis
-MetaEdge is a visually alive social agent-wallet trading room where friends can join, interact with paper balances, create and copy paper-trading agent strategies, track together in read-only vault-style clubs, and audit evidence before elevating control to MetaMask-regulated live authority. It emphasizes transparency, clear labeling of Paper vs. Live modes, and strict server-authoritative execution.
+MetaEdge is a visually alive social agent-wallet trading room where friends can join, interact with paper balances, create and copy paper-trading agent strategies, track together in read-only vault-style clubs, and audit evidence before entering MetaMask-regulated live review. It emphasizes transparency, clear labeling of Paper vs. Live modes, and strict server-authoritative execution.
 
 ## Core Architecture
 - **App Shell**: Animated responsive layout built using Tailwind CSS and `motion/react`.

@@ -4,7 +4,7 @@ import { LayoutGrid, ShieldAlert, Award, FileSpreadsheet, Activity, ChevronRight
 export default function SpecsCatalog() {
   const userStories = [
     { id: 'US-01', name: 'Anonymous Session Handshake', desc: 'Secure local-session synchronization to bypass browser standard iframe third-party cookie restrictions.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
-    { id: 'US-02', name: 'Sovereign Faucet Minting', desc: 'Sovereign claims of up to $10,000 simulated USD in paper funds to kickstart bots and active prediction pools.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
+    { id: 'US-02', name: 'Paper Faucet', desc: 'Claim up to $10,000 simulated USD in paper funds to kickstart agents and active prediction pools.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     { id: 'US-03', name: 'Bot Assembly & Custom Agent Workshop', desc: 'Creation, strategy configuration, and status manipulation of autonomous AI trading bots.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     { id: 'US-04', name: 'Joint Cooperative Rooms Sync', desc: 'Collaborative rooms where multiple traders can join, sync strategies, and invite peers.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
     { id: 'US-05', name: 'Self-Audit Ledger Logging', desc: 'Atomic verification ledger capturing every trade, strategy copy, and mode toggle securely.', status: 'COMPLETED', color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' },
@@ -23,7 +23,7 @@ export default function SpecsCatalog() {
 
   const featureTools = [
     { feat: 'Interactive Room Joiner', tool: 'Invite Tokens generator', tech: 'Atomically synced session storage + Express routing' },
-    { feat: 'Active Faucet', tool: 'Minter proxy', tech: 'Sovereign claim counters limited to 10 claims max' },
+    { feat: 'Active Faucet', tool: 'Paper money faucet', tech: 'Server-side claim counters limited to 10 claims max' },
     { feat: 'Agent Customizer', tool: 'Modular strategy template', tech: 'Cloning engine with cross-referencing audit maps' },
     { feat: 'Perps Simulator', tool: 'Dynamic Margin Slider', tech: 'Underlying constant-spread markup tracker with margin locks' },
     { feat: 'Binary Predict Markets', tool: 'Automated Pool Resolver', tech: 'Proportional Yes/No shares formula backed by local session ledger' },

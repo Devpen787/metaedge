@@ -9,7 +9,7 @@ MetaEdge V1 establishes a clear cryptographic and logical division between two e
 ---
 
 ## 2. Server-Authoritative Identity & Request Ownership
-Sovereign user sessions are governed by secure, server-issued anonymous user identifiers rather than client-asserted states:
+User sessions are governed by secure, server-issued anonymous user identifiers rather than client-asserted states:
 
 1. **httpOnly Session Cookie**: At session start, the server issues a `metaedge_session` cookie marked with `httpOnly` and `SameSite=Lax`. This protects the opaque session token from cross-site scripting (XSS) extraction.
 2. **Derived Identity**: All protected endpoints (such as `/api/rooms/:id`, `/api/agents`, `/api/trades`, and `/api/vaults`) resolve the acting user’s identity from a server-side session record. The cookie does not contain a user id.
@@ -35,4 +35,4 @@ To maintain a robust security posture under audit:
 
 - **No Seed Phrases or Private Keys**: The MetaEdge workspace does not store, request, or manipulate seed phrases, private keys, or wallet secrets.
 - **No Client-Side API Keys**: Third-party integrations or Gemini API credentials are kept strictly server-side inside secure environment configurations. 
-- **Sovereign Client Signatures**: All interactions with live networks are handled exclusively by prompting user-approved signatures through the connected MetaMask browser extension, keeping user assets secure under the self-custody of their own keys.
+- **User-Approved Signatures**: All interactions with live networks are handled exclusively by prompting user-approved signatures through the connected MetaMask browser extension, keeping user assets under the self-custody of their own keys.

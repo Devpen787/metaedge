@@ -142,7 +142,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/40 space-y-2">
                 <div className="text-[11px] font-mono text-slate-300 font-semibold flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-indigo-400" />
-                  Sovereignty Proof
+                  Evidence and readiness
                 </div>
                 <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
                   This {selectedNode.label.toLowerCase()} is bound to the verified owner session. It is completely isolated from other room participants and operates with zero client-side privilege escalation risk.

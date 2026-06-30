@@ -375,7 +375,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#060813] flex flex-col items-center justify-center gap-4 text-slate-400 font-mono text-sm">
         <Sparkles className="w-8 h-8 text-indigo-400 animate-spin" />
-        Resolving Sovereign Room Session...
+        Opening Paper mode room...
       </div>
     );
   }
@@ -505,7 +505,7 @@ export default function App() {
               <Wallet className="w-3.5 h-3.5 text-orange-500" />
               <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
             </button>
-            <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Current Authority:</span>
+            <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Mode:</span>
             <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
               <button
                 onClick={() => setPaperLiveMode('paper')}
@@ -540,9 +540,9 @@ export default function App() {
           <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">LIVE AUTHORITY BLOCKED</h4>
+              <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">Live locked</h4>
               <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
-                Smart contract safety guards remain globally locked pending formal multi-signature validation. The workspace is active as read-only. Return to Paper Mode to simulated full bot interactions.
+                Real execution needs MetaMask browser login, policy limits, quote preview, and human approval. Return to Paper mode to keep playing with paper money.
               </p>
             </div>
           </div>
@@ -648,7 +648,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <span className="flex items-center gap-1.5 text-[11px]">
             <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
-            MetaEdge V1 Sovereign Room Ledger Active
+            MetaEdge V1 Paper Room Active
           </span>
           <span className="text-[10px]">
             No custody or guaranteed returns. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.

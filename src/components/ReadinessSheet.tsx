@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { ShieldCheck, AlertTriangle, Wallet, Check, Ban, Settings, ArrowRight, BookOpen } from 'lucide-react';
+import { ShieldCheck, AlertTriangle, Wallet, Check, Ban, Settings, RefreshCw, KeyRound } from 'lucide-react';
 import { WalletState } from '../types';
+import { apiFetch } from '../lib/api';
 
 interface ReadinessSheetProps {
   onClose: () => void;
@@ -18,8 +19,10 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
   const [safetyCleared, setSafetyCleared] = useState(false);
   const [policyAccepted, setPolicyAccepted] = useState(false);
   const [checkingWallet, setCheckingWallet] = useState(false);
+  const [agentWalletChecks, setAgentWalletChecks] = useState<any[]>([]);
+  const [agentWalletMessage, setAgentWalletMessage] = useState('');
 
-  // Check if MetaMask is present in window object (simulated/real checking)
+  // Check if MetaMask is present in window object.
   const checkMetaMask = () => {
     setCheckingWallet(true);
     setTimeout(() => {
@@ -44,7 +47,20 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
 
   useEffect(() => {
     checkMetaMask();
+    checkAgentWallet();
   }, []);
+
+  const checkAgentWallet = async () => {
+    try {
+      setAgentWalletMessage('');
+      const res = await apiFetch('/api/mm/readiness');
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Could not check Agent Wallet readiness.');
+      setAgentWalletChecks(data.checks || []);
+    } catch (err: any) {
+      setAgentWalletMessage(err.message || 'Agent Wallet readiness is not available yet.');
+    }
+  };
 
   const triggerConnect = async () => {
     const ethereum = (window as any).ethereum;
@@ -79,17 +95,18 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
         <div className="flex items-start gap-4 bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl">
           <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
           <div>
-            <h4 className="text-sm font-bold text-amber-400 font-mono">LIVE EXECUTION GUARD</h4>
+            <h4 className="text-sm font-bold text-amber-400 font-mono">Live review</h4>
             <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              MetaEdge enforces strict canary defense gates. Moving from Paper Simulation to Live MetaMask control requires multi-level verification of self-custodial ownership. No action will move funds silently.
+              Live mode stays locked until MetaMask browser login, Agent Wallet checks, policy limits, quote preview, and human approval are ready. No action moves funds silently.
             </p>
+            <p className="text-[11px] text-amber-300 font-mono mt-2">Needs MetaMask approval before any real transaction.</p>
           </div>
         </div>
 
         {/* Dynamic Checklist Grid */}
         <div className="space-y-4">
           <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider">
-            Verification Prerequisites
+            MetaMask readiness
           </h4>
 
           {/* Gate 1: MetaMask Installation */}
@@ -99,7 +116,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
                 <Wallet className={`w-4 h-4 ${walletState.isInstalled ? 'text-emerald-400' : 'text-rose-400'}`} />
               </div>
               <div>
-                <p className="text-xs font-mono font-medium text-slate-200">MetaMask Extension</p>
+                <p className="text-xs font-mono font-medium text-slate-200">MetaMask extension</p>
                 <p className="text-[10px] text-slate-500 font-mono">
                   {walletState.isInstalled ? 'Detected' : 'Not detected in this browser'}
                 </p>
@@ -127,7 +144,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
                 <ShieldCheck className={`w-4 h-4 ${walletState.isConnected ? 'text-emerald-400' : 'text-rose-400'}`} />
               </div>
               <div>
-                <p className="text-xs font-mono font-medium text-slate-200">Sovereign Wallet Bound</p>
+                <p className="text-xs font-mono font-medium text-slate-200">Wallet connected</p>
                 <p className="text-[10px] text-slate-500 font-mono">
                   {walletState.isConnected ? `Connected: ${walletState.address?.slice(0, 6)}...${walletState.address?.slice(-4)}` : 'Disconnected'}
                 </p>
@@ -148,16 +165,64 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
             )}
           </div>
 
-          {/* Gate 3: Live Mode Absolute Lock */}
+          {/* Agent Wallet v3 checks */}
+          {agentWalletChecks.map((check) => {
+            const ready = check.status === 'ready';
+            return (
+              <div key={check.id} className="flex items-center justify-between bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className={`p-1.5 rounded-lg ${ready ? 'bg-emerald-500/10' : 'bg-amber-500/10'}`}>
+                    {check.id === 'browser_login' ? (
+                      <KeyRound className={`w-4 h-4 ${ready ? 'text-emerald-400' : 'text-amber-400'}`} />
+                    ) : (
+                      <ShieldCheck className={`w-4 h-4 ${ready ? 'text-emerald-400' : 'text-amber-400'}`} />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono font-medium text-slate-200">{check.label}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{check.summary}</p>
+                  </div>
+                </div>
+                <span className={`flex items-center gap-1 text-[10px] font-mono px-2.5 py-1 rounded-full border ${
+                  ready ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                }`}>
+                  {ready ? <Check className="w-3 h-3" /> : null}
+                  {ready ? 'Ready' : 'Needs review'}
+                </span>
+              </div>
+            );
+          })}
+
+          {agentWalletMessage && (
+            <div className="flex items-center justify-between bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/80">
+              <div className="flex items-center gap-3">
+                <div className="p-1.5 rounded-lg bg-amber-500/10">
+                  <RefreshCw className="w-4 h-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-mono font-medium text-slate-200">Agent Wallet check</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{agentWalletMessage}</p>
+                </div>
+              </div>
+              <button
+                onClick={checkAgentWallet}
+                className="text-[10px] font-mono bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 transition-all cursor-pointer"
+              >
+                Check again
+              </button>
+            </div>
+          )}
+
+          {/* Gate 3: Live Mode Lock */}
           <div className="flex items-center justify-between bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/80">
             <div className="flex items-center gap-3">
               <div className="p-1.5 rounded-lg bg-rose-500/10">
                 <Ban className="w-4 h-4 text-rose-400" />
               </div>
               <div>
-                <p className="text-xs font-mono font-medium text-slate-200">Global Smart-Contract Lock</p>
+                <p className="text-xs font-mono font-medium text-slate-200">Live locked</p>
                 <p className="text-[10px] text-slate-500 font-mono">
-                  Canary audited code verification required.
+                  Real execution is disabled for this build.
                 </p>
               </div>
             </div>
@@ -171,7 +236,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
         <div className="bg-slate-950/30 border border-slate-800/60 p-4 rounded-xl space-y-3">
           <div className="flex items-center gap-2 text-xs font-mono text-slate-300">
             <Settings className="w-4 h-4 text-indigo-400" />
-            Define Sovereign Risk Limit (USD per trade)
+            Set risk limit for Live review
           </div>
           <div className="flex gap-2">
             {['100', '500', '2000', '5000'].map((val) => (

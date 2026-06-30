@@ -14,13 +14,15 @@
 - [x] High-fidelity MetaMask Readiness sheet detailing real-time browser scanning and live block reasons
 - [x] Central Paper/Live toggle switch in navigation header
 - [x] Knowledge Graph projection endpoint (`/api/graph`) and visual network display in `GraphEvidence.tsx`
-- [x] Verified build output, zero linter warnings, compiled green
+- [x] Optimized `package.json` dev script to run from bundled production code to eliminate Vite-induced rate limits.
+- [x] Added `ErrorBoundary` at the application root to ensure graceful error handling instead of white screens.
+- [x] Verified build output, zero linter warnings, compiled green.
 
 ## Failed Checks
 - None
 
 ## Next Fix
-- Ready for customer review and deployment testing
+- Fully stable, documented, and prepared for code handoff.
 
 ## Remaining Blockers
 - None

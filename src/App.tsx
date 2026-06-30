@@ -539,6 +539,7 @@ export default function App() {
                 audits={audits}
                 onRefreshAudits={fetchEntities}
                 trades={trades}
+                onEditProfile={handleProfileClaimed}
               />
             )}
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, AuditEvent, PaperTrade } from '../types';
-import { Landmark, RefreshCw, FileText, HelpCircle, Flame, TrendingUp, Activity, BarChart2 } from 'lucide-react';
+import { Landmark, RefreshCw, FileText, HelpCircle, Flame, TrendingUp, Activity, BarChart2, Edit3, X, Loader2 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 interface DashboardProps {
@@ -10,6 +10,7 @@ interface DashboardProps {
   audits: AuditEvent[];
   onRefreshAudits: () => void;
   trades: PaperTrade[];
+  onEditProfile?: (displayName: string, bio: string, avatarUrl: string) => Promise<void>;
 }
 
 const NumberTicker = ({ value, prefix = '', suffix = '', decimals = 0 }: { value: number, prefix?: string, suffix?: string, decimals?: number }) => {
@@ -67,9 +68,28 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades }: DashboardProps) {
+export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades, onEditProfile }: DashboardProps) {
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetError, setFaucetError] = useState('');
+  
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState(user.profile.displayName);
+  const [editBio, setEditBio] = useState(user.profile.bio);
+  const [editAvatarUrl, setEditAvatarUrl] = useState(user.profile.avatarUrl);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+
+  const handleSaveProfile = async () => {
+    if (!onEditProfile) return;
+    setIsSavingProfile(true);
+    try {
+      await onEditProfile(editDisplayName, editBio, editAvatarUrl);
+      setIsEditingProfile(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSavingProfile(false);
+    }
+  };
 
   const handleFaucetClaim = async () => {
     setFaucetLoading(true);
@@ -216,7 +236,14 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
         <div className="col-span-1 md:col-span-4 flex flex-col gap-6">
           
           {/* User Identity Info */}
-          <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl group hover:border-indigo-500/30 transition-all">
+          <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl group hover:border-indigo-500/30 transition-all relative">
+            <button
+              onClick={() => setIsEditingProfile(true)}
+              className="absolute top-4 right-4 p-2 bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-indigo-300 rounded-xl transition-colors"
+              title="Edit Profile"
+            >
+              <Edit3 className="w-4 h-4" />
+            </button>
             <div className="flex items-start gap-4">
               <img
                 src={user.profile.avatarUrl}
@@ -382,6 +409,78 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
           )}
         </div>
       </div>
+
+      <AnimatePresence>
+        {isEditingProfile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 w-full max-w-md shadow-2xl relative"
+            >
+              <button
+                onClick={() => setIsEditingProfile(false)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-slate-300"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <h2 className="text-xl font-bold text-white mb-6">Edit Profile</h2>
+              
+              <div className="space-y-4 font-mono text-sm">
+                <div>
+                  <label className="block text-slate-400 mb-1">Display Name</label>
+                  <input
+                    type="text"
+                    value={editDisplayName}
+                    onChange={e => setEditDisplayName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Avatar URL</label>
+                  <input
+                    type="text"
+                    value={editAvatarUrl}
+                    onChange={e => setEditAvatarUrl(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Bio</label>
+                  <textarea
+                    value={editBio}
+                    onChange={e => setEditBio(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors min-h-[80px]"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end gap-3">
+                <button
+                  onClick={() => setIsEditingProfile(false)}
+                  className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={isSavingProfile || !editDisplayName.trim()}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50"
+                >
+                  {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Profile'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -7,7 +7,7 @@ import { apiFetch } from '../lib/api';
 interface TradingRoomProps {
   currentUser: User;
   rooms: FriendRoom[];
-  onRoomCreated: (name: string, description: string) => Promise<void>;
+  onRoomCreated: (name: string, description: string) => Promise<string>;
   onJoinRoomByInvite: (inviteToken: string) => Promise<string>;
 }
 
@@ -51,7 +51,8 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
     setCreateLoading(true);
     setMsg({ text: '', type: '' });
     try {
-      await onRoomCreated(newRoomName, newRoomDesc);
+      const newRoomId = await onRoomCreated(newRoomName, newRoomDesc);
+      setActiveRoomId(newRoomId);
       setNewRoomName('');
       setNewRoomDesc('');
       setMsg({ text: 'Room created successfully!', type: 'success' });
@@ -68,9 +69,7 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
     setJoinLoading(true);
     setMsg({ text: '', type: '' });
     try {
-      const actualToken = joinInviteToken.includes('/rooms/join?token=')
-        ? joinInviteToken.split('token=')[1]
-        : joinInviteToken;
+      const actualToken = extractInviteToken(joinInviteToken);
 
       const newId = await onJoinRoomByInvite(actualToken);
       setActiveRoomId(newId);
@@ -389,4 +388,17 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
       </div>
     </div>
   );
+}
+
+function extractInviteToken(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  try {
+    const url = new URL(trimmed);
+    return url.searchParams.get('token') || trimmed;
+  } catch {
+    const tokenMatch = trimmed.match(/[?&]token=([^&]+)/);
+    return tokenMatch ? decodeURIComponent(tokenMatch[1]) : trimmed;
+  }
 }

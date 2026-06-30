@@ -8,8 +8,9 @@ export const roomsRouter = Router();
 roomsRouter.post('/api/rooms', (req: any, res) => {
   const userId = req.userId;
   const { name, description } = req.body;
+  const roomName = sanitizeText(name || '', 50);
 
-  if (!name) {
+  if (!roomName) {
     res.status(400).json({ error: 'Room name is required' });
     return;
   }
@@ -20,7 +21,7 @@ roomsRouter.post('/api/rooms', (req: any, res) => {
 
   const newRoom: FriendRoom = {
     id: roomId,
-    name: sanitizeText(name, 50),
+    name: roomName,
     description: sanitizeText(description || '', 200),
     ownerId: userId,
     inviteToken,
@@ -99,7 +100,7 @@ roomsRouter.get('/api/rooms/:id', (req: any, res) => {
 // Join Room via Invite Token
 roomsRouter.post('/api/rooms/join', (req: any, res) => {
   const userId = req.userId;
-  const { inviteToken } = req.body;
+  const inviteToken = normalizeInviteToken(req.body?.inviteToken);
 
   if (!inviteToken) {
     res.status(400).json({ error: 'Invite token is required' });
@@ -148,6 +149,20 @@ roomsRouter.post('/api/rooms/join', (req: any, res) => {
   writeDatabase(db);
   res.json({ success: true, roomId: room.id });
 });
+
+function normalizeInviteToken(rawToken: unknown): string {
+  if (typeof rawToken !== 'string') return '';
+  const trimmed = rawToken.trim();
+  if (!trimmed) return '';
+
+  try {
+    const url = new URL(trimmed);
+    return sanitizeText(url.searchParams.get('token') || '', 100);
+  } catch {
+    const tokenMatch = trimmed.match(/[?&]token=([^&]+)/);
+    return sanitizeText(decodeURIComponent(tokenMatch?.[1] || trimmed), 100);
+  }
+}
 
 // Toggle Invite
 roomsRouter.post('/api/rooms/:id/invite/toggle', (req: any, res) => {

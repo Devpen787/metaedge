@@ -29,6 +29,28 @@ Claims exactly `$10,000` in Paper money for the current user.
 - Each session user can claim at most 10 times.
 - Successful claims emit `FAUCET_CLAIM` audit events and `paper_action` graph events.
 
+### `POST /api/rooms`
+Creates a private Paper mode friend room for the current user.
+- Body: `{ name, description }`
+- The server trims and sanitizes room text, rejects blank names, derives `ownerId` from the cookie session, creates an unguessable `inv_...` invite token, and adds the owner as the first member.
+
+### `GET /api/rooms`
+Lists only rooms where the current user is a member.
+
+### `GET /api/rooms/:id`
+Returns room details only when the current user is a member.
+- Non-members receive `403` and cannot read room members, invite state, or shared strategies.
+
+### `POST /api/rooms/join`
+Joins the current user to a room with an invite token.
+- Body: `{ inviteToken }`
+- `inviteToken` can be a raw `inv_...` token or a full `/rooms/join?token=...` URL.
+- Disabled or invalid invites are rejected; duplicate joins are idempotent and do not duplicate membership.
+
+### `POST /api/rooms/:id/invite/toggle`
+Enables or disables a room invite.
+- Only the room owner can toggle invites.
+
 ### `POST /api/agents`
 Creates a new trading agent.
 - Body: `{ name, description, assetSymbol, tradeType, strategyType, leverage, roomId }`

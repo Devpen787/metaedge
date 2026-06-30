@@ -172,7 +172,8 @@ export default function App() {
     });
     const data = await res.json();
     if (res.ok) {
-      fetchEntities();
+      await fetchEntities();
+      return data.room.id;
     } else {
       throw new Error(data.error || 'Failed to create room.');
     }

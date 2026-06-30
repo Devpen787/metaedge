@@ -5,7 +5,7 @@ import { Sparkles, ArrowRight, ShieldCheck, Wallet } from 'lucide-react';
 
 interface WelcomeScreenProps {
   user: User;
-  onProfileClaimed: (displayName: string, bio: string, avatarUrl: string) => void;
+  onProfileClaimed: (displayName: string, bio: string, avatarUrl: string) => Promise<void>;
 }
 
 export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenProps) {
@@ -13,14 +13,21 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
   const [bio, setBio] = useState(user.profile.bio || '');
   const [avatarSeed, setAvatarSeed] = useState(user.id);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const avatarUrl = `https://api.dicebear.com/7.x/bottts/svg?seed=${avatarSeed}`;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName.trim()) return;
     setIsSubmitting(true);
-    onProfileClaimed(displayName, bio, avatarUrl);
+    setError('');
+    try {
+      await onProfileClaimed(displayName, bio, avatarUrl);
+    } catch (err: any) {
+      setError(err?.message || 'Could not save this profile. Try again.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -106,6 +113,9 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
             {isSubmitting ? 'Provisioning...' : 'Enter Sovereign Room'}
             <ArrowRight className="w-4 h-4" />
           </button>
+          {error && (
+            <p className="text-xs text-rose-400 font-mono text-center">{error}</p>
+          )}
         </form>
 
         <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-[11px] font-mono text-slate-500">

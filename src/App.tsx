@@ -132,9 +132,13 @@ export default function App() {
         body: JSON.stringify({ displayName, bio, avatarUrl })
       });
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update profile.');
+      }
       if (data.success && data.user) {
         setCurrentUser(data.user);
         localStorage.removeItem('metaedge_session_id');
+        await fetchEntities();
       }
     } catch (err) {
       console.error('Error updating profile', err);
@@ -376,7 +380,7 @@ export default function App() {
   }
 
   // Ensure user has updated their profile details at least once before entering the primary dashboard
-  const needsProfileSetup = currentUser && currentUser.profile.displayName === 'MetaEdge Agent' && currentUser.faucetClaimedCount === 0;
+  const needsProfileSetup = currentUser && !currentUser.profile.claimedAt;
 
   if (currentUser && needsProfileSetup) {
     return (

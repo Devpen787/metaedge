@@ -6,6 +6,7 @@ export interface Profile {
   displayName: string;
   avatarUrl: string;
   bio?: string;
+  claimedAt?: number;
   updatedAt: number;
 }
 

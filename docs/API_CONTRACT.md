@@ -13,6 +13,12 @@ Returns current user profile and balance.
 ### `GET /api/dashboard-data`
 Returns batched dashboard data for the user (rooms, agents, strategies, vaults, audits, trades, prediction markets).
 
+### `POST /api/profile`
+Claims or edits the current profile.
+- Body: `{ displayName, bio, avatarUrl }`
+- The server ignores body ownership fields such as `userId` and updates only the cookie-derived current user.
+- A successful first profile save sets `profile.claimedAt`; later edits update `profile.updatedAt`.
+
 ### `POST /api/trades`
 Executes a simulated paper trade.
 - Body: `{ agentId, assetSymbol, side, size, price, leverage, roomId }`

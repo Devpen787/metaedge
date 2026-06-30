@@ -144,8 +144,8 @@ authRouter.get('/api/dashboard-data', (req: any, res) => {
 authRouter.post('/api/profile', (req: any, res) => {
   const userId = req.userId;
   const { displayName, avatarUrl, bio } = req.body;
-  
-  if (!displayName) {
+
+  if (!displayName || !displayName.trim()) {
     res.status(400).json({ error: 'Display name is required' });
     return;
   }
@@ -156,6 +156,7 @@ authRouter.post('/api/profile', (req: any, res) => {
   user.profile.displayName = sanitizeText(displayName, 50);
   user.profile.avatarUrl = sanitizeText(avatarUrl, 250);
   user.profile.bio = sanitizeText(bio || '', 300);
+  user.profile.claimedAt ||= Date.now();
   user.profile.updatedAt = Date.now();
   user.username = sanitizeText(displayName, 50).toLowerCase().replace(/\s+/g, '_');
 

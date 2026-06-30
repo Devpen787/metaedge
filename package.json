@@ -9,7 +9,8 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit",
     "seed": "tsx server/seed.ts",
-    "smoke:session": "node scripts/session_journey_smoke.mjs"
+    "smoke:session": "node scripts/session_journey_smoke.mjs",
+    "smoke:profile": "node scripts/profile_journey_smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

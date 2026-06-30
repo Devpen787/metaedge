@@ -77,15 +77,31 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
   const [editBio, setEditBio] = useState(user.profile.bio);
   const [editAvatarUrl, setEditAvatarUrl] = useState(user.profile.avatarUrl);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+
+  useEffect(() => {
+    if (!isEditingProfile) {
+      setEditDisplayName(user.profile.displayName);
+      setEditBio(user.profile.bio);
+      setEditAvatarUrl(user.profile.avatarUrl);
+      setProfileError('');
+    }
+  }, [isEditingProfile, user.profile.avatarUrl, user.profile.bio, user.profile.displayName]);
 
   const handleSaveProfile = async () => {
     if (!onEditProfile) return;
+    if (!editDisplayName.trim()) {
+      setProfileError('Display name is required.');
+      return;
+    }
     setIsSavingProfile(true);
+    setProfileError('');
     try {
       await onEditProfile(editDisplayName, editBio, editAvatarUrl);
       setIsEditingProfile(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      setProfileError(e?.message || 'Could not save profile.');
     } finally {
       setIsSavingProfile(false);
     }
@@ -443,6 +459,9 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
                   />
                 </div>
+                {profileError && (
+                  <p className="text-xs text-rose-400">{profileError}</p>
+                )}
                 <div>
                   <label className="block text-slate-400 mb-1">Avatar URL</label>
                   <input

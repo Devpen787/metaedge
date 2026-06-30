@@ -6,6 +6,7 @@
 - [x] Modular, typed definitions and models matching user-agent scenarios
 - [x] Persistent JSON-based database (`db.json`) enabling durability across browser reloads
 - [x] Opaque cookie-based anonymous sessions preventing spoofing and securing identities
+- [x] Profile claim/edit flow persists on the server and ignores spoofed body ownership
 - [x] Room creation with signed unguessable invitation links
 - [x] Support for second-user joining via token parameters on load
 - [x] Server-authoritative paper balances and simulated transaction filling
@@ -19,10 +20,10 @@
 - [x] Verified build output, zero linter warnings, compiled green.
 
 ## Failed Checks
-- None for journey 1.
+- None for journeys 1 and 2.
 
 ## Next Fix
-- Journey 2: profile editing and ownership checks.
+- Journey 3: paper balance and faucet integrity.
 
 ## Remaining Blockers
-- None for journey 1.
+- None for journeys 1 and 2.

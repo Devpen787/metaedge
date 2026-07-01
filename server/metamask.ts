@@ -474,8 +474,11 @@ import { GoogleGenAI } from '@google/genai';
 metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
   try {
     const { intent } = req.body;
-    
-    // Simulate AI parsing or use real Gemini if key exists
+    if (typeof intent !== 'string' || !intent.trim()) {
+      return res.status(400).json({ error: 'Intent text is required.' });
+    }
+
+    // Parse the intent with Gemini when a key is present, else a keyword fallback.
     let parsedSteps = [
       { action: 'ANALYZE', details: 'Scanning token pairs and network state', asset: 'USDC', network: 'Base' }
     ];
@@ -519,13 +522,16 @@ metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
     const enrichedSteps = [];
     for (const step of parsedSteps) {
       let data: any = {};
-      let estimatedCost = '~0.0001 ETH';
-      
+      // Honest cost label: gas-only by default; a real fee only when a quote returns one.
+      let estimatedCost = 'gas only (est.)';
+
       try {
         if (step.action === 'SWAP') {
            const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'WETH', '--amount', '10', '--from-chain', '8453', '--json'], 30_000);
            const quote = quoteResult.data as any;
            data = { quote: quote.estimatedOutput ? `10 USDC -> ${quote.estimatedOutput} WETH` : 'Quote ready' };
+           const feeUsd = quote?.feeData?.metabridge?.usd ?? quote?.fee?.usd;
+           estimatedCost = feeUsd ? `~$${Number(feeUsd).toFixed(2)} fee` : 'swap fee (est.)';
         } else if (step.action === 'PREDICTION') {
            const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 20_000);
            const markets = marketsResult.data as any[];

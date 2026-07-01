@@ -643,48 +643,68 @@ Respond ONLY with a raw JSON object (no markdown, no quotes) with the following 
   }
 });
 
+// Autopilot is a PLANNER / SIMULATION in this version: it fetches real quotes and
+// composes a plan, but never executes a real trade. Safety-first — the leash (hard
+// cap + simulation-only enforcement) exists *before* any live capability is added.
+const AUTOPILOT_MAX_BUDGET_USD = 1_000_000;
+const AUTOPILOT_RISK_PROFILES = ['low', 'medium', 'high'];
+
 metamaskRouter.post('/api/mm/autopilot/execute', async (req, res) => {
   try {
-    const { budget, riskProfile } = req.body;
-    
-    // Simulate real AI planning and query Agent Wallet previews where possible.
+    // MetaEdge-side hard limits, enforced independent of Guard.
+    const budget = Number(req.body?.budget);
+    if (!Number.isFinite(budget) || budget <= 0) {
+      return res.status(400).json({ error: 'Budget must be a positive number.' });
+    }
+    if (budget > AUTOPILOT_MAX_BUDGET_USD) {
+      return res.status(400).json({ error: `Budget exceeds the autopilot cap of $${AUTOPILOT_MAX_BUDGET_USD.toLocaleString()}.` });
+    }
+    const riskProfile = AUTOPILOT_RISK_PROFILES.includes(String(req.body?.riskProfile))
+      ? String(req.body.riskProfile)
+      : 'medium';
+
+    // Read-only calls only (quotes / market search). Nothing here executes.
     let realDataFound = false;
     let fallbackUsed = false;
-    
-    // Step 1: Get market prediction (Polymarket)
-    let marketName = "ETH > $4000 by July";
+
+    let marketName = 'ETH > $4000 by July';
     try {
       const marketsResult = await runMm(['predict', 'markets', 'search', 'ethereum', '--limit', '1', '--json'], 20_000);
       const markets = marketsResult.data as any[];
-      if (markets && markets.length > 0) {
-        marketName = markets[0].question || marketName;
-        realDataFound = true;
-      }
-    } catch (e) { fallbackUsed = true; }
+      if (markets && markets.length > 0) { marketName = markets[0].question || marketName; realDataFound = true; }
+    } catch { fallbackUsed = true; }
 
-    // Step 2: Get a Swap Quote for hedging
-    let quoteAmount = "0.0028";
+    let quoteAmount = '0.0028';
     try {
       const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'ETH', '--amount', '10', '--from-chain', '8453', '--json'], 30_000);
       const quote = quoteResult.data as any;
-      if (quote && quote.estimatedOutput) {
-        quoteAmount = quote.estimatedOutput;
-        realDataFound = true;
-      }
-    } catch (e) { fallbackUsed = true; }
+      if (quote && quote.estimatedOutput) { quoteAmount = quote.estimatedOutput; realDataFound = true; }
+    } catch { fallbackUsed = true; }
 
     const time = () => new Date().toLocaleTimeString();
-
+    // Honest logs: real reads are labelled real; planned actions are labelled SIMULATED.
     const logs = [
-      { time: time(), message: `[Engine] Autopilot sequence initiated. Budget: $${budget}, Risk: ${riskProfile.toUpperCase()}`, type: 'info' },
-      { time: time(), message: `[X402 Micro-Tx] Paid 0.005 ETH to @QuantOracleAgent for momentum models.`, type: 'x402' },
-      { time: time(), message: `[Polymarket] Executed YES position on "${marketName}" based on oracle data.`, type: 'trade' },
-      { time: time(), message: `[Swap Quote] Fetched live hedge quote: 10 USDC -> ${quoteAmount} ETH.`, type: 'info' },
-      { time: time(), message: `[Hyperliquid] Opened Short ETH-PERP 2x to delta-hedge prediction market exposure.`, type: 'trade' },
-      { time: time(), message: `[Yield] Strategy locked. Estimated APY: 24.5%. Monitoring for rebalance...`, type: 'yield' },
+      { time: time(), message: `[Engine] Autopilot PLAN (simulation) — budget $${budget.toLocaleString()}, risk ${riskProfile.toUpperCase()}. No funds move.`, type: 'info' },
+      { time: time(), message: `[x402] Would pay a micro-fee to a data-provider agent for signals (simulated).`, type: 'x402' },
+      { time: time(), message: `[Predict] Live market found: "${marketName}".`, type: 'info' },
+      { time: time(), message: `[Plan] Would open a YES position on that market (simulated — not executed).`, type: 'trade' },
+      { time: time(), message: `[Swap] Live hedge quote (read-only): 10 USDC → ${quoteAmount} ETH.`, type: 'info' },
+      { time: time(), message: `[Plan] Would open a delta-hedge ETH-PERP short to balance exposure (simulated).`, type: 'trade' },
+      { time: time(), message: `[Plan] Would lock the yield leg and monitor for rebalance (simulated).`, type: 'yield' },
+      { time: time(), message: `[Safety] Live execution ${LIVE_EXECUTION_ENABLED ? 'is unlocked globally, but autopilot stays simulation-only' : 'is locked'}. Real autopilot requires per-run caps + your approval.`, type: 'info' },
     ];
 
-    res.json({ success: true, logs, realDataFound, fallbackUsed });
+    res.json({
+      success: true,
+      mode: 'simulation',
+      liveExecution: false,
+      budgetUsd: budget,
+      budgetCapUsd: AUTOPILOT_MAX_BUDGET_USD,
+      riskProfile,
+      logs,
+      realDataFound,
+      fallbackUsed,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

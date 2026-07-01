@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, KeyRound, Send, Search } from 'lucide-react';
+import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, KeyRound, Send, Search, Play, Zap, FlaskConical } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
 
@@ -91,20 +91,20 @@ function Preview({ error, data, empty }: { error?: string; data?: any; empty?: s
   );
 }
 
-// A visible-but-locked execute affordance. Real fund movement stays gated behind
-// LIVE_EXECUTION_ENABLED, so testers see the full surface without moving funds.
-function LockedAction({ label, locked }: { label: string; locked: boolean }) {
+// An execute affordance. In paper mode it's ACTIVE and runs a simulated fill —
+// paper is a first-class path competitions run on. In live mode it executes for
+// real (orange). It is never a dead button.
+function ExecuteButton({ label, paperMode, loading, onRun }: { label: string; paperMode: boolean; loading: boolean; onRun: () => void }) {
   return (
     <button
-      disabled={locked}
-      title={locked ? 'Live execution is locked in paper mode' : undefined}
-      className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors ${
-        locked
-          ? 'bg-slate-800/60 text-slate-500 cursor-not-allowed border border-slate-800'
-          : 'bg-orange-600 hover:bg-orange-500 text-white'
+      onClick={onRun}
+      disabled={loading}
+      className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 ${
+        paperMode ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-orange-600 hover:bg-orange-500 text-white'
       }`}
     >
-      <Lock className="w-3.5 h-3.5" /> {locked ? `${label} — locked in paper mode` : label}
+      {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : paperMode ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
+      {paperMode ? `Simulate ${label} (paper)` : `${label} — LIVE`}
     </button>
   );
 }
@@ -139,15 +139,18 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [predictQuote, setPredictQuote] = useState<{ error?: string; data?: any }>({});
   const [predictLoading, setPredictLoading] = useState(false);
 
+  // Execute results (simulated fills in paper mode, real fills in live mode).
+  const [execResult, setExecResult] = useState<Record<string, { error?: string; data?: any }>>({});
+  const [execLoading, setExecLoading] = useState<string>('');
+
   const blockedCount = useMemo(
     () => readiness?.checks.filter((check) => check.status === 'blocked').length ?? 0,
     [readiness]
   );
   const walletAddress = readiness?.wallet?.address;
-  const swapLocked = readiness?.capabilities?.swaps?.executeLocked ?? true;
-  const perpsLocked = readiness?.capabilities?.perps?.openLocked ?? true;
-  const predictLocked = readiness?.capabilities?.predictionMarkets?.placeLocked ?? true;
-  const transferLocked = readiness?.liveModeGlobalLock ?? true;
+  // Paper mode = live execution is globally locked. In paper mode every execute
+  // action runs as a simulation instead of being disabled.
+  const paperMode = readiness?.liveModeGlobalLock ?? true;
 
   async function loadReadiness() {
     try {
@@ -261,6 +264,19 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     setPredictLoading(false);
   }
 
+  // Run an execute action. In paper mode the backend returns a simulated fill;
+  // in live mode it performs the real transaction.
+  async function runExec(key: string, path: string, payload: any) {
+    setExecLoading(key);
+    const result = await callMm(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    setExecResult((prev) => ({ ...prev, [key]: result }));
+    setExecLoading('');
+  }
+
   useEffect(() => {
     if (isOpen) {
       setActiveTab('readiness');
@@ -308,13 +324,15 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
 
           <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
             <div className="grid md:grid-cols-[1fr_auto] gap-4 items-stretch">
-              <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-5">
+              <div className={`border rounded-2xl p-5 ${paperMode ? 'bg-indigo-950/30 border-indigo-800/50' : 'bg-orange-950/30 border-orange-800/50'}`}>
                 <div className="flex items-start gap-3">
-                  <Lock className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" />
+                  {paperMode ? <FlaskConical className="w-5 h-5 text-indigo-400 mt-0.5 shrink-0" /> : <Zap className="w-5 h-5 text-orange-400 mt-0.5 shrink-0" />}
                   <div>
-                    <h4 className="text-sm font-bold text-slate-100">Live locked</h4>
+                    <h4 className="text-sm font-bold text-slate-100">{paperMode ? 'Paper mode — actions simulate' : 'LIVE mode — real execution'}</h4>
                     <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                      Every tab below fetches real Agent Wallet data (balances, routes, quotes). Actual movement requires MetaMask browser login, policy limits, quote review, and a human approval prompt.
+                      {paperMode
+                        ? 'Every tab fetches real Agent Wallet data, and execute actions run as simulated fills built from live quotes — so competitions use the full capability set risk-free. Switch to Live (readiness + MetaMask approval) to execute for real.'
+                        : 'Live execution is enabled. Execute actions perform real on-chain transactions after MetaMask approval. Double-check every quote.'}
                     </p>
                   </div>
                 </div>
@@ -343,7 +361,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
               </div>
               <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Mode</div>
-                <div className="text-sm text-slate-100 font-bold mt-1">Paper mode</div>
+                <div className={`text-sm font-bold mt-1 ${paperMode ? 'text-indigo-300' : 'text-orange-300'}`}>{paperMode ? 'Paper (simulate)' : 'Live'}</div>
               </div>
               <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
                 <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Blocked</div>
@@ -427,10 +445,11 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                 <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
                   <div className="flex items-center gap-2 text-slate-100 text-sm font-bold"><Send className="w-4 h-4 text-orange-400" /> Send / transfer</div>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="To address" placeholder="0x…" value={sendTo} onChange={(e) => setSendTo(e.target.value)} disabled={transferLocked} />
-                    <Field label="Amount" placeholder="0.0" value={sendAmount} onChange={(e) => setSendAmount(e.target.value)} disabled={transferLocked} />
+                    <Field label="To address" placeholder="0x…" value={sendTo} onChange={(e) => setSendTo(e.target.value)} />
+                    <Field label="Amount" placeholder="0.0" value={sendAmount} onChange={(e) => setSendAmount(e.target.value)} />
                   </div>
-                  <LockedAction label="Send" locked={transferLocked} />
+                  <ExecuteButton label="Send" paperMode={paperMode} loading={execLoading === 'transfer'} onRun={() => runExec('transfer', '/api/mm/transfer', { to: sendTo, amount: sendAmount })} />
+                  {execResult.transfer && <Preview error={execResult.transfer.error} data={execResult.transfer.data} />}
                 </div>
               </div>
             )}
@@ -447,7 +466,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                     {swapLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get swap quote
                   </button>
                   <Preview error={swapQuote.error} data={swapQuote.data} empty="Enter a pair and fetch a live route + fee preview." />
-                  <LockedAction label="Execute swap" locked={swapLocked} />
+                  <ExecuteButton label="Execute swap" paperMode={paperMode} loading={execLoading === 'swap'} onRun={() => runExec('swap', '/api/mm/swap/execute', swapForm)} />
+                  {execResult.swap && <Preview error={execResult.swap.error} data={execResult.swap.data} />}
                 </div>
               </div>
             )}
@@ -480,7 +500,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                     {perpsLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get perps quote
                   </button>
                   <Preview error={perpsQuote.error} data={perpsQuote.data} empty="Preview entry, fees, and liquidation before opening." />
-                  <LockedAction label="Open position" locked={perpsLocked} />
+                  <ExecuteButton label="Open position" paperMode={paperMode} loading={execLoading === 'perps'} onRun={() => runExec('perps', '/api/mm/perps/open', perpsForm)} />
+                  {execResult.perps && <Preview error={execResult.perps.error} data={execResult.perps.data} />}
                 </div>
               </div>
             )}
@@ -512,7 +533,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                     {predictLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get order quote
                   </button>
                   <Preview error={predictQuote.error} data={predictQuote.data} empty="Preview an order before placement." />
-                  <LockedAction label="Place order" locked={predictLocked} />
+                  <ExecuteButton label="Place order" paperMode={paperMode} loading={execLoading === 'predict'} onRun={() => runExec('predict', '/api/mm/predict/place', predictForm)} />
+                  {execResult.predict && <Preview error={execResult.predict.error} data={execResult.predict.data} />}
                 </div>
               </div>
             )}

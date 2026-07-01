@@ -83,18 +83,27 @@ Legend: ✅ = data path pre-verified against the running server · 👁 = needs 
 ---
 
 ## MetaMask Agent Wallet modal (top-right button)
-Every tab here fetches **real** Agent Wallet data; execute paths are visible-but-locked.
+Every tab fetches **real** Agent Wallet data. Execute actions **simulate** in paper
+mode (the default) using real quotes, and run for real in Live mode.
 
-- **Readiness** ✅ — checks list (CLI v3, browser login, wallet setup, trading mode, policy, 24h outflow, 2FA, live lock) each with a Ready / Needs review pill.
+- 👁 Header shows a **Paper mode — actions simulate** banner (indigo); the Mode chip reads *Paper (simulate)*.
+- **Readiness** ✅ — checks list (CLI v3, browser login, wallet setup, trading mode, policy, 24h outflow, 2FA, live lock), each Ready / Needs review.
 - **Overview** ✅ `/api/mm/status` `/api/mm/address` `/api/mm/balance`
   - 👁 Auth status, a clean `0x…` address, and a balance preview load (Refresh re-fetches).
-  - 👁 **Send/transfer** form is present but the button reads *Send — locked in paper mode*.
-- **Swaps** ✅ `/api/mm/swap/quote`
-  - 👁 A from/to/amount quote returns a real route + fee; **Execute swap** is locked.
-- **Perps** ✅ `/api/mm/perps/balance` `/api/mm/perps/quote`
-  - 👁 Margin balance loads; a symbol/side/size/leverage quote previews; **Open position** is locked.
-- **Markets** ✅ `/api/mm/predict/markets` `/api/mm/predict/quote`
-  - 👁 Market search returns real markets; an order quote previews; **Place order** is locked.
+  - 👁 **Send**: fill To + Amount → button reads *Simulate Send (paper)* → returns a `simulated: true` fill (no funds moved).
+- **Swaps** ✅ `/api/mm/swap/quote` + `/api/mm/swap/execute`
+  - 👁 A from/to/amount **Get quote** returns a real route + fee.
+  - 👁 *Simulate Execute swap (paper)* returns a fill built from a live quote (e.g. `10 USDC → 0.0063 WETH via okx`, real quoteId).
+- **Perps** ✅ `/api/mm/perps/balance` + `/api/mm/perps/quote` + `/api/mm/perps/open`
+  - 👁 Margin balance loads; a symbol/side/size/leverage quote previews.
+  - 👁 *Simulate Open position (paper)* returns entry / liquidation / fee / notional from a real quote.
+- **Markets** ✅ `/api/mm/predict/markets` + `/api/mm/predict/quote` + `/api/mm/predict/place`
+  - 👁 Market search returns real markets; an order quote previews.
+  - 👁 *Simulate Place order (paper)* returns a simulated order (needs a Token ID from a market).
+
+**Going Live:** with `LIVE_EXECUTION_ENABLED=true`, the banner turns orange, buttons
+read *… — LIVE*, and they execute real transactions after MetaMask approval. Only
+prediction-market *placement* isn't wired for live yet (returns a labeled 501).
 
 ## Readiness sheet (if surfaced separately) ✅ `/api/mm/readiness`
 - 👁 Mirrors the readiness checks; used as the pre-live gate.

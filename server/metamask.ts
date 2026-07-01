@@ -194,6 +194,28 @@ function requireLiveExecution(req: any, res: any, next: any) {
   next();
 }
 
+// The mm CLI often wraps its JSON as { ok, data: {...} }. Return the inner data.
+function unwrap(result: Awaited<ReturnType<typeof runMm>>): any {
+  const d = result.data as any;
+  return d && typeof d === 'object' && d.data ? d.data : d;
+}
+
+// A simulated ("paper") fill. Paper mode is a first-class execution path — it's
+// what competitions run on — so an action returns a real result built from a live
+// quote, marked simulated, with no funds moved. Live mode does the real thing.
+function paperFill(req: any, action: string, summary: string, extra: Record<string, any>) {
+  recordMetaMaskEvent(req, 'METAMASK_PAPER_ACTION', `Simulated ${action}: ${summary}`);
+  return {
+    mode: 'simulation',
+    simulated: true,
+    action,
+    reference: 'SIM-' + generateId().slice(0, 10),
+    executedAt: Date.now(),
+    ...extra,
+    note: 'Simulated in paper mode — no funds moved. Switch to Live to execute for real.'
+  };
+}
+
 metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
   const [doctor, auth, init, address, balance, tradingMode, policy] = await Promise.all([
     runMm(['doctor', '--json']),
@@ -354,12 +376,17 @@ metamaskRouter.get('/api/mm/balance', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/transfer', requireLiveExecution, async (req, res) => {
+metamaskRouter.post('/api/mm/transfer', async (req, res) => {
   try {
     const to = validateAddress(req.body.to);
     const amount = validatePositiveAmount(req.body.amount, 'Amount');
     const token = req.body.token ? validateSymbol(req.body.token, 'Token') : 'native';
     const chainId = validateChain(req.body.chainId, '8453');
+    if (!LIVE_EXECUTION_ENABLED) {
+      return res.json(paperFill(req, 'transfer', `${amount} ${token} -> ${to.slice(0, 6)}…${to.slice(-4)}`, {
+        to, amount, token, chainId, status: 'paper_filled'
+      }));
+    }
     const result = await runMm(['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
@@ -388,8 +415,25 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/swap/execute', requireLiveExecution, async (req, res) => {
+metamaskRouter.post('/api/mm/swap/execute', async (req, res) => {
   try {
+    if (!LIVE_EXECUTION_ENABLED) {
+      // Build the paper fill from a real quote so the numbers are honest.
+      const from = validateSymbol(req.body.from, 'Source token');
+      const to = validateSymbol(req.body.to, 'Destination token');
+      const amount = validatePositiveAmount(req.body.amount, 'Amount');
+      const fromChain = validateChain(req.body.fromChain, '8453');
+      const q = await runMm(['swap', 'quote', '--from', from, '--to', to, '--amount', amount, '--from-chain', fromChain, '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      const inner = quote.quote || {};
+      const dec = Number(inner?.destAsset?.decimals);
+      const rawOut = inner?.destAssetAmount;
+      const expectedOut = rawOut != null && Number.isFinite(dec) ? Number((Number(rawOut) / 10 ** dec).toFixed(8)) : null;
+      return res.json(paperFill(req, 'swap', `${amount} ${from} -> ${to}`, {
+        quoteId: quote.quoteId ?? null, bridge: inner.bridgeId ?? null,
+        tokenIn: from, tokenOut: to, amountIn: amount, expectedOut, status: 'paper_filled'
+      }));
+    }
     const quoteId = validateQuoteId(req.body.quoteId);
     const result = await runMm(['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
@@ -427,13 +471,25 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/perps/open', requireLiveExecution, async (req, res) => {
+metamaskRouter.post('/api/mm/perps/open', async (req, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
     if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
     const size = validatePositiveAmount(req.body.size, 'Size');
     const leverage = validatePositiveAmount(req.body.leverage || 1, 'Leverage');
+    if (!LIVE_EXECUTION_ENABLED) {
+      const q = await runMm(['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      return res.json(paperFill(req, 'perps_open', `${side} ${size} ${symbol} @ ${leverage}x`, {
+        venue: 'hyperliquid', symbol, side, size, leverage,
+        entryPx: quote.entryPrice ?? null,
+        liqPx: quote.estimatedLiquidationPrice ?? null,
+        fee: quote.estimatedFee ?? null,
+        notional: quote.notional ?? null,
+        status: 'paper_open'
+      }));
+    }
     const result = await runMm(['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
@@ -463,6 +519,31 @@ metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
       quote: result.data,
       placeLocked: !LIVE_EXECUTION_ENABLED,
       message: isCommandOk(result) ? 'Prediction market preview ready.' : result.summary
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/predict/place', async (req, res) => {
+  try {
+    const tokenId = validateTokenId(req.body.tokenId);
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'buy' && side !== 'sell') throw new Error('Side must be buy or sell.');
+    const size = validatePositiveAmount(req.body.size, 'Size');
+    if (!LIVE_EXECUTION_ENABLED) {
+      const q = await runMm(['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      const price = quote.price ?? quote.avgPrice ?? quote.limitPrice ?? null;
+      return res.json(paperFill(req, 'predict_place', `${side} ${size} @ ${tokenId.slice(0, 8)}…`, {
+        tokenId, side, size, price, status: 'paper_placed'
+      }));
+    }
+    // Live placement uses the mm predict order command, which isn't verified in
+    // this environment yet — fail honestly rather than pretend.
+    res.status(501).json({
+      error: 'Live placement not wired',
+      message: 'Live prediction-market placement is not enabled yet. Paper mode simulates it today.'
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message });

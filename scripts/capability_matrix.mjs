@@ -62,9 +62,8 @@ function orchestratedBy(cliSubcmd) {
 
 // The capability catalogue. `cli` is the mm subcommand the route runs, used to
 // detect orchestration reachability. `kind`: readonly | execute | auth | ai | removed.
-// `lockedLabel` (execute only) is the visible-but-locked affordance the UI renders;
-// we grep the wallet modal for it so "surfaced as locked" stays honest.
-const walletModal = fs.readFileSync(path.join(root, 'src', 'components', 'AgentWalletModal.tsx'), 'utf8');
+// Execute paths simulate in paper mode and run for real when LIVE_EXECUTION_ENABLED,
+// so they're reachable (DIRECT) from the wallet modal in both modes.
 const CAPS = [
   { cap: 'Wallet readiness',   route: '/api/mm/readiness',        kind: 'readonly' },
   { cap: 'Wallet status',      route: '/api/mm/status',           kind: 'readonly' },
@@ -72,14 +71,15 @@ const CAPS = [
   { cap: 'Token login',        route: '/api/mm/login',            kind: 'removed', note: 'returns 410 by design — MetaEdge never accepts wallet secrets' },
   { cap: 'Wallet address',     route: '/api/mm/address',          kind: 'readonly', cli: "'address'" },
   { cap: 'Wallet balance',     route: '/api/mm/balance',          kind: 'readonly', cli: "'balance'" },
-  { cap: 'Transfer / send',    route: '/api/mm/transfer',         kind: 'execute', lockedLabel: "label=\"Send\"" },
+  { cap: 'Transfer / send',    route: '/api/mm/transfer',         kind: 'execute' },
   { cap: 'Swap quote',         route: '/api/mm/swap/quote',       kind: 'readonly', cli: "'swap', 'quote'" },
-  { cap: 'Swap execute',       route: '/api/mm/swap/execute',     kind: 'execute', lockedLabel: "label=\"Execute swap\"" },
+  { cap: 'Swap execute',       route: '/api/mm/swap/execute',     kind: 'execute' },
   { cap: 'Perps balance',      route: '/api/mm/perps/balance',    kind: 'readonly' },
   { cap: 'Perps quote',        route: '/api/mm/perps/quote',      kind: 'readonly' },
-  { cap: 'Perps open',         route: '/api/mm/perps/open',       kind: 'execute', lockedLabel: "label=\"Open position\"" },
+  { cap: 'Perps open',         route: '/api/mm/perps/open',       kind: 'execute' },
   { cap: 'Predict markets',    route: '/api/mm/predict/markets',  kind: 'readonly', cli: "'predict', 'markets'" },
   { cap: 'Predict quote',      route: '/api/mm/predict/quote',    kind: 'readonly' },
+  { cap: 'Predict place',      route: '/api/mm/predict/place',    kind: 'execute' },
   { cap: 'Intent solver',      route: '/api/mm/intent/solve',     kind: 'ai' },
   { cap: 'Swarm copilot chat', route: '/api/mm/chat',             kind: 'ai' },
   { cap: 'Autopilot planner',  route: '/api/mm/autopilot/execute',kind: 'ai' },
@@ -89,14 +89,12 @@ const rows = CAPS.map((c) => {
   const present = mmSrc.includes(`'${c.route}'`);
   const direct = uiCallers(c.route);
   const orch = c.cli ? orchestratedBy(c.cli) : [];
-  const lockedUi = c.lockedLabel ? walletModal.includes(c.lockedLabel) : false;
   let status;
   if (c.kind === 'removed') status = 'REMOVED';
   else if (direct.length) status = 'DIRECT';
   else if (orch.length) status = 'ORCHESTRATED';
-  else if (lockedUi) status = 'GATED-UI';
   else status = 'UNREACHABLE';
-  return { ...c, present, direct, orch, lockedUi, status };
+  return { ...c, present, direct, orch, status };
 });
 
 const pad = (s, n) => String(s).padEnd(n);
@@ -106,16 +104,16 @@ console.log('-'.repeat(96));
 for (const r of rows) {
   const entry = r.direct.length ? r.direct.join(', ')
     : r.orch.length ? `via ${r.orch.join(' / ')} (read-only)`
-    : r.status === 'GATED-UI' ? 'AgentWalletModal (visible, locked)'
     : r.status === 'REMOVED' ? (r.note || 'intentionally removed')
     : '—';
   console.log(pad(r.cap, 20), pad(r.kind, 10), pad(r.present ? 'yes' : 'NO', 9), pad(r.status, 13), entry);
 }
 
 const present = rows.filter(r => r.present).length;
-// "Surfaced" = a user can see/reach it in the UI: direct, orchestrated, or a
-// visible-but-locked execute affordance. REMOVED is intentional and not a gap.
-const surfaced = rows.filter(r => ['DIRECT', 'ORCHESTRATED', 'GATED-UI'].includes(r.status));
+// "Surfaced" = a user can reach it in the UI (direct or orchestrated). Execute
+// paths count here too: they're direct-called and simulate in paper mode, run
+// real in live mode. REMOVED is intentional and not a gap.
+const surfaced = rows.filter(r => ['DIRECT', 'ORCHESTRATED'].includes(r.status));
 const unreachable = rows.filter(r => r.status === 'UNREACHABLE');
 console.log('-'.repeat(96));
 console.log(`\nPresent: ${present}/${rows.length}   Surfaced in UI: ${surfaced.length}/${rows.length}   Removed by design: ${rows.filter(r => r.status === 'REMOVED').length}   Unreachable gaps: ${unreachable.length}`);

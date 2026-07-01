@@ -14,7 +14,8 @@
     "smoke:paper": "node scripts/paper_balance_journey_smoke.mjs",
     "smoke:rooms": "node scripts/room_invite_journey_smoke.mjs",
     "smoke:agents": "node scripts/agent_strategy_journey_smoke.mjs",
-    "smoke:metamask": "node scripts/metamask_readiness_smoke.mjs"
+    "smoke:metamask": "node scripts/metamask_readiness_smoke.mjs",
+    "smoke:tabs": "node scripts/all_tabs_smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

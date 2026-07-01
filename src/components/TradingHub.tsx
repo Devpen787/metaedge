@@ -9,11 +9,12 @@ interface TradingHubProps {
   agents: TradingAgent[];
   trades: PaperTrade[];
   onPlaceSimulatedTrade: (payload: any) => Promise<void>;
+  onCloseTrade?: (id: string, currentPrice: number) => Promise<void>;
   onDeleteTrade?: (id: string) => Promise<void>;
   onClearAllTrades?: () => Promise<void>;
 }
 
-export default function TradingHub({ currentUser, agents, trades, onPlaceSimulatedTrade, onDeleteTrade, onClearAllTrades }: TradingHubProps) {
+export default function TradingHub({ currentUser, agents, trades, onPlaceSimulatedTrade, onCloseTrade, onDeleteTrade, onClearAllTrades }: TradingHubProps) {
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [assetSymbol, setAssetSymbol] = useState('BTC');
   const [tradeType, setTradeType] = useState<'token' | 'perp'>('perp');
@@ -113,7 +114,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
     }
 
     if ((side === 'buy' || side === 'long') && marginRequired > currentUser.paperBalance) {
-      setError('Insufficient simulated paper balance for this margin requirement.');
+      setError('Insufficient paper balance for this margin requirement.');
       return;
     }
 
@@ -128,7 +129,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         leverage: tradeType === 'perp' ? leverage : 1,
         nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
-      setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
+      setSuccess(`Order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
       setSize('');
     } catch (err: any) {
       setError(err.message || 'Failed to place trade');
@@ -148,7 +149,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
           <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
             <h3 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
               <ArrowRightLeft className="w-4 h-4 text-indigo-400" />
-              Sovereign Trade Desk
+              Execution Terminal
             </h3>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-inner">
                <span className="relative flex h-1.5 w-1.5">
@@ -318,7 +319,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             </div>
           )}
 
-          {/* AI Auto-Risk Guards */}
+          {/* Risk Boundaries */}
           <div className="grid grid-cols-2 gap-2 mt-2">
             <button
               type="button"
@@ -326,9 +327,9 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">Bot Trailing Stop</span>
+                <span className="text-[10px] font-bold text-slate-300 font-mono">Trailing Stop</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Secures profit dynamically</span>
+              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Attempts to lock upside</span>
             </button>
             <button
               type="button"
@@ -336,29 +337,26 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">AI Take-Profit</span>
+                <span className="text-[10px] font-bold text-slate-300 font-mono">Take-Profit Target</span>
               </div>
               <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Auto-exit on resistance</span>
             </button>
           </div>
 
-          {/* AI Insight Box */}
+          {/* Agent Parameters Box */}
           {selectedAgentId && (
-            <div className="bg-indigo-950/20 border border-indigo-900/30 rounded-xl p-3 flex gap-3 shadow-inner">
+            <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 flex gap-3 shadow-inner">
               <div className="shrink-0 mt-0.5">
                 <Sparkles className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <h5 className="text-[10px] font-bold text-indigo-300 font-mono uppercase tracking-widest mb-1">Agent Intelligence</h5>
-                <p className="text-[11px] text-indigo-200/70 leading-relaxed font-sans">
+                <h5 className="text-[10px] font-bold text-slate-300 font-mono uppercase tracking-widest mb-1">Agent Parameters</h5>
+                <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                  Routing order via {filteredAgents.find(a => a.id === selectedAgentId)?.name || 'Agent'}. 
+                  Target asset: {assetSymbol}.
                   {tradeType === 'perp' 
-                    ? side === 'long'
-                      ? `Funding rates show bullish momentum for ${assetSymbol}. Keep leverage under ${leverage > 10 ? '10x' : '15x'} to survive volatility wicks. Activate Bot Trailing Stop to secure profits dynamically.`
-                      : `Shorting ${assetSymbol} here requires caution against short-squeezes. Ensure AI Take-Profit is active to lock in downside gains automatically.`
-                    : side === 'buy'
-                      ? `Spot accumulation for ${assetSymbol} is safe from funding fees and liquidations. DCAing here is recommended by historical agent moving averages.`
-                      : `Selling ${assetSymbol} spot locks in your capital. The agent suggests keeping 20% in cold storage in case of sudden macro breakouts.`
-                  }
+                    ? ` Executing at ${leverage}x leverage.`
+                    : ` Spot execution.`}
                 </p>
               </div>
             </div>
@@ -374,7 +372,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 : 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/10 text-white'
             } disabled:opacity-40`}
           >
-            {submitting ? 'Executing Telemetry...' : !selectedAgentId ? 'NO BOT SELECTED' : `SUBMIT SIMULATED ${side.toUpperCase()} FILL`}
+            {submitting ? 'EXECUTING...' : !selectedAgentId ? 'NO BOT SELECTED' : `EXECUTE ${side.toUpperCase()}`}
           </button>
 
           {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
@@ -384,7 +382,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         {/* Telemetry Status Footer */}
         <div className="text-[10px] font-mono text-slate-500 bg-slate-950/20 p-3 rounded-xl border border-slate-900/30 mt-4 flex items-center gap-1.5 justify-center">
           <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-          Autonomous multi-agent trade room auth active
+          Autonomous multi-agent execution auth active
         </div>
       </div>
 
@@ -395,7 +393,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 shadow-2xl hover:border-indigo-500/30 transition-all group">
           <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
             <span className="w-2 h-4 bg-indigo-500 rounded-sm"></span>
-            Dynamic Execution Analytics
+            Position Analytics
           </h4>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
             <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner group-hover:border-slate-700 transition-colors">
@@ -423,7 +421,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-6 pt-5 border-t border-slate-700/50 font-mono text-xs text-slate-300">
               <div className="flex items-center gap-2 mb-4 text-indigo-400 font-bold uppercase text-[10px] tracking-widest">
                 <Sparkles className="w-4 h-4 text-indigo-400" />
-                Execution Targets & Boundaries Plan
+                Risk Boundaries
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-slate-950/40 p-3.5 rounded-2xl border border-slate-800 flex flex-col justify-between">
@@ -525,13 +523,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                     const minVal = Math.min(...sparklineData.map(d => d.val));
                     const maxVal = Math.max(...sparklineData.map(d => d.val));
                     const isWinning = isBuy ? currentAssetPrice >= trade.price : currentAssetPrice <= trade.price;
+                    
+                    const displayPnl = trade.status === 'OPEN' 
+                      ? (isBuy ? currentAssetPrice - trade.price : trade.price - currentAssetPrice) * trade.size * trade.leverage
+                      : (trade.pnl || 0);
 
                     return (
                       <tr key={trade.id} className="hover:bg-slate-950/20 text-slate-300 transition-colors">
                         <td className="py-2.5 px-3 text-slate-500 text-[10px]">
                           {new Date(trade.timestamp).toLocaleTimeString()}
                         </td>
-                        <td className="py-2.5 px-3 font-bold text-slate-200">
+                        <td className="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5 mt-2">
+                          <span className={`w-1.5 h-1.5 rounded-full ${trade.status === 'OPEN' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></span>
                           {trade.assetSymbol}
                         </td>
                         <td className="py-2.5 px-3 uppercase text-[10px] text-slate-400">
@@ -566,18 +569,27 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           </div>
                         </td>
                         <td className={`py-2.5 px-3 text-right font-bold ${
-                          trade.pnl === undefined ? 'text-slate-500' : trade.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                          displayPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }`}>
-                          {trade.pnl === undefined ? '—' : `$${trade.pnl.toFixed(2)}`}
+                          {displayPnl >= 0 ? '+' : ''}${displayPnl.toFixed(2)}
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <button
-                            onClick={() => onDeleteTrade && onDeleteTrade(trade.id)}
-                            className="p-1 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-                            title="Delete trade"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {trade.status === 'OPEN' ? (
+                            <button
+                              onClick={() => onCloseTrade && onCloseTrade(trade.id, currentAssetPrice)}
+                              className="px-2 py-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded transition-colors"
+                            >
+                              SETTLE
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => onDeleteTrade && onDeleteTrade(trade.id)}
+                              className="p-1 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                              title="Delete trade"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, AuditEvent, PaperTrade } from '../types';
 import { Landmark, RefreshCw, FileText, HelpCircle, Flame, TrendingUp, Activity, BarChart2, Edit3, X, Loader2, Shield, Search, Swords, Terminal } from 'lucide-react';
@@ -10,7 +11,8 @@ interface DashboardProps {
   audits: AuditEvent[];
   onRefreshAudits: () => void;
   trades: PaperTrade[];
-  onEditProfile?: (displayName: string, bio: string, avatarUrl: string) => Promise<void>;
+  onEditProfile?: (displayName: string, bio: string, avatarUrl: string, preferredCurrency: string) => Promise<void>;
+  onResetProfile?: () => Promise<void>;
 }
 
 const NumberTicker = ({ value, prefix = '', suffix = '', decimals = 0 }: { value: number, prefix?: string, suffix?: string, decimals?: number }) => {
@@ -68,26 +70,51 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades, onEditProfile }: DashboardProps) {
+export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades, onEditProfile, onResetProfile }: DashboardProps) {
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetError, setFaucetError] = useState('');
   
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState(user.profile.displayName);
-  const [editBio, setEditBio] = useState(user.profile.bio);
+  const [editBio, setEditBio] = useState(user.profile.bio || '');
   const [editAvatarUrl, setEditAvatarUrl] = useState(user.profile.avatarUrl);
+  const [editPreferredCurrency, setEditPreferredCurrency] = useState(user.profile.preferredCurrency || 'USD');
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+
+  const predefinedAvatars = [
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Felix',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Oliver',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Bella',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Shadow',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Midnight',
+  ];
 
   const handleSaveProfile = async () => {
     if (!onEditProfile) return;
     setIsSavingProfile(true);
     try {
-      await onEditProfile(editDisplayName, editBio, editAvatarUrl);
+      await onEditProfile(editDisplayName, editBio || '', editAvatarUrl, editPreferredCurrency);
       setIsEditingProfile(false);
     } catch (e) {
       console.error(e);
     } finally {
       setIsSavingProfile(false);
+    }
+  };
+
+  const handleResetProfile = async () => {
+    if (!onResetProfile) return;
+    const confirm = window.confirm("Are you sure you want to completely wipe your simulated profile, trades, and history? This cannot be undone.");
+    if (!confirm) return;
+    setIsResetting(true);
+    try {
+      await onResetProfile();
+      setIsEditingProfile(false);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -102,6 +129,13 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
       setFaucetLoading(false);
     }
   };
+
+  const currencySymbols: Record<string, string> = {
+    USD: '$',
+    EUR: '€',
+    GBP: '£'
+  };
+  const currentSymbol = currencySymbols[user.profile.preferredCurrency || 'USD'] || '$';
 
   // 1. Filter trades & audits associated with this user
   const myTrades = trades.filter(t => t.userId === user.id);
@@ -192,34 +226,29 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
         
         {/* Balances - Main Focus */}
         <div className="col-span-1 md:col-span-8 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden shadow-2xl group transition-all hover:bg-slate-900/80">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-emerald-500/20 transition-all duration-700" />
           
-          <div className="absolute top-6 right-6 flex items-center gap-2">
-             <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-            <div className="bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full text-emerald-400 text-[10px] font-mono">
-              Live Paper Sync
+          <div className="absolute top-6 right-6">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+              Paper Trading
             </div>
           </div>
           <div className="relative z-10">
-            <div className="flex items-center gap-2 text-xs font-mono text-slate-400 uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-sm font-medium text-slate-400">
               <Landmark className="w-4 h-4 text-emerald-400" />
-              Sovereign Paper Balance
+              Account Balance
             </div>
             <h2 className="text-5xl font-extrabold text-white tracking-tight mt-4 drop-shadow-sm flex items-baseline gap-1 font-mono">
-              <span className="text-slate-500 text-3xl font-mono">$</span>
+              <span className="text-slate-500 text-3xl font-mono">{currentSymbol}</span>
               <NumberTicker value={user.paperBalance} decimals={2} />
             </h2>
             <div className="flex items-center gap-3 mt-4">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-mono rounded-lg shadow-sm font-bold uppercase tracking-widest">
-                <Flame className="w-3 h-3" /> Earning ~4.1% APY
+                <Flame className="w-3 h-3" /> Yield Active
               </span>
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">MetaMask Money Base Layer</span>
+              <span className="text-xs text-slate-500">Default Settlement Currency</span>
             </div>
-            <p className="text-sm text-slate-400 font-mono mt-4 max-w-md leading-relaxed">
-              Active currency for simulating bots & rooms. Your idle capital never stops earning while you trade.
+            <p className="text-sm text-slate-400 mt-4 max-w-md leading-relaxed">
+              Available capital for executing trades and deploying algorithmic agents.
             </p>
           </div>
 
@@ -227,7 +256,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <button
               onClick={handleFaucetClaim}
               disabled={faucetLoading || user.faucetClaimedCount >= 10}
-              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium text-xs font-mono py-3 px-6 rounded-xl shadow-lg shadow-emerald-900/50 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium text-sm py-3 px-6 rounded-xl shadow-lg shadow-emerald-900/50 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Activity className="w-4 h-4" />
               {faucetLoading ? 'Minting...' : `Claim $10,000 Faucet (${user.faucetClaimedCount}/10)`}
@@ -264,7 +293,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               </div>
             </div>
             
-            <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between text-[11px] font-mono text-slate-500">
+            <div className="mt-4 pt-4 border-t border-slate-700/50 flex justify-between text-xs text-slate-500">
               <span>Member since</span>
               <span className="text-slate-300">{new Date(user.createdAt).toLocaleDateString()}</span>
             </div>
@@ -272,46 +301,38 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
 
           {/* Verifier Firewall */}
           <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-amber-500/20 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-amber-500/40 transition-all">
-             <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-amber-500/10 transition-all duration-700" />
             <div>
-              <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-amber-400/80 uppercase tracking-wider mb-2">
+              <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-300 mb-2">
                 <span className="flex items-center gap-1.5">
-                  <Shield className="w-4 h-4" />
-                  Reasoning Firewall
+                  <Shield className="w-4 h-4 text-amber-400" />
+                  Strict Validation
                 </span>
-                <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] text-amber-400">ACTIVE</span>
-              </div>
-              <div className="flex items-baseline gap-2 mt-1">
-                <h2 className="text-2xl font-bold text-slate-200 font-mono group-hover:text-amber-400 transition-colors">
-                  82%
-                </h2>
-                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Precision</span>
+                <span className="bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] text-amber-400 uppercase tracking-wider font-bold">Active</span>
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t border-slate-700/50 text-[10px] font-mono flex items-center justify-between gap-1.5 leading-tight">
-              <span className="text-slate-400">Hallucinations Blocked:</span>
-              <span className="text-amber-400 font-bold">14</span>
+            <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center justify-between gap-1.5 leading-tight">
+              <span className="text-sm text-slate-400">Orders Rejected</span>
+              <span className="text-amber-400 font-bold font-mono text-lg">14</span>
             </div>
-            <p className="text-[9px] text-slate-500 mt-2 font-mono leading-relaxed">
-              Verifying agentic reasoning against on-chain evidence before action. Catches errors before they get expensive.
+            <p className="text-xs text-slate-500 mt-3 leading-relaxed">
+              Verifies order intent against margin requirements before execution.
             </p>
           </div>
 
           {/* Paper Stats */}
-          <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-orange-500/30 transition-all">
-             <div className="absolute bottom-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-[50px] pointer-events-none group-hover:bg-orange-500/20 transition-all duration-700" />
+          <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-blue-500/30 transition-all">
             <div>
-              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400 uppercase tracking-wider">
-                <Flame className="w-4 h-4 text-orange-400" />
-                MetaEdge League
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <BarChart2 className="w-4 h-4 text-blue-400" />
+                Performance Ranking
               </div>
-              <h2 className="text-2xl font-bold text-slate-200 mt-2 font-mono group-hover:text-orange-400 transition-colors">
+              <h2 className="text-xl font-bold text-slate-200 mt-2">
                 Unranked
               </h2>
             </div>
-            <div className="mt-4 pt-4 border-t border-slate-700/50 text-[10px] font-mono text-slate-500 flex items-center gap-1.5 leading-tight">
-              <HelpCircle className="w-3.5 h-3.5 shrink-0" />
-              Join a cooperative Room to submit and share active strategy performance records.
+            <div className="mt-4 pt-4 border-t border-slate-700/50 text-xs text-slate-500 flex items-start gap-2 leading-tight">
+              <HelpCircle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>Join a room to submit your strategy performance records.</p>
             </div>
           </div>
 
@@ -364,16 +385,15 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
 
       {/* Recharts Area Performance Graph */}
       <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 shadow-2xl hover:border-indigo-500/30 transition-all duration-500 group relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-64 h-32 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none" />
         
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 border-b border-slate-700/50 pb-6 mb-6 relative z-10">
           <div>
-            <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-indigo-400" />
-              Sovereign Balance Performance
+            <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-400" />
+              Account Balance Performance
             </h3>
-            <p className="text-xs text-slate-400 font-mono mt-1 max-w-lg">
-              Simulated paper balance timeline tracking mint faucets and active strategy PnL fills.
+            <p className="text-sm text-slate-400 mt-1 max-w-lg">
+              Balance timeline tracking deposits and PnL.
             </p>
           </div>
           
@@ -446,13 +466,13 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
       {/* Ledger Logs */}
       <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 shadow-2xl relative overflow-hidden group hover:border-slate-500/50 transition-all">
         <div className="flex items-center justify-between mb-4 border-b border-slate-700/50 pb-4 relative z-10">
-          <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2">
-            <FileText className="w-4 h-4 text-indigo-400" />
-            MetaEdge Verification Ledger Logs
+          <h3 className="text-base font-bold text-white flex items-center gap-2">
+            <FileText className="w-5 h-5 text-indigo-400" />
+            Audit Logs
           </h3>
           <button
             onClick={onRefreshAudits}
-            className="text-xs px-3 py-1.5 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg text-slate-300 hover:text-white flex items-center gap-1.5 font-mono cursor-pointer transition-colors shadow-inner border border-slate-700/50"
+            className="text-xs px-3 py-1.5 bg-slate-800/50 hover:bg-slate-700/50 rounded-lg text-slate-300 hover:text-white flex items-center gap-1.5 font-sans font-medium cursor-pointer transition-colors shadow-inner border border-slate-700/50"
           >
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
@@ -460,25 +480,25 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
 
         <div className="space-y-3 max-h-64 overflow-y-auto pr-2 custom-scrollbar relative z-10">
           {audits.length === 0 ? (
-            <div className="text-center py-12 text-xs text-slate-500 font-mono bg-slate-950/30 rounded-2xl border border-dashed border-slate-800">No actions recorded in this room yet.</div>
+            <div className="text-center py-12 text-sm text-slate-500 bg-slate-950/30 rounded-2xl border border-dashed border-slate-800">No actions recorded yet.</div>
           ) : (
             audits.map((log) => (
               <motion.div
                 initial={{ opacity: 0, y: 5 }}
                 animate={{ opacity: 1, y: 0 }}
                 key={log.id}
-                className="flex items-start justify-between bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 text-xs font-mono shadow-sm hover:border-indigo-500/30 transition-colors"
+                className="flex items-start justify-between bg-slate-950/60 border border-slate-800/80 rounded-2xl p-4 shadow-sm hover:border-indigo-500/30 transition-colors"
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="bg-slate-800/80 text-indigo-300 text-[10px] px-2.5 py-0.5 rounded shadow-inner border border-slate-700/50">
+                    <span className="bg-slate-800/80 text-indigo-300 text-[10px] font-mono px-2.5 py-0.5 rounded shadow-inner border border-slate-700/50">
                       {log.action}
                     </span>
-                    <span className="text-slate-400">@{log.username}</span>
+                    <span className="text-slate-400 text-xs font-mono">@{log.username}</span>
                   </div>
-                  <p className="text-slate-300 text-[11px] leading-relaxed max-w-2xl">{log.details}</p>
+                  <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">{log.details}</p>
                 </div>
-                <span className="text-slate-500 text-[10px] whitespace-nowrap bg-slate-900 px-2 py-1 rounded-md border border-slate-800">
+                <span className="text-slate-500 text-[10px] font-mono whitespace-nowrap bg-slate-900 px-2 py-1 rounded-md border border-slate-800">
                   {new Date(log.timestamp).toLocaleTimeString()}
                 </span>
               </motion.div>
@@ -487,77 +507,117 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
         </div>
       </div>
 
-      <AnimatePresence>
-        {isEditingProfile && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-          >
+      {createPortal(
+        <AnimatePresence>
+          {isEditingProfile && (
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 w-full max-w-md shadow-2xl relative"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             >
-              <button
-                onClick={() => setIsEditingProfile(false)}
-                className="absolute top-4 right-4 text-slate-500 hover:text-slate-300"
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                className="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 w-full max-w-md shadow-2xl relative"
               >
-                <X className="w-5 h-5" />
-              </button>
-              
-              <h2 className="text-xl font-bold text-white mb-6">Edit Profile</h2>
-              
-              <div className="space-y-4 font-mono text-sm">
-                <div>
-                  <label className="block text-slate-400 mb-1">Display Name</label>
-                  <input
-                    type="text"
-                    value={editDisplayName}
-                    onChange={e => setEditDisplayName(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">Avatar URL</label>
-                  <input
-                    type="text"
-                    value={editAvatarUrl}
-                    onChange={e => setEditAvatarUrl(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-slate-400 mb-1">Bio</label>
-                  <textarea
-                    value={editBio}
-                    onChange={e => setEditBio(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors min-h-[80px]"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-8 flex justify-end gap-3">
                 <button
                   onClick={() => setIsEditingProfile(false)}
-                  className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  className="absolute top-4 right-4 text-slate-500 hover:text-slate-300"
                 >
-                  Cancel
+                  <X className="w-5 h-5" />
                 </button>
-                <button
-                  onClick={handleSaveProfile}
-                  disabled={isSavingProfile || !editDisplayName.trim()}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50"
-                >
-                  {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Profile'}
-                </button>
-              </div>
+                
+                <h2 className="text-xl font-bold text-white mb-6">Edit Profile</h2>
+                
+                <div className="space-y-4 text-sm max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">Display Name</label>
+                    <input
+                      type="text"
+                      value={editDisplayName}
+                      onChange={e => setEditDisplayName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-2">Avatar Picker</label>
+                    <div className="flex flex-wrap gap-3 mb-3">
+                      {predefinedAvatars.map((url, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setEditAvatarUrl(url)}
+                          className={`w-12 h-12 rounded-full overflow-hidden border-2 transition-colors ${editAvatarUrl === url ? 'border-indigo-500' : 'border-transparent hover:border-slate-700 bg-slate-800'}`}
+                        >
+                          <img src={url} alt={`Avatar ${i}`} className="w-full h-full object-cover" />
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={editAvatarUrl}
+                      onChange={e => setEditAvatarUrl(e.target.value)}
+                      placeholder="Or paste a custom image URL"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors text-xs font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">Preferred Currency</label>
+                    <select
+                      value={editPreferredCurrency}
+                      onChange={e => setEditPreferredCurrency(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors appearance-none font-mono"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="GBP">GBP (£)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 font-medium mb-1">Bio</label>
+                    <textarea
+                      value={editBio}
+                      onChange={e => setEditBio(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-white outline-none focus:border-indigo-500/50 transition-colors min-h-[80px]"
+                    />
+                  </div>
+                  
+                  <div className="pt-4 border-t border-slate-800/50 mt-4">
+                    <button
+                      onClick={handleResetProfile}
+                      disabled={isResetting}
+                      className="w-full py-2 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 rounded-xl border border-rose-500/20 transition-colors text-xs font-bold"
+                    >
+                      {isResetting ? 'Resetting...' : 'DANGER: Wipe All Profile Data & Trades'}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-8 flex justify-end gap-3">
+                  <button
+                    onClick={() => setIsEditingProfile(false)}
+                    className="px-4 py-2 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveProfile}
+                    disabled={isSavingProfile || !editDisplayName.trim()}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-xl flex items-center gap-2 transition-colors disabled:opacity-50"
+                  >
+                    {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Profile'}
+                  </button>
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

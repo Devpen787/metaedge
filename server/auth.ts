@@ -22,6 +22,7 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
         bio: 'Self-custodial agent room member.',
         updatedAt: Date.now()
       },
+      roles: ['TRADER'],
       createdAt: Date.now(),
       lastActiveAt: Date.now(),
       paperBalance: 100000, // $100,000 initial balance
@@ -62,6 +63,15 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
   }
 
   req.userId = userId;
+  
+  // Attach identity binding context
+  req.identityBinding = {
+    userId,
+    surface: req.headers['x-api-key'] ? 'API_KEY' : 'WEB_UI',
+    kycLevel: 'NONE', // Default for simulated users
+    ipAddress: req.ip
+  };
+
   next();
 };
 
@@ -92,7 +102,7 @@ authRouter.get('/api/dashboard-data', (req: any, res) => {
 // --- PROFILE MUTATION ---
 authRouter.post('/api/profile', (req: any, res) => {
   const userId = req.userId;
-  const { displayName, avatarUrl, bio } = req.body;
+  const { displayName, avatarUrl, bio, preferredCurrency } = req.body;
   
   if (!displayName) {
     res.status(400).json({ error: 'Display name is required' });
@@ -105,6 +115,9 @@ authRouter.post('/api/profile', (req: any, res) => {
   user.profile.displayName = sanitizeText(displayName, 50);
   user.profile.avatarUrl = sanitizeText(avatarUrl, 250);
   user.profile.bio = sanitizeText(bio || '', 300);
+  if (preferredCurrency) {
+    user.profile.preferredCurrency = preferredCurrency;
+  }
   user.profile.updatedAt = Date.now();
   user.username = sanitizeText(displayName, 50).toLowerCase().replace(/\s+/g, '_');
 
@@ -129,6 +142,30 @@ authRouter.post('/api/profile', (req: any, res) => {
   });
 
   writeDatabase(db);
+  res.json({ success: true, user });
+});
+
+// --- PROFILE RESET / DELETE ---
+authRouter.post('/api/profile/reset', (req: any, res) => {
+  const userId = req.userId;
+  const db = readDatabase();
+  const user = db.users[userId];
+  
+  if (user) {
+    user.paperBalance = 100000;
+    user.faucetClaimedCount = 0;
+    user.profile = {
+      displayName: 'Reset User',
+      avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${Math.random()}`,
+      bio: '',
+      updatedAt: Date.now()
+    };
+    
+    // Wipe their trades
+    db.trades = db.trades.filter(t => t.userId !== userId);
+    
+    writeDatabase(db);
+  }
   res.json({ success: true, user });
 });
 

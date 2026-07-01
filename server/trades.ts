@@ -3,6 +3,9 @@ import { readDatabase, writeDatabase, generateId } from './storage.js';
 import type { PaperTrade } from '../src/types';
 import { createOrderIntent, executeOrderIntent } from '../src/secure-core/trading/intents.js';
 import { evaluateOrderRisk } from '../src/secure-core/trading/risk-engine.js';
+import { transitionTradeState } from '../src/secure-core/trading/lifecycle.js';
+import { assertPermission } from '../src/secure-core/auth/rbac.js';
+import { assertCapability } from '../src/secure-core/auth/capabilities.js';
 
 export const tradesRouter = Router();
 
@@ -11,6 +14,13 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   const userId = req.userId;
   const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = req.body;
 
+  try {
+    assertCapability(req.identityBinding, 'CREATE_TRADE');
+  } catch (err: any) {
+    res.status(403).json({ error: err.message });
+    return;
+  }
+
   if (!agentId || !assetSymbol || !side || !size || !price || !nonce) {
     res.status(400).json({ error: 'Incomplete fill telemetry or missing idempotency nonce' });
     return;
@@ -18,6 +28,14 @@ tradesRouter.post('/api/trades', (req: any, res) => {
 
   const db = readDatabase();
   const agent = db.agents[agentId];
+  const user = db.users[userId];
+
+  try {
+    assertPermission({ userId, roles: user.roles || ['TRADER'] }, 'TRADER', 'CREATE_TRADE');
+  } catch (err: any) {
+    res.status(403).json({ error: err.message });
+    return;
+  }
 
   if (!agent || agent.ownerId !== userId) {
     res.status(403).json({ error: 'Forbidden or agent missing' });
@@ -32,8 +50,6 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   const executionPrice = Number(price);
   const tradeSize = Number(size);
   const tradeLeverage = Number(leverage) || 1;
-
-  const user = db.users[userId];
 
   // 1. Create order intent
   let intent;
@@ -69,7 +85,6 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   try {
     trade = executeOrderIntent(intent.intentId, executionPrice);
     trade.roomId = roomId || agent.roomId;
-    trade.pnl = side === 'sell' || side === 'short' ? Math.random() * 200 - 50 : undefined;
   } catch (err: any) {
     res.status(400).json({ error: err.message });
     return;
@@ -77,11 +92,9 @@ tradesRouter.post('/api/trades', (req: any, res) => {
 
   const requiredMargin = agent.tradeType === 'perp' ? (tradeSize * executionPrice) / tradeLeverage : (tradeSize * executionPrice);
 
-  if (side === 'buy' || side === 'long') {
-    user.paperBalance -= requiredMargin;
-  } else {
-    user.paperBalance += requiredMargin * 1.02; // Mock gain
-  }
+  // Strictly debit required margin for opening new positions. 
+  // (We don't process closing of existing positions in this route, that is done in /api/trades/:id/close)
+  user.paperBalance -= requiredMargin;
 
   db.trades.push(trade);
   agent.lastTradeAt = Date.now();
@@ -90,8 +103,8 @@ tradesRouter.post('/api/trades', (req: any, res) => {
     id: 'aud_' + generateId(),
     userId,
     username: user.username,
-    action: 'PAPER_TRADE',
-    details: `Executed simulated ${side} of ${tradeSize} ${assetSymbol} at $${executionPrice}`,
+    action: 'PAPER_TRADE_OPEN',
+    details: `Executed simulated ${side} of ${tradeSize} ${assetSymbol} at $${executionPrice}. Status: OPEN.`,
     timestamp: Date.now()
   });
 
@@ -101,12 +114,66 @@ tradesRouter.post('/api/trades', (req: any, res) => {
     userId,
     targetId: trade.id,
     targetType: 'Agent',
-    metadata: { side, size: tradeSize, assetSymbol },
+    metadata: { side, size: tradeSize, assetSymbol, status: trade.status },
     timestamp: Date.now()
   });
 
   writeDatabase(db);
   res.json({ success: true, trade, balance: user.paperBalance });
+});
+
+// Close a trade
+tradesRouter.post('/api/trades/:id/close', (req: any, res) => {
+  const userId = req.userId;
+  const tradeId = req.params.id;
+  const { currentPrice } = req.body; // In a real system, the server asserts price
+
+  if (typeof currentPrice !== 'number') {
+    res.status(400).json({ error: 'Missing current price for reconciliation.' });
+    return;
+  }
+
+  const db = readDatabase();
+  const trade = db.trades.find(t => t.id === tradeId);
+  const user = db.users[userId];
+
+  if (!trade || trade.userId !== userId) {
+    res.status(404).json({ error: 'Trade not found or unauthorized.' });
+    return;
+  }
+
+  try {
+    // Transition to CLOSED, calculating PnL
+    transitionTradeState(trade, 'CLOSED', userId, currentPrice);
+    
+    // Settle balance
+    const marginRecovered = trade.tradeType === 'perp' ? (trade.size * trade.price) / trade.leverage : (trade.size * trade.price);
+    const finalBalance = user.paperBalance + marginRecovered + (trade.pnl || 0);
+    
+    if (finalBalance < 0) {
+      // In a real system, this would be a liquidation event, but we'll cap at zero
+      user.paperBalance = 0;
+    } else {
+      user.paperBalance = finalBalance;
+    }
+
+    // Transition to SETTLED
+    transitionTradeState(trade, 'SETTLED', userId);
+
+    db.auditEvents.push({
+      id: 'aud_' + generateId(),
+      userId,
+      username: user.username,
+      action: 'PAPER_TRADE_CLOSE',
+      details: `Closed simulated trade ${tradeId} at $${currentPrice}. PnL: $${trade.pnl?.toFixed(2)}. Status: SETTLED.`,
+      timestamp: Date.now()
+    });
+
+    writeDatabase(db);
+    res.json({ success: true, trade, balance: user.paperBalance });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
 });
 
 // List trades

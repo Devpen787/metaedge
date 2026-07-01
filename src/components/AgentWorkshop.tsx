@@ -380,12 +380,12 @@ export default function AgentWorkshop({
             </div>
           </div>
 
-          {/* Manual Order Simulation Box */}
+          {/* Manual Order Entry Box */}
           {agents.filter(a => a.status === 'active').length > 0 && (
             <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6">
               <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Info className="w-4 h-4 text-emerald-400" />
-                Trigger Paper Fill Simulator
+                Trigger Paper Fill
               </h3>
 
               <form onSubmit={handleTriggerTrade} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono items-end">
@@ -490,16 +490,16 @@ export default function AgentWorkshop({
             </div>
           )}
 
-          {/* Recent Simulated Trade Orders Ledger */}
+          {/* Recent Trade Orders Ledger */}
           <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6">
             <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-400" />
-              Recent Simulated Fills & Trades Ledger
+              Recent Fills & Trades Ledger
             </h3>
 
             {trades.length === 0 ? (
               <div className="text-center py-8 text-xs text-slate-500 font-mono bg-slate-950/20 rounded-xl border border-slate-900/40">
-                No simulated fills recorded. Create an agent and trigger a Paper Fill Simulator to begin co-trading.
+                No fills recorded. Create an agent and trigger a Paper Fill to begin co-trading.
               </div>
             ) : (
               <div className="overflow-x-auto">

@@ -78,7 +78,7 @@ export function executeOrderIntent(intentId: string, executedPrice: number): Pap
     leverage: intent.leverage,
     timestamp: Date.now(),
     pnl: 0,
-    status: 'open'
+    status: 'OPEN'
   };
 
   logAuditEvent({

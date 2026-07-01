@@ -6,6 +6,7 @@ export interface Profile {
   displayName: string;
   avatarUrl: string;
   bio?: string;
+  preferredCurrency?: 'USD' | 'EUR' | 'GBP';
   updatedAt: number;
 }
 
@@ -13,6 +14,7 @@ export interface User {
   id: string; // Server-authoritative anonymous userId
   username: string;
   profile: Profile;
+  roles: ('TRADER' | 'ADMIN' | 'SYSTEM' | 'AUDITOR')[];
   createdAt: number;
   lastActiveAt: number;
   paperBalance: number; // Defaults to e.g. 100,000 USD for paper trading
@@ -70,6 +72,9 @@ export interface PaperStrategy {
   createdAt: number;
 }
 
+export type OrderIntentStatus = 'PENDING' | 'EXECUTED' | 'REJECTED' | 'CANCELLED';
+export type TradeLifecycleStatus = 'OPEN' | 'CLOSED' | 'LIQUIDATED' | 'SETTLED';
+
 export interface PaperTrade {
   id: string;
   agentId: string;
@@ -82,7 +87,9 @@ export interface PaperTrade {
   price: number; // Executed paper price
   leverage: number;
   pnl?: number; // Realized PnL for closed trades, or current unrealized
+  status: TradeLifecycleStatus; // Strict lifecycle state machine
   timestamp: number;
+  closedAt?: number;
 }
 
 export interface VaultClub {

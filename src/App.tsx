@@ -163,12 +163,12 @@ export default function App() {
   };
 
   // Profile Update handler
-  const handleProfileClaimed = async (displayName: string, bio: string, avatarUrl: string) => {
+  const handleProfileClaimed = async (displayName: string, bio: string, avatarUrl: string, preferredCurrency: string) => {
     try {
       const res = await apiFetch('/api/profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ displayName, bio, avatarUrl })
+        body: JSON.stringify({ displayName, bio, avatarUrl, preferredCurrency })
       });
       const data = await res.json();
       if (data.success && data.user) {
@@ -177,6 +177,19 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error updating profile', err);
+    }
+  };
+
+  const handleProfileReset = async () => {
+    try {
+      const res = await apiFetch('/api/profile/reset', { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.user) {
+        setCurrentUser(data.user);
+        fetchEntities();
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -301,6 +314,27 @@ export default function App() {
     } else {
       const data = await res.json();
       throw new Error(data.error || 'Failed to delete agent.');
+    }
+  };
+
+  const handleCloseTrade = async (id: string, currentPrice: number) => {
+    try {
+      const res = await apiFetch(`/api/trades/${id}/close`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPrice })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (currentUser) {
+          setCurrentUser({ ...currentUser, paperBalance: data.balance });
+        }
+        fetchEntities();
+      } else {
+        alert(data.error || 'Failed to close trade');
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -706,9 +740,9 @@ export default function App() {
               <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
                 <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
                 <div>
-                  <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">LIVE AUTHORITY BLOCKED</h4>
+                  <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">Live Trading Disabled</h4>
                   <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
-                    Smart contract safety guards remain globally locked pending formal multi-signature validation. The workspace is active as read-only. Return to Paper Mode to simulated full bot interactions.
+                    Live execution is currently locked. The workspace is active in read-only mode. Return to Paper Mode to place simulated trades.
                   </p>
                 </div>
               </div>
@@ -731,6 +765,7 @@ export default function App() {
                     onRefreshAudits={fetchEntities}
                     trades={trades}
                     onEditProfile={handleProfileClaimed}
+                    onResetProfile={handleProfileReset}
                   />
                 )}
 
@@ -764,6 +799,7 @@ export default function App() {
                     agents={agents}
                     trades={trades}
                     onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
+                    onCloseTrade={handleCloseTrade}
                     onDeleteTrade={handleTradeDeleted}
                     onClearAllTrades={handleClearAllTrades}
                   />
@@ -830,15 +866,15 @@ export default function App() {
           </div>
         </main>
 
-        {/* Safety Compliance Footer */}
+        {/* Footer */}
         <footer className="border-t border-slate-900/60 py-6 px-4 md:px-8 bg-slate-950/20 text-center text-xs text-slate-500 font-mono relative z-10">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-[11px]">
               <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
-              MetaEdge V1 Sovereign Room Ledger Active
+              MetaEdge V1 Active
             </span>
             <span className="text-[10px]">
-              No custody. Returns are simulated. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.
+              Platform operates in paper trading mode. No real assets are custodied.
             </span>
           </div>
         </footer>

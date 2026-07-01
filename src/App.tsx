@@ -4,7 +4,6 @@ import { User, FriendRoom, TradingAgent, PaperStrategy, AuditEvent, PaperTrade, 
 import WelcomeScreen from './components/WelcomeScreen';
 import Dashboard from './components/Dashboard';
 import TradingRoom from './components/TradingRoom';
-import AgentWorkshop from './components/AgentWorkshop';
 import VaultClubs from './components/VaultClubs';
 import GraphEvidence from './components/GraphEvidence';
 import ReadinessSheet from './components/ReadinessSheet';
@@ -15,12 +14,7 @@ import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
-import AgenticAutopilot from './components/AgenticAutopilot';
-import IntentSolver from './components/IntentSolver';
-import SwarmCopilot from './components/SwarmCopilot';
-import { AgentArena } from './components/AgentArena';
-import MetaedgeAnalytics from './components/MetaedgeAnalytics';
-import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal, Swords, Loader2, BarChart2 } from 'lucide-react';
+import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Search, Terminal, Loader2, BarChart2 } from 'lucide-react';
 import { apiFetch } from './lib/api';
 
 import GuidedTour from './components/GuidedTour';
@@ -30,7 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant'>('dashboard');
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [proModeEnabled, setProModeEnabled] = useState(false);
   const [showTour, setShowTour] = useState(() => {
@@ -509,15 +503,6 @@ export default function App() {
               ]
             },
             {
-              title: 'Swarm Intelligence',
-              items: [
-                { id: 'copilot', label: 'Swarm Copilot', icon: Terminal },
-                { id: 'intent', label: 'Intent Solver', icon: Search },
-                { id: 'autopilot', label: 'Autopilot', icon: Cpu },
-                { id: 'agents', label: 'Trading Agents', icon: Bot },
-              ]
-            },
-            {
               title: 'Markets & Trading',
               items: [
                 { id: 'trading', label: 'Trading Desk', icon: ArrowRightLeft },
@@ -530,13 +515,11 @@ export default function App() {
               items: [
                 { id: 'rooms', label: 'Rooms', icon: Users },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
-                { id: 'arena', label: 'Agent Arena', icon: Swords },
               ]
             },
             {
               title: 'Analytics & Evidence',
               items: [
-                { id: 'analytics', label: 'Platform Data', icon: BarChart2 },
                 { id: 'graph', label: 'Evidence Map', icon: Network },
                 { id: 'specs', label: 'Specs Hub', icon: Award },
                 ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
@@ -619,12 +602,6 @@ export default function App() {
                  <optgroup label="Overview">
                    <option value="dashboard">Dashboard</option>
                  </optgroup>
-                 <optgroup label="Swarm Intelligence">
-                   <option value="copilot">Swarm Copilot</option>
-                   <option value="intent">Intent Solver</option>
-                   <option value="autopilot">Autopilot</option>
-                   <option value="agents">Trading Agents</option>
-                 </optgroup>
                  <optgroup label="Markets & Trading">
                    <option value="trading">Trading Desk</option>
                    <option value="charts">Market Charts</option>
@@ -633,10 +610,8 @@ export default function App() {
                  <optgroup label="Community & Vaults">
                    <option value="rooms">Rooms</option>
                    <option value="vaults">Vaults</option>
-                   <option value="arena">Agent Arena</option>
                  </optgroup>
                  <optgroup label="Analytics & Evidence">
-                   <option value="analytics">Platform Data</option>
                    <option value="graph">Evidence Map</option>
                    <option value="specs">Specs Hub</option>
                    {proModeEnabled && <option value="quant">Quant Engine</option>}
@@ -665,20 +640,6 @@ export default function App() {
 
             {/* Mode switch & Wallet */}
             <div className="flex items-center gap-3 ml-auto">
-              <button
-                onClick={() => setIsGlobalAutopilotEnabled(!isGlobalAutopilotEnabled)}
-                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-all cursor-pointer shadow-inner ${
-                  isGlobalAutopilotEnabled 
-                    ? 'bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.2)]' 
-                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-400'
-                }`}
-                title="Toggle Global Autopilot"
-              >
-                <Cpu className={`w-3.5 h-3.5 ${isGlobalAutopilotEnabled ? 'animate-pulse' : ''}`} />
-                <span className="text-xs font-mono hidden md:inline">
-                  Autopilot {isGlobalAutopilotEnabled ? 'ON' : 'OFF'}
-                </span>
-              </button>
               <button
                 onClick={() => {
                   setProModeEnabled(!proModeEnabled);
@@ -840,26 +801,6 @@ export default function App() {
 
                 {currentUser && activeTab === 'quant' && proModeEnabled && (
                   <QuantEngine agents={agents} />
-                )}
-                
-                {currentUser && activeTab === 'autopilot' && (
-                  <AgenticAutopilot user={currentUser} />
-                )}
-                
-                {currentUser && activeTab === 'intent' && (
-                  <IntentSolver user={currentUser} />
-                )}
-                
-                {currentUser && activeTab === 'copilot' && (
-                  <SwarmCopilot user={currentUser} />
-                )}
-
-                {currentUser && activeTab === 'arena' && (
-                  <AgentArena user={currentUser} />
-                )}
-
-                {currentUser && activeTab === 'analytics' && (
-                  <MetaedgeAnalytics />
                 )}
               </motion.div>
             </AnimatePresence>

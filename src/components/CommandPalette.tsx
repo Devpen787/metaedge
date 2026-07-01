@@ -22,13 +22,7 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, proModeEna
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Info, desc: 'Overview & Recent Audits' },
-    { id: 'arena', label: 'Agent Arena', icon: Swords, desc: 'Compete in trading leagues' },
-    { id: 'analytics', label: 'Platform Data', icon: BarChart2, desc: 'Usage and platform analytics' },
-    { id: 'copilot', label: 'Swarm Copilot', icon: Search, desc: 'Natural language insights' },
-    { id: 'intent', label: 'Intent Solver', icon: Terminal, desc: 'Execute complex strategies via text' },
-    { id: 'autopilot', label: 'Autopilot', icon: Cpu, desc: 'Global strategy automation' },
     { id: 'rooms', label: 'Rooms', icon: Users, desc: 'Social trading rooms' },
-    { id: 'agents', label: 'Agents', icon: Bot, desc: 'AI agent workshop' },
     { id: 'trading', label: 'Trading Desk', icon: ArrowRightLeft, desc: 'Execute paper trades' },
     { id: 'charts', label: 'Market Charts', icon: TrendingUp, desc: 'Live market data' },
     { id: 'predictions', label: 'Predictions', icon: Coins, desc: 'Speculate on outcomes' },

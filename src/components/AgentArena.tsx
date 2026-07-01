@@ -119,6 +119,16 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [inspectedPlayerRank, setInspectedPlayerRank] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
 
+  const [positions, setPositions] = useState<any[]>([]);
+  const [closingId, setClosingId] = useState<string | null>(null);
+
+  const loadPositions = React.useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/arena/positions');
+      if (res.ok) setPositions((await res.json()).positions || []);
+    } catch { /* keep last good state */ }
+  }, []);
+
   const loadArena = React.useCallback(async () => {
     try {
       const [lgRes, lbRes] = await Promise.all([
@@ -144,7 +154,24 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     }
   }, [activeLeagueId]);
 
+  const handleClosePosition = async (id: string) => {
+    setClosingId(id);
+    try {
+      const res = await apiFetch(`/api/arena/positions/${id}/close`, { method: 'POST' });
+      if (res.ok) { await loadPositions(); await loadArena(); }
+    } catch { /* ignore transient failures */ } finally {
+      setClosingId(null);
+    }
+  };
+
   useEffect(() => { loadArena(); }, [loadArena]);
+
+  // Refresh open positions periodically so their live P&L keeps ticking.
+  useEffect(() => {
+    loadPositions();
+    const t = setInterval(loadPositions, 5000);
+    return () => clearInterval(t);
+  }, [loadPositions]);
 
   // Real, computed arena stats derived from the live leaderboard (never faked).
   // `leaderboard` already reflects the active league (global or a specific one).
@@ -633,6 +660,56 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       </AnimatePresence>
                     </div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Your wallet positions — MetaMask paper actions, marked live */}
+            {positions.length > 0 && (
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 mt-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Wallet className="w-5 h-5 text-indigo-400" /> Your Wallet Positions
+                  </h3>
+                  <span className="text-xs text-slate-500 font-mono">Agent Wallet paper actions · marked live</span>
+                </div>
+                <div className="space-y-2">
+                  {positions.map((pos) => {
+                    const up = pos.pnl >= 0;
+                    const short = pos.side === 'short' || pos.side === 'sell';
+                    return (
+                      <div key={pos.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-800 ${pos.status === 'closed' ? 'bg-slate-950/40 opacity-60' : 'bg-slate-950/60'}`}>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${short ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            {short ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white">{pos.symbol}
+                              <span className="text-xs text-slate-500 font-mono uppercase ml-2">{pos.tradeType === 'perp' ? `${pos.side} ${pos.leverage}x` : pos.side}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-mono">
+                              size {pos.size} · entry ${pos.entry?.toLocaleString()}{pos.current != null ? ` · now $${pos.current.toLocaleString()}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <div className={`text-sm font-mono font-bold ${up ? 'text-emerald-400' : 'text-rose-400'}`}>
+                              {up ? '+' : ''}{pos.pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                            </div>
+                            <div className={`text-[11px] font-mono ${up ? 'text-emerald-400/70' : 'text-rose-400/70'}`}>{up ? '+' : ''}{pos.pnlPct}%</div>
+                          </div>
+                          {pos.status === 'open' ? (
+                            <button onClick={() => handleClosePosition(pos.id)} disabled={closingId === pos.id} className="text-xs font-bold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 disabled:opacity-50">
+                              {closingId === pos.id ? 'Closing…' : 'Close'}
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-mono uppercase px-2 py-1 rounded bg-slate-800 text-slate-400">Settled</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

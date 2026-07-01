@@ -67,6 +67,7 @@ Legend: ✅ = data path pre-verified against the running server · 👁 = needs 
 - 👁 Switch to a league → leaderboard reflects that league; pre-join P&L shows +0.0%.
 - 👁 "Reward" reads *Leaderboard Glory* (global) or the creator's prize (league) — no fake `$50,000` pool.
 - 👁 **Wallet actions score here**: a paper swap/perp in the Agent Wallet modal opens a live marked-to-market position, so your ROI on this board moves as prices tick (strategy shows `Wallet` for wallet-only players).
+- 👁 **Your Wallet Positions** panel (above the leaderboard) lists each open position with live P&L that refreshes every 5s; **Close** settles it (freezes realized P&L, marks it *Settled*), and the leaderboard updates.
 
 ## 12. Platform Data (Analytics)  — static component
 - 👁 Renders charts/metrics from bundled data without throwing. (No live endpoint.)

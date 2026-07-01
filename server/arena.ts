@@ -188,3 +188,58 @@ arenaRouter.post('/api/arena/leagues/:id/join', (req: any, res) => {
   writeDatabase(db);
   res.json({ success: true });
 });
+
+// Enrich a wallet position with live pricing + P&L for display.
+function positionView(trade: PaperTrade) {
+  const dir = trade.side === 'sell' || trade.side === 'short' ? -1 : 1;
+  const pnl = tradePnl(trade);
+  // Open: mark against the live spot price. Closed: reconstruct the frozen
+  // settle price from the realized pnl so the row still reads sensibly.
+  const current = trade.status === 'closed'
+    ? (trade.size ? trade.price + (dir * pnl) / trade.size : trade.price)
+    : getSpotPrice(trade.assetSymbol);
+  const notional = trade.price * trade.size;
+  return {
+    id: trade.id,
+    symbol: trade.assetSymbol,
+    side: trade.side,
+    size: trade.size,
+    leverage: trade.leverage,
+    tradeType: trade.tradeType,
+    entry: trade.price,
+    current: current != null ? Number(current.toFixed(4)) : null,
+    status: trade.status || 'open',
+    pnl: Number(pnl.toFixed(2)),
+    pnlPct: notional ? Number(((pnl / notional) * 100).toFixed(2)) : 0,
+    openedAt: trade.timestamp
+  };
+}
+
+// A player's wallet positions (MetaMask paper actions), newest first.
+arenaRouter.get('/api/arena/positions', (req: any, res) => {
+  const userId = req.userId;
+  const db = readDatabase();
+  const positions = db.trades
+    .filter((t) => t.userId === userId && t.source === 'wallet')
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .map(positionView);
+  const openPnl = positions.filter((p) => p.status === 'open').reduce((s, p) => s + p.pnl, 0);
+  res.json({ positions, openPnl: Number(openPnl.toFixed(2)) });
+});
+
+// Close (realize) an open wallet position: freeze its mark-to-market P&L so it
+// stops moving and counts as realized on the leaderboard.
+arenaRouter.post('/api/arena/positions/:id/close', (req: any, res) => {
+  const userId = req.userId;
+  const db = readDatabase();
+  const trade = db.trades.find((t) => t.id === req.params.id && t.userId === userId && t.source === 'wallet');
+  if (!trade) { res.status(404).json({ error: 'Position not found.' }); return; }
+  if (trade.status === 'closed') { res.status(409).json({ error: 'Position already closed.' }); return; }
+  const cur = getSpotPrice(trade.assetSymbol);
+  if (cur == null) { res.status(400).json({ error: 'No price to settle against.' }); return; }
+  const dir = trade.side === 'sell' || trade.side === 'short' ? -1 : 1;
+  trade.pnl = Number(((cur - trade.price) * trade.size * dir).toFixed(2));
+  trade.status = 'closed';
+  writeDatabase(db);
+  res.json({ success: true, position: positionView(trade) });
+});

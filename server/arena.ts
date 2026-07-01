@@ -37,6 +37,113 @@ function shortId(id: string): string {
   return id && id.length >= 8 ? `${id.slice(0, 4)}…${id.slice(-3)}` : (id || 'anon');
 }
 
+// ---- Seasons: the global board runs in monthly seasons so late joiners always
+// compete fresh. League boards keep their own start/end. ----
+function seasonInfo(now = Date.now()) {
+  const d = new Date(now);
+  return {
+    key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+    name: d.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+    startMs: new Date(d.getFullYear(), d.getMonth(), 1).getTime(),
+    endMs: new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime(),
+  };
+}
+
+// ---- Achievements: every badge is derived from real activity and awarded
+// idempotently on read. No fake mechanics. ----
+export const BADGES: Record<string, { name: string; icon: string; desc: string }> = {
+  first_trade: { name: 'First Blood', icon: '🗡️', desc: 'Made your first trade' },
+  first_win: { name: 'On the Board', icon: '📈', desc: 'Locked in your first profit' },
+  streak_3: { name: 'Hot Streak', icon: '🔥', desc: '3 profitable days in a row' },
+  league_founder: { name: 'Founder', icon: '🏛️', desc: 'Created a league' },
+  wallet_pioneer: { name: 'Explorer', icon: '🧭', desc: 'Used a MetaMask wallet capability' },
+};
+
+// Consecutive days of positive realized P&L ending today (or yesterday if no
+// trades yet today). Uses closed/realized trades only, so streaks are earned.
+function computeStreaks(db: DatabaseState, userIds: string[]) {
+  const include = new Set(userIds);
+  const byUserDay: Record<string, Record<string, number>> = {};
+  for (const t of db.trades) {
+    if (!include.has(t.userId) || typeof t.pnl !== 'number') continue;
+    const day = new Date(t.timestamp).toISOString().slice(0, 10);
+    const m = (byUserDay[t.userId] = byUserDay[t.userId] || {});
+    m[day] = (m[day] || 0) + t.pnl;
+  }
+  const DAY = 86400000;
+  const streaks: Record<string, number> = {};
+  for (const id of userIds) {
+    const days = byUserDay[id] || {};
+    let cursor = Date.now();
+    if (!(new Date(cursor).toISOString().slice(0, 10) in days)) cursor -= DAY;
+    let streak = 0;
+    for (;;) {
+      const v = days[new Date(cursor).toISOString().slice(0, 10)];
+      if (v !== undefined && v > 0) { streak++; cursor -= DAY; } else break;
+    }
+    streaks[id] = streak;
+  }
+  return streaks;
+}
+
+// Award any badges the user's real activity now merits (idempotent).
+function syncBadges(db: DatabaseState, userIds: string[], streaks: Record<string, number>) {
+  db.arenaBadges = db.arenaBadges || [];
+  const include = new Set(userIds);
+  const have: Record<string, Set<string>> = {};
+  for (const b of db.arenaBadges) (have[b.userId] = have[b.userId] || new Set()).add(b.badgeId);
+  const facts: Record<string, { traded: boolean; won: boolean; wallet: boolean }> = {};
+  for (const t of db.trades) {
+    if (!include.has(t.userId)) continue;
+    const f = (facts[t.userId] = facts[t.userId] || { traded: false, won: false, wallet: false });
+    f.traded = true;
+    if (typeof t.pnl === 'number' && t.pnl > 0) f.won = true;
+    if (t.source === 'wallet') f.wallet = true;
+  }
+  const founders = new Set(Object.values(db.arenaLeagues || {}).filter((l) => l.creatorId !== 'system').map((l) => l.creatorId));
+  let added = false;
+  const award = (userId: string, badgeId: string) => {
+    if (have[userId]?.has(badgeId)) return;
+    (have[userId] = have[userId] || new Set()).add(badgeId);
+    db.arenaBadges!.push({ id: 'bdg_' + generateId(), userId, badgeId, earnedAt: Date.now() });
+    added = true;
+  };
+  for (const id of userIds) {
+    const f = facts[id];
+    if (f?.traded) award(id, 'first_trade');
+    if (f?.won) award(id, 'first_win');
+    if (f?.wallet) award(id, 'wallet_pioneer');
+    if ((streaks[id] || 0) >= 3) award(id, 'streak_3');
+    if (founders.has(id)) award(id, 'league_founder');
+  }
+  const badgesByUser: Record<string, string[]> = {};
+  for (const [uid, set] of Object.entries(have)) badgesByUser[uid] = [...set];
+  return { newBadges: added, badgesByUser };
+}
+
+// ---- Rank movement: rotate a per-board snapshot every window; ▲/▼ compares the
+// current rank to the previous window's. Writes only on rotation. ----
+const SNAP_INTERVAL_MS = 10 * 60 * 1000;
+
+function rankMovement(db: DatabaseState, boardKey: string, current: Record<string, number>) {
+  db.arenaRankSnapshots = db.arenaRankSnapshots || {};
+  const now = Date.now();
+  const snap = db.arenaRankSnapshots[boardKey];
+  let baseline: Record<string, number> | null = null;
+  let dirty = false;
+  if (!snap) {
+    db.arenaRankSnapshots[boardKey] = { at: now, ranks: current };
+    dirty = true;
+  } else if (now - snap.at > SNAP_INTERVAL_MS) {
+    db.arenaRankSnapshots[boardKey] = { at: now, ranks: current, prevAt: snap.at, prevRanks: snap.ranks };
+    baseline = snap.ranks;
+    dirty = true;
+  } else {
+    baseline = snap.prevRanks || null;
+  }
+  return { baseline, dirty };
+}
+
 // Single pass over agents + trades to build each user's realized P&L, agent count,
 // and lead strategy. `sinceByUser` floors trades at each member's league join time
 // so a competition only counts performance earned inside it. O(agents + trades).
@@ -66,10 +173,14 @@ function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<str
 arenaRouter.get('/api/arena/leaderboard', (req, res) => {
   const db = readDatabase();
   const leagueId = String(req.query.leagueId || 'global');
+  const season = seasonInfo();
 
   let entries: { userId: string; username: string; startBalance: number; since: number }[];
+  let board: { name: string; endsAt: number };
   if (leagueId === 'global') {
     // Anyone competing: agent owners plus users with a wallet paper position.
+    // Global scoring is seasonal — floored at the season start — so newcomers
+    // always compete fresh.
     const owners = new Set(Object.values(db.agents).map((a) => a.ownerId));
     for (const t of db.trades) {
       if (t.source === 'wallet') owners.add(t.userId);
@@ -78,8 +189,9 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
       userId,
       username: db.users[userId]?.username || 'Anon',
       startBalance: GLOBAL_START_BALANCE,
-      since: 0,
+      since: season.startMs,
     }));
+    board = { name: `Season · ${season.name}`, endsAt: season.endMs };
   } else {
     const league = db.arenaLeagues?.[leagueId];
     if (!league) { res.status(404).json({ error: 'League not found.' }); return; }
@@ -91,6 +203,7 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
         startBalance: m.startBalance || league.startBalance,
         since: m.joinedAt,
       }));
+    board = { name: league.name, endsAt: league.endsAt };
   }
 
   const sinceByUser = Object.fromEntries(entries.map((e) => [e.userId, e.since]));
@@ -115,7 +228,24 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
     .sort((a, b) => b.roiValue - a.roiValue)
     .map((row, i) => ({ rank: i + 1, ...row }));
 
-  res.json({ leaderboard, leagueId });
+  // Gamification layer — all earned from real data: streaks from realized daily
+  // P&L, badges from actual activity, ▲/▼ movement from rank snapshots.
+  const userIds = entries.map((e) => e.userId);
+  const streaks = computeStreaks(db, userIds);
+  const { newBadges, badgesByUser } = syncBadges(db, userIds, streaks);
+  const ranksNow: Record<string, number> = {};
+  for (const r of leaderboard) ranksNow[r.userId] = r.rank;
+  const { baseline, dirty } = rankMovement(db, leagueId, ranksNow);
+  if (newBadges || dirty) writeDatabase(db);
+
+  const rows = leaderboard.map((r) => ({
+    ...r,
+    move: baseline && baseline[r.userId] ? baseline[r.userId] - r.rank : 0,
+    streak: streaks[r.userId] || 0,
+    badges: (badgesByUser[r.userId] || []).map((b) => ({ id: b, ...BADGES[b] })),
+  }));
+
+  res.json({ leaderboard: rows, leagueId, board });
 });
 
 // List leagues with live participant counts and the caller's joined status.

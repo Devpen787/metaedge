@@ -121,6 +121,16 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
 
   const [positions, setPositions] = useState<any[]>([]);
   const [closingId, setClosingId] = useState<string | null>(null);
+  const [boardMeta, setBoardMeta] = useState<{ name: string; endsAt: number } | null>(null);
+  const [celebration, setCelebration] = useState<string | null>(null);
+  const prevRankRef = useRef<{ leagueId: string | 'global'; rank: number } | null>(null);
+
+  // Auto-dismiss celebration toasts.
+  useEffect(() => {
+    if (!celebration) return;
+    const t = setTimeout(() => setCelebration(null), 4500);
+    return () => clearTimeout(t);
+  }, [celebration]);
 
   const loadPositions = React.useCallback(async () => {
     try {
@@ -147,18 +157,35 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
       }
       if (lbRes.ok) {
         const data = await lbRes.json();
-        setLeaderboard(data.leaderboard || []);
+        const rows = data.leaderboard || [];
+        setLeaderboard(rows);
+        if (data.board) setBoardMeta(data.board);
+        // Celebrate a genuine rank-up on the same board.
+        const mine = rows.find((p: any) => p.userId === user.id);
+        const prev = prevRankRef.current;
+        if (mine && prev && prev.leagueId === activeLeagueId && mine.rank < prev.rank) {
+          setCelebration(`🚀 Rank up! #${prev.rank} → #${mine.rank}`);
+        }
+        prevRankRef.current = mine ? { leagueId: activeLeagueId, rank: mine.rank } : null;
       }
     } catch {
       /* keep last good state */
     }
-  }, [activeLeagueId]);
+  }, [activeLeagueId, user.id]);
 
   const handleClosePosition = async (id: string) => {
     setClosingId(id);
     try {
       const res = await apiFetch(`/api/arena/positions/${id}/close`, { method: 'POST' });
-      if (res.ok) { await loadPositions(); await loadArena(); }
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        const pnl = data?.position?.pnl;
+        if (typeof pnl === 'number' && pnl > 0) {
+          setCelebration(`💰 +${pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} locked in!`);
+        }
+        await loadPositions();
+        await loadArena();
+      }
     } catch { /* ignore transient failures */ } finally {
       setClosingId(null);
     }
@@ -382,6 +409,21 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   return (
     <div className="flex flex-col h-full overflow-hidden text-slate-300 relative bg-[#020617]">
       <DataStreamBackground />
+
+      {/* Celebration toast — fires on real events (rank-up, profitable close) */}
+      <AnimatePresence>
+        {celebration && (
+          <motion.div
+            initial={{ opacity: 0, y: 24, scale: 0.92 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-yellow-500/40 shadow-[0_0_36px_rgba(234,179,8,0.3)] rounded-2xl px-5 py-4 text-white font-bold text-sm flex items-center gap-2"
+          >
+            {celebration}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex-none p-6 border-b border-slate-800 bg-slate-900/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -451,10 +493,17 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       {activeLeagueId === 'global' ? 'The Genesis Flywheel' : leagues.find(l => l.id === activeLeagueId)?.name}
                     </h2>
                     <p className="text-slate-400 max-w-xl">
-                      {activeLeagueId === 'global' 
+                      {activeLeagueId === 'global'
                         ? 'Deploy autonomous agents to trade virtual capital. Climb the leaderboard by generating the highest PnL to win a share of the growing prize pool.'
                         : 'Custom league dashboard. Compete with your community members and prove your strategies.'}
                     </p>
+                    {boardMeta && (
+                      <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-mono">
+                        <Clock className="w-3.5 h-3.5 text-yellow-500" />
+                        <span className="text-slate-300">{boardMeta.name}</span>
+                        <span className="text-yellow-500 font-bold">· {msToLeft(boardMeta.endsAt)}</span>
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex items-center gap-4">
@@ -783,15 +832,25 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                         className={`transition-colors group cursor-pointer ${isYou ? 'bg-indigo-500/10 border-l-2 border-indigo-500' : 'hover:bg-slate-800/50'}`}
                       >
                         <td className={`px-4 py-4 font-mono font-bold ${isYou ? 'text-indigo-400' : 'text-slate-300'}`}>
-                          {player.rank === 1 ? <Crown className="w-5 h-5 text-yellow-500" /> :
-                           player.rank === 2 ? <Crown className="w-5 h-5 text-slate-300" /> :
-                           player.rank === 3 ? <Crown className="w-5 h-5 text-amber-700" /> :
-                           `0${player.rank}`}
+                          <div className="flex items-center gap-1.5">
+                            {player.rank === 1 ? <Crown className="w-5 h-5 text-yellow-500" /> :
+                             player.rank === 2 ? <Crown className="w-5 h-5 text-slate-300" /> :
+                             player.rank === 3 ? <Crown className="w-5 h-5 text-amber-700" /> :
+                             `0${player.rank}`}
+                            {player.move > 0 && <span className="text-[10px] text-emerald-400">▲{player.move}</span>}
+                            {player.move < 0 && <span className="text-[10px] text-rose-400">▼{Math.abs(player.move)}</span>}
+                          </div>
                         </td>
                         <td className="px-4 py-4">
                           <div className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">{player.address.substring(0, 6)}...{isYou && <span className="ml-2 text-xs text-indigo-400 font-mono">You</span>}</div>
                           <div className="text-xs text-slate-500 flex items-center gap-2">{player.name}
                             <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border ${tierStyles[tier]}`}>{tier}</span>
+                            {player.streak >= 2 && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-orange-500/10 text-orange-300 border-orange-500/20" title={`${player.streak} profitable days in a row`}>🔥{player.streak}</span>
+                            )}
+                            {player.badges?.length > 0 && (
+                              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded border bg-slate-800/80 text-slate-300 border-slate-700" title={player.badges.map((b: any) => `${b.icon} ${b.name}`).join('  ')}>🏅{player.badges.length}</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-4 text-slate-400">{player.agents} <span className="text-xs ml-1 bg-slate-800 group-hover:bg-indigo-500/10 group-hover:text-indigo-300 px-2 py-0.5 rounded text-slate-500 transition-colors">{player.strategy}</span></td>
@@ -1338,34 +1397,47 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                         </div>
                       </div>
 
-                      <h4 className="text-sm font-bold text-slate-300 mb-4 uppercase tracking-wider">Active Agents</h4>
-                      <div className="space-y-4">
-                        {/* Simulated agents for this player */}
-                        {[...Array(player.agents)].map((_, i) => (
-                          <div key={i} className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex justify-between items-center group hover:border-indigo-500/30 transition-colors">
-                            <div className="flex items-center gap-4">
-                              <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
-                                <Bot className="w-5 h-5 text-indigo-400" />
+                      {player.badges?.length > 0 && (
+                        <>
+                          <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Achievements</h4>
+                          <div className="flex flex-wrap gap-2 mb-8">
+                            {player.badges.map((b: any) => (
+                              <div key={b.id} className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2" title={b.desc}>
+                                <span className="text-lg">{b.icon}</span>
+                                <div>
+                                  <div className="text-xs font-bold text-white">{b.name}</div>
+                                  <div className="text-[10px] text-slate-500">{b.desc}</div>
+                                </div>
                               </div>
-                              <div>
-                                <div className="font-bold text-white mb-0.5">Agent-{(Math.random() * 10000).toFixed(0).padStart(4, '0')}</div>
-                                <div className="text-xs text-slate-500 font-mono">Running since {Math.floor(Math.random() * 14) + 1} days ago</div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="font-mono text-emerald-400 text-sm font-bold">+{((Math.random() * 50) + 10).toFixed(2)}%</div>
-                              <div className="text-xs text-slate-500 font-mono">{(Math.random() * 5000 + 1000).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</div>
-                            </div>
+                            ))}
                           </div>
-                        ))}
+                        </>
+                      )}
+
+                      {/* Honest arsenal summary — only what we actually know about this player. */}
+                      <h4 className="text-sm font-bold text-slate-300 mb-4 uppercase tracking-wider">Arsenal</h4>
+                      <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-lg bg-indigo-500/10 flex items-center justify-center">
+                            <Bot className="w-5 h-5 text-indigo-400" />
+                          </div>
+                          <div>
+                            <div className="font-bold text-white mb-0.5">{player.agents > 0 ? `${player.agents} active agent${player.agents > 1 ? 's' : ''}` : 'Wallet-powered'}</div>
+                            <div className="text-xs text-slate-500 font-mono">Lead strategy: {player.strategy}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`font-mono text-sm font-bold ${(player.currentBal - player.startBal) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{player.roi}</div>
+                          <div className="text-xs text-slate-500 font-mono">this board</div>
+                        </div>
                       </div>
-                      
+
                       <div className="mt-8 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4">
                         <Activity className="w-6 h-6 text-indigo-400 flex-shrink-0 mt-0.5" />
                         <div>
-                          <h5 className="font-bold text-indigo-300 text-sm mb-1">Analyze Strategy</h5>
+                          <h5 className="font-bold text-indigo-300 text-sm mb-1">Copy their edge</h5>
                           <p className="text-xs text-indigo-400/80 leading-relaxed">
-                            This player's high ROI is primarily driven by their {player.strategy} agents capitalising on micro-volatility spikes during low-liquidity periods.
+                            Shared strategies from other players can be copied from Rooms — deploy one, tune it, and take their spot on the board.
                           </p>
                         </div>
                       </div>

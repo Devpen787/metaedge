@@ -67,7 +67,9 @@ export function readDatabase(): DatabaseState {
         graphEvents: [],
         predictionMarkets: defaultPredictions,
         arenaLeagues: defaultLeagues,
-        arenaMembers: []
+        arenaMembers: [],
+        arenaBadges: [],
+        arenaRankSnapshots: {}
       };
       
       const dir = path.dirname(DB_FILE);
@@ -91,6 +93,12 @@ export function readDatabase(): DatabaseState {
     if (!parsed.arenaMembers) {
       parsed.arenaMembers = [];
     }
+    if (!parsed.arenaBadges) {
+      parsed.arenaBadges = [];
+    }
+    if (!parsed.arenaRankSnapshots) {
+      parsed.arenaRankSnapshots = {};
+    }
     return parsed;
   } catch (error) {
     console.error('Error reading database, resetting:', error);
@@ -106,7 +114,9 @@ export function readDatabase(): DatabaseState {
       graphEvents: [],
       predictionMarkets: {},
       arenaLeagues: {},
-      arenaMembers: []
+      arenaMembers: [],
+      arenaBadges: [],
+      arenaRankSnapshots: {}
     };
   }
 }

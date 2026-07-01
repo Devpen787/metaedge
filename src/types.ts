@@ -185,6 +185,23 @@ export interface ArenaMember {
   startBalance: number;
 }
 
+// An earned achievement. Badges are derived from real activity (trades, wins,
+// streaks, leagues created) and awarded idempotently — never decorative.
+export interface ArenaBadge {
+  id: string;
+  userId: string;
+  badgeId: string;
+  earnedAt: number;
+}
+
+// Periodic rank snapshot per board (global or league) powering ▲/▼ movement.
+export interface ArenaRankSnapshot {
+  at: number;
+  ranks: { [userId: string]: number };
+  prevAt?: number;
+  prevRanks?: { [userId: string]: number };
+}
+
 export interface DatabaseState {
   users: { [id: string]: User };
   sessions?: { [tokenHash: string]: SessionRecord };
@@ -198,4 +215,6 @@ export interface DatabaseState {
   predictionMarkets?: { [id: string]: PredictionMarket };
   arenaLeagues?: { [id: string]: ArenaLeague };
   arenaMembers?: ArenaMember[];
+  arenaBadges?: ArenaBadge[];
+  arenaRankSnapshots?: { [boardId: string]: ArenaRankSnapshot };
 }

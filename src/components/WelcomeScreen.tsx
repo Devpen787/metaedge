@@ -5,7 +5,7 @@ import { Sparkles, ArrowRight, ShieldCheck, Wallet } from 'lucide-react';
 
 interface WelcomeScreenProps {
   user: User;
-  onProfileClaimed: (displayName: string, bio: string, avatarUrl: string) => void;
+  onProfileClaimed: (displayName: string, bio: string, avatarUrl: string, preferredCurrency: string) => void;
 }
 
 export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenProps) {
@@ -20,7 +20,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
     e.preventDefault();
     if (!displayName.trim()) return;
     setIsSubmitting(true);
-    onProfileClaimed(displayName, bio, avatarUrl);
+    onProfileClaimed(displayName, bio, avatarUrl, 'USD');
   };
 
   return (

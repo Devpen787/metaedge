@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
+import fs from 'fs';
 
 import { authRouter, sessionMiddleware } from './server/auth.js';
 import { pricesRouter } from './server/prices.js';
@@ -47,7 +48,6 @@ app.use(metamaskRouter);
 app.use(quantRouter);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
-import fs from 'fs';
 async function startServer() {
   const distPath = path.join(process.cwd(), 'dist');
   const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(distPath, 'index.html'));

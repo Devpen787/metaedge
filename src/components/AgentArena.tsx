@@ -105,7 +105,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [newLeagueName, setNewLeagueName] = useState('');
   const [newLeagueBalance, setNewLeagueBalance] = useState(10000);
   const [newLeagueDuration, setNewLeagueDuration] = useState(7);
-  const [activeTier, setActiveTier] = useState('Platinum');
+  const [activeTier, setActiveTier] = useState('All');
 
   const [customAgents, setCustomAgents] = useState<{id: string, name: string, type: string, risk: string, desc: string}[]>([]);
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
@@ -188,6 +188,27 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
     : n >= 1_000 ? `$${(n / 1_000).toFixed(1)}K`
     : `$${Math.round(n)}`;
+
+  // Real rank-percentile tiers (top 10% Platinum, 35% Gold, 70% Silver, rest
+  // Bronze) — computed from the live board, filterable, never decorative.
+  const tierOf = React.useCallback((rank: number) => {
+    const n = leaderboard.length || 1;
+    if (rank <= Math.max(1, Math.ceil(n * 0.1))) return 'Platinum';
+    if (rank <= Math.ceil(n * 0.35)) return 'Gold';
+    if (rank <= Math.ceil(n * 0.7)) return 'Silver';
+    return 'Bronze';
+  }, [leaderboard.length]);
+
+  const tierStyles: Record<string, string> = {
+    Platinum: 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
+    Gold: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20',
+    Silver: 'bg-slate-500/10 text-slate-300 border-slate-500/20',
+    Bronze: 'bg-amber-700/10 text-amber-500 border-amber-700/20',
+  };
+
+  const visibleLeaderboard = activeTier === 'All'
+    ? leaderboard
+    : leaderboard.filter((p) => tierOf(p.rank) === activeTier);
 
   const handleShare = () => {
     const link = `${window.location.origin}/arena?league=${activeLeagueId}`;
@@ -722,7 +743,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                 </h3>
                 {activeLeagueId === 'global' && (
                   <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden p-1">
-                    {['Platinum', 'Gold', 'Silver', 'Bronze'].map((tier) => (
+                    {['All', 'Platinum', 'Gold', 'Silver', 'Bronze'].map((tier) => (
                       <button
                         key={tier}
                         onClick={() => setActiveTier(tier)}
@@ -752,8 +773,9 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
 
-                    {leaderboard.map((player) => {
+                    {visibleLeaderboard.map((player) => {
                       const isYou = player.userId === user.id;
+                      const tier = tierOf(player.rank);
                       return (
                       <tr
                         key={player.rank}
@@ -768,7 +790,9 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                         </td>
                         <td className="px-4 py-4">
                           <div className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">{player.address.substring(0, 6)}...{isYou && <span className="ml-2 text-xs text-indigo-400 font-mono">You</span>}</div>
-                          <div className="text-xs text-slate-500">{player.name}</div>
+                          <div className="text-xs text-slate-500 flex items-center gap-2">{player.name}
+                            <span className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border ${tierStyles[tier]}`}>{tier}</span>
+                          </div>
                         </td>
                         <td className="px-4 py-4 text-slate-400">{player.agents} <span className="text-xs ml-1 bg-slate-800 group-hover:bg-indigo-500/10 group-hover:text-indigo-300 px-2 py-0.5 rounded text-slate-500 transition-colors">{player.strategy}</span></td>
                         <td className="px-4 py-4 text-right">
@@ -786,10 +810,12 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       </tr>
                       );
                     })}
-                    {leaderboard.length === 0 && (
+                    {visibleLeaderboard.length === 0 && (
                       <tr>
                         <td colSpan={6} className="px-4 py-10 text-center text-slate-500 text-sm">
-                          No agents competing yet. Deploy an agent to claim the top spot.
+                          {leaderboard.length === 0
+                            ? 'No agents competing yet. Deploy an agent to claim the top spot.'
+                            : `No players in ${activeTier} tier yet.`}
                         </td>
                       </tr>
                     )}

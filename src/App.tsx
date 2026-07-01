@@ -480,6 +480,12 @@ export default function App() {
               ]
             },
             {
+              title: 'Compete',
+              items: [
+                { id: 'arena', label: 'Agent Arena', icon: Swords },
+              ]
+            },
+            {
               title: 'Swarm Intelligence',
               items: [
                 { id: 'copilot', label: 'Swarm Copilot', icon: Terminal },
@@ -501,7 +507,6 @@ export default function App() {
               items: [
                 { id: 'rooms', label: 'Rooms', icon: Users },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
-                { id: 'arena', label: 'Agent Arena', icon: Swords },
               ]
             },
             {

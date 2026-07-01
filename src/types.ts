@@ -159,6 +159,31 @@ export interface PredictionMarket {
   };
 }
 
+// A competition league in the Agent Arena. The leaderboard is COMPUTED from real
+// agent P&L (never stored/faked), so it stays truthful and consistent across users.
+export interface ArenaLeague {
+  id: string;
+  name: string;
+  creatorId: string;
+  creatorName: string;
+  startBalance: number;
+  durationDays: number;
+  createdAt: number;
+  endsAt: number;
+  risk: 'Low' | 'Medium' | 'High';
+  prize: string;
+  status: 'active' | 'ended';
+}
+
+export interface ArenaMember {
+  id: string;
+  leagueId: string;
+  userId: string;
+  username: string;
+  joinedAt: number;
+  startBalance: number;
+}
+
 export interface DatabaseState {
   users: { [id: string]: User };
   sessions?: { [tokenHash: string]: SessionRecord };
@@ -170,4 +195,6 @@ export interface DatabaseState {
   auditEvents: AuditEvent[];
   graphEvents: GraphEvent[];
   predictionMarkets?: { [id: string]: PredictionMarket };
+  arenaLeagues?: { [id: string]: ArenaLeague };
+  arenaMembers?: ArenaMember[];
 }

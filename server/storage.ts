@@ -46,6 +46,14 @@ export function readDatabase(): DatabaseState {
       }
     };
 
+    const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const defaultLeagues = {
+      "lg_bluechip": { id: "lg_bluechip", name: "Blue Chip Autopilot", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 14, createdAt: now, endsAt: now + 14 * DAY_MS, risk: "Low" as const, prize: "Reputation Badge", status: "active" as const },
+      "lg_degen": { id: "lg_degen", name: "Degen Perps Only", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 7, createdAt: now, endsAt: now + 7 * DAY_MS, risk: "High" as const, prize: "500 USDC Pool", status: "active" as const },
+      "lg_predict": { id: "lg_predict", name: "Prediction Market Masters", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 30, createdAt: now, endsAt: now + 30 * DAY_MS, risk: "Medium" as const, prize: "Winner Takes All", status: "active" as const },
+    };
+
     if (!fs.existsSync(DB_FILE)) {
       const initialState: DatabaseState = {
         users: {},
@@ -57,7 +65,9 @@ export function readDatabase(): DatabaseState {
         vaultClubs: {},
         auditEvents: [],
         graphEvents: [],
-        predictionMarkets: defaultPredictions
+        predictionMarkets: defaultPredictions,
+        arenaLeagues: defaultLeagues,
+        arenaMembers: []
       };
       
       const dir = path.dirname(DB_FILE);
@@ -75,6 +85,12 @@ export function readDatabase(): DatabaseState {
     if (!parsed.predictionMarkets) {
       parsed.predictionMarkets = defaultPredictions;
     }
+    if (!parsed.arenaLeagues) {
+      parsed.arenaLeagues = defaultLeagues;
+    }
+    if (!parsed.arenaMembers) {
+      parsed.arenaMembers = [];
+    }
     return parsed;
   } catch (error) {
     console.error('Error reading database, resetting:', error);
@@ -88,7 +104,9 @@ export function readDatabase(): DatabaseState {
       vaultClubs: {},
       auditEvents: [],
       graphEvents: [],
-      predictionMarkets: {}
+      predictionMarkets: {},
+      arenaLeagues: {},
+      arenaMembers: []
     };
   }
 }

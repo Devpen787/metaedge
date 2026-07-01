@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { execFile } from 'child_process';
 import util from 'util';
 import { generateId, readDatabase, writeDatabase } from './storage.js';
+import { getSpotPrice, arenaSymbol } from './prices.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
@@ -216,6 +217,39 @@ function paperFill(req: any, action: string, summary: string, extra: Record<stri
   };
 }
 
+// Record a wallet paper action as an open Agent Arena position so it moves the
+// user's competition standing. The position's ENTRY is snapshotted from the
+// arena's spot-price universe (not the mm quote) so it marks-to-market
+// consistently. Unpriced tokens (e.g. stablecoins) aren't scored → returns null.
+function recordArenaPosition(
+  userId: string | undefined,
+  input: { assetSymbol: string; side: string; size: number; tradeType: 'token' | 'perp'; leverage?: number }
+): { entry: number; symbol: string } | null {
+  if (!userId) return null;
+  const entry = getSpotPrice(input.assetSymbol);
+  const size = Number(input.size);
+  if (entry == null || !Number.isFinite(size) || size <= 0) return null;
+  const db = readDatabase();
+  if (!db.users[userId]) return null;
+  const symbol = arenaSymbol(input.assetSymbol);
+  db.trades.push({
+    id: 'wtr_' + generateId(),
+    agentId: 'wallet',
+    userId,
+    assetSymbol: symbol,
+    tradeType: input.tradeType,
+    side: input.side as any,
+    size,
+    price: entry,
+    leverage: Number(input.leverage) || 1,
+    status: 'open',
+    source: 'wallet',
+    timestamp: Date.now()
+  });
+  writeDatabase(db);
+  return { entry, symbol };
+}
+
 metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
   const [doctor, auth, init, address, balance, tradingMode, policy] = await Promise.all([
     runMm(['doctor', '--json']),
@@ -415,7 +449,7 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/swap/execute', async (req, res) => {
+metamaskRouter.post('/api/mm/swap/execute', async (req: any, res) => {
   try {
     if (!LIVE_EXECUTION_ENABLED) {
       // Build the paper fill from a real quote so the numbers are honest.
@@ -429,9 +463,12 @@ metamaskRouter.post('/api/mm/swap/execute', async (req, res) => {
       const dec = Number(inner?.destAsset?.decimals);
       const rawOut = inner?.destAssetAmount;
       const expectedOut = rawOut != null && Number.isFinite(dec) ? Number((Number(rawOut) / 10 ** dec).toFixed(8)) : null;
+      // Score it as a long on the destination asset in the arena price universe.
+      const arena = expectedOut ? recordArenaPosition(req.userId, { assetSymbol: to, side: 'buy', size: expectedOut, tradeType: 'token' }) : null;
       return res.json(paperFill(req, 'swap', `${amount} ${from} -> ${to}`, {
         quoteId: quote.quoteId ?? null, bridge: inner.bridgeId ?? null,
-        tokenIn: from, tokenOut: to, amountIn: amount, expectedOut, status: 'paper_filled'
+        tokenIn: from, tokenOut: to, amountIn: amount, expectedOut, status: 'paper_filled',
+        arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
       }));
     }
     const quoteId = validateQuoteId(req.body.quoteId);
@@ -471,7 +508,7 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/perps/open', async (req, res) => {
+metamaskRouter.post('/api/mm/perps/open', async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
@@ -481,13 +518,15 @@ metamaskRouter.post('/api/mm/perps/open', async (req, res) => {
     if (!LIVE_EXECUTION_ENABLED) {
       const q = await runMm(['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
       const quote = unwrap(q) || {};
+      const arena = recordArenaPosition(req.userId, { assetSymbol: symbol, side, size: Number(size), tradeType: 'perp', leverage: Number(leverage) });
       return res.json(paperFill(req, 'perps_open', `${side} ${size} ${symbol} @ ${leverage}x`, {
         venue: 'hyperliquid', symbol, side, size, leverage,
         entryPx: quote.entryPrice ?? null,
         liqPx: quote.estimatedLiquidationPrice ?? null,
         fee: quote.estimatedFee ?? null,
         notional: quote.notional ?? null,
-        status: 'paper_open'
+        status: 'paper_open',
+        arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
       }));
     }
     const result = await runMm(['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);

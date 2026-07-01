@@ -60,6 +60,17 @@ Input validation is enforced in both modes (bad address / missing token → 400)
 `/api/mm/predict/place` simulates in paper and returns a labeled 501 in live —
 rather than pretending. All other execute paths have a real live path.
 
+## Wallet actions feed the competition
+
+A paper swap or perp records an **open Agent Arena position**, so using MetaMask
+capabilities in paper mode actually moves your standing. To stay coherent, the
+position's entry is snapshotted from the arena's **single spot-price universe**
+(the same live prices the Trading Desk uses) — not the mm quote, which lives in a
+different price world — and marked-to-market against that same source. Only
+swaps/perps into priced assets are scored (stablecoin swaps, transfers, and
+prediction placements are not). Wallet-only players appear on the global board
+with strategy `Wallet`; league scoring floors positions opened before you joined.
+
 ## How reachability is verified
 
 - **present** — grep `server/metamask.ts` for the route literal.

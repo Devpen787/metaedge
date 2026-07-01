@@ -1,11 +1,27 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId, sanitizeText } from './storage.js';
-import type { DatabaseState, ArenaLeague } from '../src/types';
+import { getSpotPrice } from './prices.js';
+import type { DatabaseState, ArenaLeague, PaperTrade } from '../src/types';
 
 export const arenaRouter = Router();
 
 const GLOBAL_START_BALANCE = 10000;
 const RISKS = ['Low', 'Medium', 'High'];
+
+// A trade's contribution to competition P&L. Closed trades use their realized
+// pnl (unchanged). Open wallet positions (MetaMask paper actions) are
+// marked-to-market against the arena's single spot-price universe, so using a
+// swap/perp in paper mode moves your standing live and consistently.
+function tradePnl(trade: PaperTrade): number {
+  if (typeof trade.pnl === 'number') return trade.pnl;
+  if (trade.source === 'wallet' && trade.status === 'open') {
+    const cur = getSpotPrice(trade.assetSymbol);
+    if (cur == null) return 0;
+    const dir = trade.side === 'sell' || trade.side === 'short' ? -1 : 1;
+    return (cur - trade.price) * trade.size * dir;
+  }
+  return 0;
+}
 
 function humanizeStrategy(strategy?: string): string {
   switch (strategy) {
@@ -36,9 +52,11 @@ function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<str
     if (!strategy[agent.ownerId]) strategy[agent.ownerId] = humanizeStrategy(agent.strategyType);
   }
   for (const trade of db.trades) {
-    if (!include.has(trade.userId) || typeof trade.pnl !== 'number') continue;
+    if (!include.has(trade.userId)) continue;
     if (trade.timestamp < (sinceByUser[trade.userId] ?? 0)) continue;
-    pnl[trade.userId] = (pnl[trade.userId] || 0) + trade.pnl;
+    pnl[trade.userId] = (pnl[trade.userId] || 0) + tradePnl(trade);
+    // Label a wallet-only competitor (no agent) so the board reads sensibly.
+    if (trade.source === 'wallet' && !strategy[trade.userId]) strategy[trade.userId] = 'Wallet';
   }
   return { pnl, agentCount, strategy };
 }
@@ -51,7 +69,11 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
 
   let entries: { userId: string; username: string; startBalance: number; since: number }[];
   if (leagueId === 'global') {
+    // Anyone competing: agent owners plus users with a wallet paper position.
     const owners = new Set(Object.values(db.agents).map((a) => a.ownerId));
+    for (const t of db.trades) {
+      if (t.source === 'wallet') owners.add(t.userId);
+    }
     entries = [...owners].map((userId) => ({
       userId,
       username: db.users[userId]?.username || 'Anon',

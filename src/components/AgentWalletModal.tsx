@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, KeyRound, Send, Search, Play, Zap, FlaskConical } from 'lucide-react';
+import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, KeyRound, Send, Search, Play, Zap, FlaskConical, Trophy } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
 
@@ -106,6 +106,18 @@ function ExecuteButton({ label, paperMode, loading, onRun }: { label: string; pa
       {loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : paperMode ? <Play className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5" />}
       {paperMode ? `Simulate ${label} (paper)` : `${label} — LIVE`}
     </button>
+  );
+}
+
+// Payoff for the competition loop: confirm a paper action moved the user's
+// Agent Arena standing (only swaps/perps into priced assets are scored).
+function ArenaNote({ data }: { data: any }) {
+  if (!data?.arenaScored) return null;
+  const entry = typeof data.arenaEntry === 'number' ? data.arenaEntry.toLocaleString('en-US', { style: 'currency', currency: 'USD' }) : data.arenaEntry;
+  return (
+    <div className="text-[11px] text-emerald-400 flex items-center gap-1.5 mt-1">
+      <Trophy className="w-3 h-3" /> Counts toward your Agent Arena standing — {data.arenaSymbol} position opened at {entry}, marked live.
+    </div>
   );
 }
 
@@ -468,6 +480,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                   <Preview error={swapQuote.error} data={swapQuote.data} empty="Enter a pair and fetch a live route + fee preview." />
                   <ExecuteButton label="Execute swap" paperMode={paperMode} loading={execLoading === 'swap'} onRun={() => runExec('swap', '/api/mm/swap/execute', swapForm)} />
                   {execResult.swap && <Preview error={execResult.swap.error} data={execResult.swap.data} />}
+                  {execResult.swap?.data && <ArenaNote data={execResult.swap.data} />}
                 </div>
               </div>
             )}
@@ -502,6 +515,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                   <Preview error={perpsQuote.error} data={perpsQuote.data} empty="Preview entry, fees, and liquidation before opening." />
                   <ExecuteButton label="Open position" paperMode={paperMode} loading={execLoading === 'perps'} onRun={() => runExec('perps', '/api/mm/perps/open', perpsForm)} />
                   {execResult.perps && <Preview error={execResult.perps.error} data={execResult.perps.data} />}
+                  {execResult.perps?.data && <ArenaNote data={execResult.perps.data} />}
                 </div>
               </div>
             )}

@@ -63,6 +63,25 @@ setInterval(async () => {
   });
 }, 3000);
 
+// Wrapped/native aliases map onto the arena's spot price universe so a swap into
+// WETH is scored as ETH, etc. Anything not here (e.g. stablecoins) has no spot
+// price and is not scored in the arena.
+export const SYMBOL_ALIAS: Record<string, string> = {
+  WETH: 'ETH', WBTC: 'BTC', WSOL: 'SOL', WMATIC: 'MATIC', WBNB: 'BNB'
+};
+
+export function arenaSymbol(sym: string): string {
+  const s = (sym || '').toUpperCase();
+  return SYMBOL_ALIAS[s] || s;
+}
+
+// The single, consistent price universe the Agent Arena marks positions against.
+// Returns null for tokens we don't price (so they simply aren't scored).
+export function getSpotPrice(sym: string): number | null {
+  const entry = serverPrices[arenaSymbol(sym)];
+  return entry ? entry.price : null;
+}
+
 // --- PRICES ENDPOINT ---
 pricesRouter.get('/api/prices', (req, res) => {
   res.json({ success: true, prices: serverPrices });

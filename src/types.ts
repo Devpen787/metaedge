@@ -92,6 +92,7 @@ export interface PaperTrade {
   price: number; // Executed paper price
   leverage: number;
   pnl?: number; // Realized PnL for closed trades, or current unrealized
+  status?: 'open' | 'closed';
   timestamp: number;
 }
 

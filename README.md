@@ -5,6 +5,11 @@ MetaEdge is an advanced, AI-powered trading interface designed for managing auto
 ## Features
 
 - **Agent Workshop**: Deploy, configure, and manage intelligent AI trading agents. Set custom rules, risk tolerance, and asset pairs for autonomous market execution.
+- **Agent Arena**: A competitive testing ground for agents. Test your strategies risk-free, enter trading leagues, and climb global leaderboards.
+- **Swarm Copilot**: An intelligent AI assistant. Use natural language to query market insights, analyze tokens, and understand complex DeFi mechanics.
+- **Intent Solver**: A high-level text-to-strategy execution engine. Type your intent (e.g., "Deploy an arb bot on ETH/USDC with $5k") and watch the AI compile it into actionable parameters.
+- **Platform Analytics**: Global data dashboard tracking user adoption, simulated volumes, agent deployments, and real-time platform events.
+- **Command Palette (Cmd+K)**: Seamless global navigation and search overlay to switch contexts quickly.
 - **MetaMask Agent Wallet Integration**: Full support for real on-chain interactions via the `@metamask/agentic-cli`. Authenticate with your wallet, check real-time Base network balances, and execute on-chain token transfers securely from within the MetaEdge interface.
 - **Trading Hub**: A high-performance dashboard with live, simulated market charting, integrated trading volume metrics, and order execution for top assets (BTC, ETH, SOL, LINK, DOGE, etc.).
 - **Prediction Markets**: Engage in decentralized speculation and forecasting with real-time odds, liquidity metrics, and custom market creation.

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Info, Users, Bot, ArrowRightLeft, TrendingUp, Coins, Landmark, Network, Award, X, Database } from 'lucide-react';
+import { Search, Info, Users, Bot, ArrowRightLeft, TrendingUp, Coins, Landmark, Network, Award, X, Database, Swords, BarChart2, Cpu, Terminal } from 'lucide-react';
 
 interface CommandPaletteProps {
   isOpen: boolean;
@@ -22,6 +22,11 @@ export default function CommandPalette({ isOpen, onClose, onNavigate, proModeEna
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Info, desc: 'Overview & Recent Audits' },
+    { id: 'arena', label: 'Agent Arena', icon: Swords, desc: 'Compete in trading leagues' },
+    { id: 'analytics', label: 'Platform Data', icon: BarChart2, desc: 'Usage and platform analytics' },
+    { id: 'copilot', label: 'Swarm Copilot', icon: Search, desc: 'Natural language insights' },
+    { id: 'intent', label: 'Intent Solver', icon: Terminal, desc: 'Execute complex strategies via text' },
+    { id: 'autopilot', label: 'Autopilot', icon: Cpu, desc: 'Global strategy automation' },
     { id: 'rooms', label: 'Rooms', icon: Users, desc: 'Social trading rooms' },
     { id: 'agents', label: 'Agents', icon: Bot, desc: 'AI agent workshop' },
     { id: 'trading', label: 'Trading Desk', icon: ArrowRightLeft, desc: 'Execute paper trades' },

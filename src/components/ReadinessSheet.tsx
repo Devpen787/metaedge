@@ -266,7 +266,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               className="mt-1 w-4 h-4 rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 outline-none"
             />
             <span className="text-[11px] text-slate-400 font-mono leading-relaxed">
-              I acknowledge that I am testing simulated copy trading in a paper environment. I will not put actual funds in jeopardy until code safety audits are fully completed.
+              I acknowledge that I am testing simulated copy trading in a paper environment. I will not put actual funds in jeopardy until code safety audits are completed.
             </span>
           </label>
 
@@ -278,7 +278,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               className="mt-1 w-4 h-4 rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 outline-none"
             />
             <span className="text-[11px] text-slate-400 font-mono leading-relaxed">
-              I accept that vault clubs are paper/read-only coordination spaces and do not involve pooling, custodial trust, or guaranteed yields.
+              I accept that vault clubs are paper/read-only coordination spaces and do not involve pooling, custodial trust, or implied yields.
             </span>
           </label>
         </div>

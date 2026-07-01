@@ -79,19 +79,19 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
         {selectedMarket ? (
           <form onSubmit={handlePlaceBet} className="space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-indigo-400" />
+              <h3 className="text-sm font-bold text-slate-400 mb-4 flex items-center gap-1.5">
+                <Coins className="w-5 h-5 text-indigo-400" />
                 Prediction Pool Terminal
               </h3>
-              <span className="text-[10px] font-mono text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 uppercase">
+              <span className="text-xs font-medium text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20 uppercase">
                 {selectedMarket.category}
               </span>
             </div>
 
             {/* Selected market header */}
             <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-900">
-              <h4 className="text-xs font-bold text-white font-mono leading-relaxed">{selectedMarket.question}</h4>
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-4">
+              <h4 className="text-base font-bold text-white">{selectedMarket.question}</h4>
+              <div className="flex items-center justify-between text-xs text-slate-500 mt-4 font-mono">
                 <span>Total Volume: ${selectedMarket.volume?.toLocaleString()}</span>
                 <span>Ends: {new Date(selectedMarket.endTime).toLocaleDateString()}</span>
               </div>
@@ -121,7 +121,7 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
 
             {/* Bet Input size */}
             <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+              <div className="flex justify-between items-center text-sm font-medium text-slate-400">
                 <span>Collateral Amount</span>
                 <span>Balance: ${currentUser.paperBalance?.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
               </div>
@@ -141,7 +141,7 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
             </div>
 
             {/* Expected shares */}
-            <div className="bg-slate-950/20 p-3 rounded-xl border border-slate-900/60 font-mono text-[11px] space-y-1 text-slate-400">
+            <div className="bg-slate-950/20 p-3 rounded-xl border border-slate-900/60 text-sm space-y-1 text-slate-400 font-mono">
               <div className="flex justify-between">
                 <span>Est. Shares Purchased:</span>
                 <span className="text-white font-bold">
@@ -164,18 +164,18 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
               {submitting ? 'Streaming Bet Contract...' : 'CONFIRM SIMULATED POSITION'}
             </button>
 
-            {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
-            {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
+            {error && <p className="text-sm text-rose-400 text-center">{error}</p>}
+            {success && <p className="text-sm text-emerald-400 text-center">{success}</p>}
 
             {/* Test resolution panel for admins/devs */}
             <div className="pt-4 border-t border-slate-800 mt-4 space-y-2.5">
-              <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Simulated Resolution Trigger</h5>
+              <h5 className="text-xs font-medium text-slate-500 uppercase tracking-wider">Simulated Resolution Trigger</h5>
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={() => handleResolveMarket(selectedMarket.id, 'yes')}
                   disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg cursor-pointer transition-all"
+                  className="flex-1 py-1.5 text-xs font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg cursor-pointer transition-all uppercase tracking-wider"
                 >
                   Resolve YES
                 </button>
@@ -183,7 +183,7 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
                   type="button"
                   onClick={() => handleResolveMarket(selectedMarket.id, 'no')}
                   disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg cursor-pointer transition-all"
+                  className="flex-1 py-1.5 text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg cursor-pointer transition-all uppercase tracking-wider"
                 >
                   Resolve NO
                 </button>
@@ -196,7 +196,7 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
           </div>
         )}
 
-        <div className="text-[10px] font-mono text-slate-500 bg-slate-950/20 p-3 rounded-xl border border-slate-900/30 mt-4 text-center">
+        <div className="text-xs text-slate-500 bg-slate-950/20 p-3 rounded-xl border border-slate-900/30 mt-4 text-center">
           Decentralized pool pricing derived from current liquidity allocations.
         </div>
       </div>
@@ -234,14 +234,14 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
                   >
                     <div className="flex justify-between items-start gap-4 mb-4">
                       <h5 className={`font-bold leading-relaxed text-sm ${isSelected ? 'text-white' : 'text-slate-200'}`}>{market.question}</h5>
-                      <span className="text-[9px] bg-slate-900/80 px-2.5 py-1 rounded-md text-slate-400 uppercase tracking-wider shrink-0 border border-slate-800">
+                      <span className="text-xs font-medium bg-slate-900/80 px-2.5 py-1 rounded-md text-slate-400 uppercase shrink-0 border border-slate-800">
                         {market.category}
                       </span>
                     </div>
 
                     {/* Bar visual odds */}
                     <div className="space-y-2.5">
-                      <div className="flex justify-between text-[11px] font-bold">
+                      <div className="flex justify-between text-xs font-bold font-mono">
                         <span className="text-emerald-400">YES {yesPercent.toFixed(0)}%</span>
                         <span className="text-rose-400">NO {(100 - yesPercent).toFixed(0)}%</span>
                       </div>
@@ -251,7 +251,7 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
                       </div>
                     </div>
 
-                    <div className="flex justify-between items-center text-[10px] text-slate-500 mt-5 pt-3 border-t border-slate-800/50">
+                    <div className="flex justify-between items-center text-xs text-slate-500 mt-5 pt-3 border-t border-slate-800/50">
                       <div className="flex flex-col gap-0.5">
                         <span className="text-slate-600 uppercase tracking-wider">Volume</span>
                         <span className="text-slate-300 font-bold">${market.volume?.toLocaleString()}</span>
@@ -287,10 +287,10 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
                   <div key={market.id} className="bg-slate-950/40 border border-slate-800/60 p-4 rounded-xl font-mono text-xs flex justify-between items-center transition-all hover:bg-slate-950/60">
                     <div>
                       <div className="text-slate-300 font-bold line-clamp-1">{market.question}</div>
-                      <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider">Resolved: {new Date(market.endTime).toLocaleDateString()}</div>
+                      <div className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-mono">Resolved: {new Date(market.endTime).toLocaleDateString()}</div>
                     </div>
                     <div>
-                      <span className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider shadow-inner ${
+                      <span className={`px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider shadow-inner ${
                         isWinnerYes ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                       }`}>
                         Winner: {market.outcome?.toUpperCase()}

@@ -174,7 +174,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
                 <div className={`space-y-3 ${msg.role === 'user' ? 'items-end flex flex-col' : ''}`}>
                   {msg.thoughtProcess && (
                     <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 w-fit space-y-1.5">
-                      <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 font-bold mb-2">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-slate-500 font-bold mb-2">
                         <Activity className="w-3 h-3" /> Agentic Consensus
                       </div>
                       {msg.thoughtProcess.map((thought, i) => (
@@ -247,7 +247,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
                 </div>
                 <div className="space-y-3 w-full">
                   <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3 w-fit space-y-2 min-w-[200px]">
-                    <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-indigo-400 font-bold mb-2">
+                    <div className="flex items-center gap-2 text-xs uppercase tracking-widest text-indigo-400 font-bold mb-2">
                       <Activity className="w-3 h-3 animate-spin" /> Synthesizing Intent...
                     </div>
                     <div className="h-2 w-3/4 bg-indigo-500/20 rounded animate-pulse" />
@@ -271,7 +271,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
         <div className="p-4 bg-slate-900 border-t border-slate-800 relative z-10 flex flex-col gap-3">
           {messages.length <= 2 && !isTyping && (
             <div className="flex flex-wrap gap-2 items-center mb-1">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1 mr-2">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1 mr-2">
                 <Sparkles className="w-3 h-3 text-indigo-400"/> Suggestions
               </span>
               {[

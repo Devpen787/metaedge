@@ -39,7 +39,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 
     return (
       <div className="bg-slate-950/95 border border-slate-800 p-3.5 rounded-xl shadow-2xl font-mono text-xs space-y-2 backdrop-blur-md">
-        <div className="text-slate-500 text-[10px] font-bold tracking-tight">
+        <div className="text-slate-500 text-xs font-bold tracking-tight">
           {data.date} at {data.time}
         </div>
         <div className="flex justify-between items-center gap-6">
@@ -50,16 +50,16 @@ const CustomTooltip = ({ active, payload }: any) => {
         </div>
         {data.Event && (
           <div className="flex justify-between items-center gap-6 border-t border-slate-900/80 pt-1.5 mt-1">
-            <span className="text-slate-500 text-[10px] uppercase tracking-wider">Trigger Event:</span>
-            <span className="text-slate-300 font-semibold text-[10px] max-w-[140px] truncate text-right">
+            <span className="text-slate-500 text-xs uppercase tracking-wider">Trigger Event:</span>
+            <span className="text-slate-300 font-semibold text-xs max-w-[140px] truncate text-right">
               {data.Event}
             </span>
           </div>
         )}
         {data.Amount !== 0 && (
           <div className="flex justify-between items-center gap-6">
-            <span className="text-slate-500 text-[10px] uppercase tracking-wider">Simulated Gain/Loss:</span>
-            <span className={`font-extrabold text-[10px] ${isImpactPositive ? 'text-emerald-400' : isImpactNegative ? 'text-rose-400' : 'text-slate-400'}`}>
+            <span className="text-slate-500 text-xs uppercase tracking-wider">Simulated Gain/Loss:</span>
+            <span className={`font-extrabold text-xs ${isImpactPositive ? 'text-emerald-400' : isImpactNegative ? 'text-rose-400' : 'text-slate-400'}`}>
               {isImpactPositive ? '+' : ''}{data.Amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </span>
           </div>
@@ -228,7 +228,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
         <div className="col-span-1 md:col-span-8 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-8 flex flex-col justify-between relative overflow-hidden shadow-2xl group transition-all hover:bg-slate-900/80">
           
           <div className="absolute top-6 right-6">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded text-emerald-400 text-xs font-bold uppercase tracking-wider">
               Paper Trading
             </div>
           </div>
@@ -242,7 +242,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               <NumberTicker value={user.paperBalance} decimals={2} />
             </h2>
             <div className="flex items-center gap-3 mt-4">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-mono rounded-lg shadow-sm font-bold uppercase tracking-widest">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-xs font-mono rounded-lg shadow-sm font-bold uppercase tracking-widest">
                 <Flame className="w-3 h-3" /> Yield Active
               </span>
               <span className="text-xs text-slate-500">Default Settlement Currency</span>
@@ -262,7 +262,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               {faucetLoading ? 'Minting...' : `Claim $10,000 Faucet (${user.faucetClaimedCount}/10)`}
             </button>
             {faucetError && (
-              <p className="text-[10px] text-rose-400 mt-2 font-mono">{faucetError}</p>
+              <p className="text-xs text-rose-400 mt-2 font-mono">{faucetError}</p>
             )}
           </div>
         </div>
@@ -307,7 +307,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
                   <Shield className="w-4 h-4 text-amber-400" />
                   Strict Validation
                 </span>
-                <span className="bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] text-amber-400 uppercase tracking-wider font-bold">Active</span>
+                <span className="bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded text-xs text-amber-400 uppercase tracking-wider font-bold">Active</span>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-700/50 flex items-center justify-between gap-1.5 leading-tight">
@@ -349,7 +349,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <Search className="w-6 h-6 text-indigo-400" />
           </div>
           <span className="text-sm font-bold text-slate-200">Command Palette</span>
-          <span className="text-[10px] font-mono text-slate-500">Cmd+K</span>
+          <span className="text-xs font-mono text-slate-500">Cmd+K</span>
         </button>
         <button 
           onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'arena' }))}
@@ -359,7 +359,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <Swords className="w-6 h-6 text-yellow-500" />
           </div>
           <span className="text-sm font-bold text-slate-200">Agent Arena</span>
-          <span className="text-[10px] font-mono text-slate-500">Compete & Earn</span>
+          <span className="text-xs font-mono text-slate-500">Compete & Earn</span>
         </button>
         <button 
           onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'intent' }))}
@@ -369,7 +369,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <Terminal className="w-6 h-6 text-emerald-400" />
           </div>
           <span className="text-sm font-bold text-slate-200">Intent Solver</span>
-          <span className="text-[10px] font-mono text-slate-500">Text to Strategy</span>
+          <span className="text-xs font-mono text-slate-500">Text to Strategy</span>
         </button>
         <button 
           onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'analytics' }))}
@@ -379,7 +379,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <BarChart2 className="w-6 h-6 text-blue-400" />
           </div>
           <span className="text-sm font-bold text-slate-200">Platform Data</span>
-          <span className="text-[10px] font-mono text-slate-500">Global Metrics</span>
+          <span className="text-xs font-mono text-slate-500">Global Metrics</span>
         </button>
       </div>
 
@@ -399,19 +399,19 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
           
           <div className="flex flex-wrap gap-4 font-mono text-xs">
             <div className="bg-slate-950/60 border border-slate-800 rounded-2xl px-5 py-3 shadow-inner">
-              <span className="text-slate-500 text-[10px] uppercase tracking-wider">Net Profit</span>
+              <span className="text-slate-500 text-xs uppercase tracking-wider">Net Profit</span>
               <div className={`text-lg font-bold mt-1 ${netPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {netPnL >= 0 ? '+' : '-'}$<NumberTicker value={Math.abs(netPnL)} decimals={2} />
               </div>
             </div>
             <div className="bg-slate-950/60 border border-slate-800 rounded-2xl px-5 py-3 shadow-inner">
-              <span className="text-slate-500 text-[10px] uppercase tracking-wider">Win Rate</span>
+              <span className="text-slate-500 text-xs uppercase tracking-wider">Win Rate</span>
               <div className="text-indigo-400 text-lg font-bold mt-1">
                 <NumberTicker value={winRate} decimals={1} suffix="%" />
               </div>
             </div>
             <div className="bg-slate-950/60 border border-slate-800 rounded-2xl px-5 py-3 shadow-inner">
-              <span className="text-slate-500 text-[10px] uppercase tracking-wider">Total trades</span>
+              <span className="text-slate-500 text-xs uppercase tracking-wider">Total trades</span>
               <div className="text-white text-lg font-bold mt-1">
                 <NumberTicker value={totalTradesCount} />
               </div>
@@ -491,14 +491,14 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="bg-slate-800/80 text-indigo-300 text-[10px] font-mono px-2.5 py-0.5 rounded shadow-inner border border-slate-700/50">
+                    <span className="bg-slate-800/80 text-indigo-300 text-xs font-mono px-2.5 py-0.5 rounded shadow-inner border border-slate-700/50">
                       {log.action}
                     </span>
                     <span className="text-slate-400 text-xs font-mono">@{log.username}</span>
                   </div>
                   <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">{log.details}</p>
                 </div>
-                <span className="text-slate-500 text-[10px] font-mono whitespace-nowrap bg-slate-900 px-2 py-1 rounded-md border border-slate-800">
+                <span className="text-slate-500 text-xs font-mono whitespace-nowrap bg-slate-900 px-2 py-1 rounded-md border border-slate-800">
                   {new Date(log.timestamp).toLocaleTimeString()}
                 </span>
               </motion.div>

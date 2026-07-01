@@ -109,7 +109,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
             )}
           </div>
 
-          <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 z-10 border-t border-slate-900 pt-2">
+          <div className="text-xs text-slate-500 font-mono flex items-center gap-1.5 z-10 border-t border-slate-900 pt-2">
             <HelpCircle className="w-3.5 h-3.5" />
             Click on any relation node above to inspect its security verifications and owner relationships.
           </div>
@@ -123,7 +123,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
                 <span className="text-xs font-mono bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded">
                   {selectedNode.label}
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">ID: {selectedNode.id}</span>
+                <span className="text-xs text-slate-500 font-mono">ID: {selectedNode.id}</span>
               </div>
 
               <div>
@@ -140,16 +140,16 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
               </div>
 
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/40 space-y-2">
-                <div className="text-[11px] font-mono text-slate-300 font-semibold flex items-center gap-1.5">
+                <div className="text-sm font-mono text-slate-300 font-semibold flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-indigo-400" />
                   Sovereignty Verification
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
+                <p className="text-sm text-slate-400 leading-relaxed font-mono">
                   This {selectedNode.label.toLowerCase()} is bound to the verified owner session. It is isolated from other room participants and operates within client-side execution boundaries.
                 </p>
               </div>
 
-              <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1 bg-slate-900/20 p-2 rounded">
+              <div className="text-sm font-mono text-slate-500 flex items-center gap-1 bg-slate-900/20 p-2 rounded">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
                 No relational orphan writes detected.
               </div>
@@ -159,7 +159,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
               <ShieldAlert className="w-8 h-8 text-indigo-500/40" />
               <div>
                 <p className="text-xs font-mono font-medium text-slate-400">Security Sandbox Verified</p>
-                <p className="text-[11px] text-slate-500 mt-1 font-mono">
+                <p className="text-sm text-slate-500 mt-1 font-mono">
                   No active warnings. Every agent strategy listed in MetaEdge V1 corresponds to genuine peer-reviewed code.
                 </p>
               </div>

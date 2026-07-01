@@ -15,7 +15,7 @@ import { graphRouter } from './server/graph.js';
 import { metamaskRouter } from './server/metamask.js';
 import { quantRouter } from './server/quant.js';
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const app = express();
 app.use(express.json());

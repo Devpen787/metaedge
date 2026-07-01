@@ -494,9 +494,9 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-              MetaEdge <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V1</span>
+              MetaEdge <span className="text-xs bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V1</span>
             </h1>
-            <span className="text-[9px] text-slate-500 font-mono block">Autonomous Social Trade</span>
+            <span className="text-xs text-slate-500 font-mono block">Autonomous Social Trade</span>
           </div>
         </div>
 
@@ -544,7 +544,7 @@ export default function App() {
             }
           ].map((group, idx) => (
             <div key={idx}>
-              <h3 className="text-[10px] font-mono text-slate-500 font-bold uppercase tracking-wider mb-2 px-2">
+              <h3 className="text-xs font-mono text-slate-500 font-bold uppercase tracking-wider mb-2 px-2">
                 {group.title}
               </h3>
               <div className="space-y-1">
@@ -580,7 +580,7 @@ export default function App() {
             <div className="flex items-center gap-2 text-xs font-mono">
               <Command className="w-3.5 h-3.5" /> Search
             </div>
-            <span className="text-[10px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">⌘K</span>
+            <span className="text-xs font-mono bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">⌘K</span>
           </button>
           
           <button
@@ -655,7 +655,7 @@ export default function App() {
                     className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full"
                   >
                     <Loader2 className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
-                    <span className="text-[10px] font-mono text-indigo-300 font-bold uppercase tracking-wider">
+                    <span className="text-xs font-mono text-indigo-300 font-bold uppercase tracking-wider">
                       {agentProcessingAction || 'AI Processing...'}
                     </span>
                   </motion.div>
@@ -704,7 +704,7 @@ export default function App() {
                 <Wallet className="w-3.5 h-3.5 text-orange-500" />
                 <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
               </button>
-              <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Current Authority:</span>
+              <span className="text-sm font-mono text-slate-400 hidden lg:inline">Current Authority:</span>
               <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
                 <button
                   onClick={() => setPaperLiveMode('paper')}
@@ -869,38 +869,19 @@ export default function App() {
         {/* Footer */}
         <footer className="border-t border-slate-900/60 py-6 px-4 md:px-8 bg-slate-950/20 text-center text-xs text-slate-500 font-mono relative z-10">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5 text-[11px]">
+            <span className="flex items-center gap-1.5 text-sm">
               <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
               MetaEdge V1 Active
             </span>
-            <span className="text-[10px]">
+            <span className="text-xs">
               Platform operates in paper trading mode. No real assets are custodied.
             </span>
           </div>
         </footer>
       </div>
 
-      {/* Global Autopilot Active Indicator */}
+      {/* Global Autopilot Active Indicator (Removed for cleanliness) */}
       <AnimatePresence>
-        {isGlobalAutopilotEnabled && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none"
-          >
-            <div className="bg-slate-900/90 backdrop-blur-md border border-blue-500/30 p-3 rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-3">
-              <div className="relative">
-                <Cpu className="w-5 h-5 text-blue-400" />
-                <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white font-mono tracking-tight">AUTOPILOT GLOBAL</p>
-                <p className="text-[10px] text-blue-300/80 font-mono">Running Swarm Background Directives</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* Safety Compliance Readiness Sheet */}

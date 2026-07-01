@@ -111,7 +111,7 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
             
             <div className="space-y-4">
               <div>
-                <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-mono">Allocated Capital (USDC)</label>
+                <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1 font-mono">Allocated Capital (USDC)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">$</span>
                   <input 
@@ -125,7 +125,7 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
               </div>
 
               <div>
-                <label className="block text-[10px] text-slate-500 uppercase tracking-wider mb-1 font-mono">Risk Profile</label>
+                <label className="block text-xs text-slate-500 uppercase tracking-wider mb-1 font-mono">Risk Profile</label>
                 <div className="grid grid-cols-3 gap-2">
                   {['low', 'medium', 'high'].map(risk => (
                     <button
@@ -217,7 +217,7 @@ export default function AgenticAutopilot({ user }: AgenticAutopilotProps) {
             </div>
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 shadow-inner space-y-3">
-              <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Current Allocations</div>
+              <div className="text-xs font-mono text-slate-500 uppercase tracking-wider">Current Allocations</div>
               <div className="flex justify-between items-center text-xs font-mono">
                 <span className="text-slate-400">Spot (Hedge)</span>
                 <span className="text-slate-200">50%</span>

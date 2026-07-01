@@ -52,15 +52,15 @@ export default function SpecsCatalog() {
               <div key={us.id} className="bg-slate-950/40 border border-slate-900/80 rounded-xl p-4 flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="text-[10px] font-bold font-mono text-indigo-400 bg-indigo-500/5 px-2 py-0.5 rounded border border-indigo-500/10">
+                    <span className="text-xs font-bold font-mono text-indigo-400 bg-indigo-500/5 px-2 py-0.5 rounded border border-indigo-500/10">
                       {us.id}
                     </span>
-                    <span className={`text-[9px] font-mono font-extrabold px-2 py-0.5 rounded border ${us.color}`}>
+                    <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${us.color}`}>
                       {us.status}
                     </span>
                   </div>
-                  <h5 className="text-xs font-bold text-slate-200 mt-1 font-mono">{us.name}</h5>
-                  <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed font-mono">{us.desc}</p>
+                  <h5 className="text-sm font-bold text-slate-200 mt-1 font-mono">{us.name}</h5>
+                  <p className="text-sm text-slate-400 mt-1.5 leading-relaxed font-mono">{us.desc}</p>
                 </div>
               </div>
             ))}
@@ -79,10 +79,10 @@ export default function SpecsCatalog() {
                 <div key={i} className="bg-slate-950/20 border border-slate-900/60 rounded-xl p-3 flex justify-between items-start font-mono text-xs">
                   <div>
                     <div className="text-slate-400 font-bold">{token.name}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">{token.desc}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">{token.desc}</div>
                   </div>
                   <div className="text-right">
-                    <span className="bg-slate-900 text-slate-300 text-[10px] px-2 py-1 rounded font-bold border border-slate-800">
+                    <span className="bg-slate-900 text-slate-300 text-xs px-2 py-1 rounded font-bold border border-slate-800">
                       {token.value}
                     </span>
                   </div>
@@ -102,9 +102,9 @@ export default function SpecsCatalog() {
                 <div key={i} className="bg-slate-950/20 border border-slate-900/60 rounded-xl p-3 flex flex-col justify-center font-mono text-xs">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-slate-300 font-bold">{ft.feat}</span>
-                    <span className="text-indigo-400 text-[10px] uppercase font-bold">{ft.tool}</span>
+                    <span className="text-indigo-400 text-xs uppercase font-bold">{ft.tool}</span>
                   </div>
-                  <div className="text-[10px] text-slate-500 leading-normal">{ft.tech}</div>
+                  <div className="text-xs text-slate-500 leading-normal">{ft.tech}</div>
                 </div>
               ))}
             </div>

@@ -552,7 +552,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                                <div>
                                  <h4 className="font-bold text-white flex items-center gap-2">
                                    {agent.name}
-                                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[10px] uppercase">
+                                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-xs font-medium uppercase">
                                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /> Live
                                    </span>
                                  </h4>
@@ -578,11 +578,11 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                             
                             <div className="grid grid-cols-2 gap-4 bg-slate-950 rounded-xl p-3 relative z-10">
                               <div>
-                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Allocated</div>
+                                <div className="text-xs text-slate-500 font-medium uppercase mb-1">Allocated</div>
                                 <div className="font-mono text-sm">${agent.allocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                               </div>
                               <div>
-                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Current Value</div>
+                                <div className="text-xs text-slate-500 font-medium uppercase mb-1">Current Value</div>
                                 <div className={`font-mono text-sm font-bold ${agent.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                   <AnimatedValue value={agent.currentValue} formatter={v => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
                                 </div>
@@ -727,7 +727,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                   <div key={league.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-indigo-500/30 transition-all group flex flex-col">
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">{league.name}</h3>
-                      <span className="text-[10px] uppercase font-mono px-2 py-1 rounded bg-slate-800 text-slate-400">
+                      <span className="text-xs uppercase font-medium px-2 py-1 rounded bg-slate-800 text-slate-400">
                         {league.risk} Risk
                       </span>
                     </div>
@@ -935,7 +935,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       >
                         <div className="flex justify-between items-start mb-1">
                           <div className="font-bold text-white">{agent.name}</div>
-                          <div className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">{agent.risk} Risk</div>
+                          <div className="text-xs uppercase font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-400">{agent.risk} Risk</div>
                         </div>
                         <div className="text-xs text-slate-500 font-mono mb-2">{agent.type}</div>
                         <p className="text-sm text-slate-400 leading-relaxed">{agent.desc}</p>

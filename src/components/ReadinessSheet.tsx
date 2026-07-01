@@ -100,20 +100,20 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               </div>
               <div>
                 <p className="text-xs font-mono font-medium text-slate-200">MetaMask Extension</p>
-                <p className="text-[10px] text-slate-500 font-mono">
+                <p className="text-xs text-slate-500">
                   {walletState.isInstalled ? 'Detected' : 'Not detected in this browser'}
                 </p>
               </div>
             </div>
             {walletState.isInstalled ? (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
                 <Check className="w-3 h-3" /> Ready
               </span>
             ) : (
               <button
                 onClick={checkMetaMask}
                 disabled={checkingWallet}
-                className="text-[10px] font-mono bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-all cursor-pointer"
+                className="text-xs font-medium bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-500/30 transition-all cursor-pointer"
               >
                 {checkingWallet ? 'Scanning...' : 'Scan Again'}
               </button>
@@ -128,20 +128,20 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               </div>
               <div>
                 <p className="text-xs font-mono font-medium text-slate-200">Sovereign Wallet Bound</p>
-                <p className="text-[10px] text-slate-500 font-mono">
+                <p className="text-xs text-slate-500">
                   {walletState.isConnected ? `Connected: ${walletState.address?.slice(0, 6)}...${walletState.address?.slice(-4)}` : 'Disconnected'}
                 </p>
               </div>
             </div>
             {walletState.isConnected ? (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
+              <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
                 <Check className="w-3 h-3" /> Connected
               </span>
             ) : (
               <button
                 onClick={triggerConnect}
                 disabled={!walletState.isInstalled}
-                className="text-[10px] font-mono bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-lg shadow-indigo-500/10 transition-all disabled:opacity-50 cursor-pointer"
+                className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg shadow-lg shadow-indigo-500/10 transition-all disabled:opacity-50 cursor-pointer"
               >
                 Connect Wallet
               </button>
@@ -156,12 +156,12 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               </div>
               <div>
                 <p className="text-xs font-mono font-medium text-slate-200">Global Smart-Contract Lock</p>
-                <p className="text-[10px] text-slate-500 font-mono">
+                <p className="text-xs text-slate-500">
                   Canary audited code verification required.
                 </p>
               </div>
             </div>
-            <span className="flex items-center gap-1 text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
+            <span className="flex items-center gap-1 text-xs font-medium text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">
               Locked
             </span>
           </div>
@@ -200,7 +200,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               onChange={(e) => setSafetyCleared(e.target.checked)}
               className="mt-1 w-4 h-4 rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 outline-none"
             />
-            <span className="text-[11px] text-slate-400 font-mono leading-relaxed">
+            <span className="text-sm text-slate-400 leading-relaxed">
               I acknowledge that I am testing simulated copy trading in a paper environment. I will not put actual funds in jeopardy until code safety audits are completed.
             </span>
           </label>
@@ -212,7 +212,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
               onChange={(e) => setPolicyAccepted(e.target.checked)}
               className="mt-1 w-4 h-4 rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-indigo-500 outline-none"
             />
-            <span className="text-[11px] text-slate-400 font-mono leading-relaxed">
+            <span className="text-sm text-slate-400 leading-relaxed">
               I accept that vault clubs are paper/read-only coordination spaces and do not involve pooling, custodial trust, or implied yields.
             </span>
           </label>

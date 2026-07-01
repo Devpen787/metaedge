@@ -207,25 +207,22 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 shadow-inner">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-2">Status</div>
+                    <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">Status</div>
                     <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                      </span>
+                      <ShieldCheck className="w-4 h-4" />
                       Connected to Agentic CLI
                     </div>
                   </div>
                   
                   <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 shadow-inner">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-2">Network</div>
+                    <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">Network</div>
                     <div className="text-sm font-bold text-white">Base (Chain ID 8453)</div>
                   </div>
                 </div>
 
                 <div className="bg-slate-950/50 rounded-2xl p-4 border border-slate-800 shadow-inner">
                   <div className="flex justify-between items-center mb-3">
-                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Wallet Address</div>
+                    <div className="text-xs font-mono text-slate-500 uppercase tracking-wider">Wallet Address</div>
                     <button onClick={fetchWalletInfo} className="text-slate-500 hover:text-white transition-colors" title="Refresh Wallet">
                       <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
                     </button>
@@ -238,7 +235,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                 {balance && (
                   <div className="bg-slate-950/50 rounded-2xl p-5 border border-slate-800 shadow-inner flex justify-between items-end">
                     <div>
-                      <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-2">Native Balance</div>
+                      <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">Native Balance</div>
                       <div className="text-4xl font-bold text-white font-mono tracking-tight">
                         {parseFloat(balance.balance).toFixed(4)} <span className="text-slate-500 text-xl font-sans">ETH</span>
                       </div>
@@ -263,11 +260,11 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                         On-Chain Transfer
                       </h4>
                       <div>
-                        <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Destination Address (0x...)</label>
+                        <label className="block text-xs font-mono text-slate-500 mb-1 uppercase tracking-wider">Destination Address (0x...)</label>
                         <input type="text" value={transferTo} onChange={(e) => setTransferTo(e.target.value)} placeholder="0x..." className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 font-mono shadow-inner" />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-mono text-slate-500 mb-1 uppercase tracking-wider">Amount (ETH)</label>
+                        <label className="block text-xs font-mono text-slate-500 mb-1 uppercase tracking-wider">Amount (ETH)</label>
                         <input type="number" step="0.0001" value={transferAmount} onChange={(e) => setTransferAmount(e.target.value)} placeholder="0.01" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-orange-500 font-mono shadow-inner" />
                       </div>
                       <button onClick={handleTransfer} disabled={transferring || !transferTo || !transferAmount} className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/50 mt-2">
@@ -287,7 +284,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                         <ArrowRightLeft className="w-4 h-4 text-indigo-400" />
                         Agent Spot Swaps
                       </h4>
-                      <div className="text-[11px] text-slate-400 bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-start gap-3 shadow-inner">
+                      <div className="text-sm text-slate-400 bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-start gap-3 shadow-inner">
                         <HelpCircle className="w-5 h-5 shrink-0 text-indigo-400" />
                         <div className="space-y-2">
                           <p><strong>Securing Money with Spot:</strong> Swapping to Spot tokens (like USDC or ETH) removes liquidation risk entirely. Agents can automatically swap into stables during high volatility to secure profits.</p>
@@ -306,7 +303,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                         <TrendingUp className="w-4 h-4 text-emerald-400" />
                         Hyperliquid Perpetuals
                       </h4>
-                      <div className="text-[11px] text-slate-400 bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-start gap-3 shadow-inner">
+                      <div className="text-sm text-slate-400 bg-slate-900 p-4 rounded-xl border border-slate-800 flex items-start gap-3 shadow-inner">
                         <HelpCircle className="w-5 h-5 shrink-0 text-emerald-400" />
                         <div className="space-y-2">
                           <p><strong>Securing Money with Perps:</strong> Leverage multiplies gains but introduces liquidation risk. Agents secure your money by enforcing strict Stop-Loss boundaries and automatically taking profit at predetermined levels.</p>

@@ -201,13 +201,13 @@ export default function TokenMarketChart() {
                     </span>
                     <div>
                       <div className="font-bold text-slate-200">{token.symbol}</div>
-                      <div className="text-[10px] text-slate-500">{token.name}</div>
+                      <div className="text-xs text-slate-500">{token.name}</div>
                     </div>
                   </div>
 
                   <div className="text-right">
                     <div className="font-bold text-slate-200">${token.price.toLocaleString(undefined, { minimumFractionDigits: token.symbol === 'DOGE' ? 4 : 2 })}</div>
-                    <div className={`text-[10px] font-bold flex items-center gap-0.5 justify-end ${pos ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    <div className={`text-xs font-bold flex items-center gap-0.5 justify-end ${pos ? 'text-emerald-400' : 'text-rose-400'}`}>
                       {pos ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                       {pos ? '+' : ''}{token.change24h.toFixed(2)}%
                     </div>
@@ -220,10 +220,10 @@ export default function TokenMarketChart() {
 
         {/* Selected asset statistics overview */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5 space-y-3.5">
-          <h4 className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Asset Properties & Metrics</h4>
-          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">{selectedToken.description}</p>
+          <h4 className="text-xs text-slate-500 uppercase font-bold tracking-wider">Asset Properties & Metrics</h4>
+          <p className="text-sm text-slate-400 leading-relaxed font-sans">{selectedToken.description}</p>
           
-          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800/60 font-mono text-[10px] text-slate-400">
+          <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-800/60 font-mono text-xs text-slate-400">
             <div>
               <span className="text-slate-500">24H High:</span>
               <div className="text-slate-200 font-bold mt-0.5">${selectedToken.high24h.toLocaleString(undefined, { minimumFractionDigits: selectedToken.symbol === 'DOGE' ? 3 : 2 })}</div>
@@ -256,7 +256,7 @@ export default function TokenMarketChart() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-bold text-white uppercase">{selectedToken.name} Market Feed</h2>
-                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' : 'bg-rose-500/10 text-rose-400 border border-rose-500/25'}`}>
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${isPositive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/25' : 'bg-rose-500/10 text-rose-400 border border-rose-500/25'}`}>
                   {isPositive ? '+' : ''}{selectedToken.change24h.toFixed(2)}%
                 </span>
               </div>
@@ -272,7 +272,7 @@ export default function TokenMarketChart() {
               <button
                 key={tf}
                 onClick={() => setTimeframe(tf)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
                   timeframe === tf
                     ? 'bg-slate-900 text-white shadow'
                     : 'text-slate-500 hover:text-slate-300'
@@ -319,7 +319,7 @@ export default function TokenMarketChart() {
                   if (active && payload && payload.length) {
                     const d = payload[0].payload;
                     return (
-                      <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl font-mono text-[10px] text-slate-300 space-y-1">
+                      <div className="bg-slate-950 border border-slate-800 p-2.5 rounded-xl font-mono text-xs text-slate-300 space-y-1">
                         <div>Time: <strong className="text-white">{d.label}</strong></div>
                         <div>Price: <strong className="text-indigo-400">${d.price.toLocaleString(undefined, { minimumFractionDigits: selectedSymbol === 'DOGE' ? 4 : 2 })}</strong></div>
                         <div>Vol: <strong className="text-slate-400">${d.volume.toLocaleString()}</strong></div>
@@ -344,10 +344,10 @@ export default function TokenMarketChart() {
         {/* Live Order Book summary */}
         <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-900 grid grid-cols-2 gap-6 mt-4">
           <div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase mb-2">Bid Liquidity (BUY)</div>
+            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Bid Liquidity (BUY)</div>
             <div className="space-y-1.5">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex justify-between text-[10px] font-mono">
+                <div key={i} className="flex justify-between text-xs font-mono">
                   <span className="text-emerald-400 font-bold">${(selectedToken.price * (1 - 0.001 * i)).toLocaleString(undefined, { minimumFractionDigits: selectedToken.symbol === 'DOGE' ? 4 : 2 })}</span>
                   <span className="text-slate-400">{(Math.random() * 5 + 0.5).toFixed(2)} {selectedToken.symbol}</span>
                 </div>
@@ -356,10 +356,10 @@ export default function TokenMarketChart() {
           </div>
 
           <div>
-            <div className="text-[10px] text-slate-500 font-bold uppercase mb-2">Ask Liquidity (SELL)</div>
+            <div className="text-xs text-slate-500 font-bold uppercase mb-2">Ask Liquidity (SELL)</div>
             <div className="space-y-1.5">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="flex justify-between text-[10px] font-mono">
+                <div key={i} className="flex justify-between text-xs font-mono">
                   <span className="text-rose-400 font-bold">${(selectedToken.price * (1 + 0.001 * i)).toLocaleString(undefined, { minimumFractionDigits: selectedToken.symbol === 'DOGE' ? 4 : 2 })}</span>
                   <span className="text-slate-400">{(Math.random() * 5 + 0.5).toFixed(2)} {selectedToken.symbol}</span>
                 </div>

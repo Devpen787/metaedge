@@ -60,7 +60,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
               <button
                 type="button"
                 onClick={() => setAvatarSeed(Math.random().toString())}
-                className="absolute -bottom-1 -right-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg p-1 text-[10px] font-mono shadow-lg transition-transform hover:scale-105"
+                className="absolute -bottom-1 -right-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg p-1 text-xs font-mono shadow-lg transition-transform hover:scale-105"
               >
                 RND
               </button>
@@ -108,7 +108,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
           </button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-[11px] font-mono text-slate-500">
+        <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-sm font-mono text-slate-500">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
             Paper Default

@@ -138,7 +138,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
                    <button
                      key={i}
                      onClick={() => setPrompt(intent)}
-                     className="text-[10px] font-mono bg-slate-800/50 hover:bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-colors truncate max-w-[200px]"
+                     className="text-xs font-mono bg-slate-800/50 hover:bg-slate-800 border border-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-colors truncate max-w-[200px]"
                    >
                      {intent}
                    </button>
@@ -199,14 +199,14 @@ export default function IntentSolver({ user }: IntentSolverProps) {
                          <div className="w-4 h-4 rounded-full border-2 border-slate-600" />}
                         <span className="text-xs font-bold text-white tracking-wider uppercase">{step.action}</span>
                       </div>
-                      <span className="text-[10px] font-mono text-slate-400 px-2 py-0.5 bg-slate-900 rounded border border-slate-800">
+                      <span className="text-xs font-mono text-slate-400 px-2 py-0.5 bg-slate-900 rounded border border-slate-800">
                         {step.network}
                       </span>
                     </div>
                     <p className="text-xs text-slate-300 font-mono ml-6">{step.details}</p>
                     
                     {step.data && step.status !== 'pending' && (
-                      <div className="ml-6 mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-[10px] font-mono text-slate-400">
+                      <div className="ml-6 mt-3 p-2 bg-slate-950 rounded-lg border border-slate-800 text-xs font-mono text-slate-400">
                         {step.action === 'SWAP' && <div>Quote: {step.data.quote}</div>}
                         {step.action === 'PREDICTION' && <div>Market: {step.data.market}</div>}
                         <div>Est. Gas: {step.estimatedCost}</div>

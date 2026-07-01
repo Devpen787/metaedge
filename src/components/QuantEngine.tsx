@@ -72,7 +72,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
         {/* Controls */}
         <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 space-y-6">
           <div>
-            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-2">Target Strategy (Agent)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Target Strategy (Agent)</label>
             <select
               value={selectedAgentId}
               onChange={(e) => setSelectedAgentId(e.target.value)}
@@ -86,7 +86,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           </div>
 
           <div className="space-y-3">
-            <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Technical Indicators</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Technical Indicators</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs grid grid-cols-2 gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={enabledIndicators.sma} onChange={e => setEnabledIndicators(prev => ({...prev, sma: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
@@ -104,7 +104,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           </div>
 
           <div className="space-y-3">
-            <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Alternative Data Ingestion (Phase 1)</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Alternative Data Ingestion (Phase 1)</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={enabledFeeds.onChain} onChange={e => setEnabledFeeds(prev => ({...prev, onChain: e.target.checked}))} className="rounded border-slate-800 bg-slate-900 text-fuchsia-500 focus:ring-fuchsia-500/20" />
@@ -130,7 +130,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           </div>
 
           <div className="space-y-3">
-            <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Machine Learning & Adaptation</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Machine Learning & Adaptation</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="text-slate-300">Genetic Algorithm Optimizer</span>
@@ -144,7 +144,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Backtest Parameters</label>
+            <label className="block text-sm font-medium text-slate-400 mb-2">Backtest Parameters</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
               <div className="flex justify-between items-center text-slate-300">
                 <span>Data Horizon</span>
@@ -182,19 +182,19 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
               {/* Metrics Header */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Sharpe Ratio</div>
+                  <div className="text-xs text-slate-500 font-medium uppercase mb-1">Sharpe Ratio</div>
                   <div className="text-xl font-bold text-emerald-400 mt-1">{results.sharpe}</div>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Win Rate</div>
+                  <div className="text-xs text-slate-500 font-medium uppercase mb-1">Win Rate</div>
                   <div className="text-xl font-bold text-white mt-1">{results.winRate}</div>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Max Drawdown</div>
+                  <div className="text-xs text-slate-500 font-medium uppercase mb-1">Max Drawdown</div>
                   <div className="text-xl font-bold text-rose-400 mt-1">{results.maxDrawdown}</div>
                 </div>
                 <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl relative overflow-hidden">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider">Horizon Score</div>
+                  <div className="text-xs text-slate-500 font-medium uppercase mb-1">Horizon Score</div>
                   <div className="text-xl font-bold text-fuchsia-400 mt-1">{results.horizonScore} / 100</div>
                   <div className="absolute right-[-10px] bottom-[-10px] opacity-10">
                     <Shield className="w-16 h-16 text-fuchsia-400" />
@@ -209,7 +209,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
                     <TrendingUp className="w-4 h-4 text-emerald-400" />
                     Simulated Equity Curve (+${results.pnl})
                   </h3>
-                  <div className="text-[10px] text-slate-500 bg-slate-950 px-2 py-1 rounded">
+                  <div className="text-xs text-slate-500 bg-slate-950 px-2 py-1 rounded">
                     {results.totalTrades} Fills Analyzed
                   </div>
                 </div>

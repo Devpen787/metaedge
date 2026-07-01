@@ -165,7 +165,7 @@ export default function AgentWorkshop({
 
           <form onSubmit={handleCreateAgent} className="space-y-4 text-xs font-mono">
             <div>
-              <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Agent Name</label>
+              <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Agent Name</label>
               <input
                 type="text"
                 required
@@ -177,7 +177,7 @@ export default function AgentWorkshop({
             </div>
 
             <div>
-              <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Short Thesis</label>
+              <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Short Thesis</label>
               <input
                 type="text"
                 value={description}
@@ -189,7 +189,7 @@ export default function AgentWorkshop({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Asset Token</label>
+                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Asset Token</label>
                 <select
                   value={assetSymbol}
                   onChange={(e) => setAssetSymbol(e.target.value)}
@@ -210,7 +210,7 @@ export default function AgentWorkshop({
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Execution Mode</label>
+                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Execution Mode</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -238,7 +238,7 @@ export default function AgentWorkshop({
             <div className="bg-slate-950/60 rounded-xl p-3 border border-slate-800/80 shadow-inner">
               <div className="flex gap-2">
                 <Info className="w-4 h-4 shrink-0 text-slate-500" />
-                <div className="text-[10px] text-slate-400 leading-tight">
+                <div className="text-xs text-slate-400 leading-tight">
                   {tradeType === 'token' 
                     ? 'Spot Strategy: Accumulate tokens without margin liquidation risk. Ideal for long-term holding, swing trading, and riding macro trends up.'
                     : 'Perp Strategy: Amplifies gains/losses with leverage. Ideal for shorting down-trends and hedging, but strictly requires stop-loss risk management.'}
@@ -248,7 +248,7 @@ export default function AgentWorkshop({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Engine Strategy</label>
+                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Engine Strategy</label>
                 <select
                   value={strategyType}
                   onChange={(e) => setStrategyType(e.target.value)}
@@ -262,7 +262,7 @@ export default function AgentWorkshop({
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Leverage Limits</label>
+                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Leverage Limits</label>
                 <select
                   value={leverage}
                   disabled={tradeType !== 'perp'}
@@ -279,7 +279,7 @@ export default function AgentWorkshop({
 
             {rooms.length > 0 && (
               <div>
-                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-[10px]">Scope / Share with Room</label>
+                <label className="block text-slate-400 mb-1.5 uppercase tracking-wider text-xs">Scope / Share with Room</label>
                 <select
                   value={roomId}
                   onChange={(e) => setRoomId(e.target.value)}
@@ -296,7 +296,7 @@ export default function AgentWorkshop({
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all cursor-pointer text-center uppercase tracking-wider text-[11px]"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 transition-all cursor-pointer text-center uppercase tracking-wider text-sm"
             >
               {loading ? 'Initializing...' : 'Construct Paper Agent'}
             </button>
@@ -324,14 +324,14 @@ export default function AgentWorkshop({
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <span className="font-bold text-white text-sm">{agent.name}</span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
                           agent.status === 'active' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/10 text-rose-400'
                         }`}>
                           {agent.status}
                         </span>
                       </div>
-                      <p className="text-slate-400 text-[11px]">{agent.description}</p>
-                      <div className="flex items-center gap-3 text-[10px] text-slate-500 mt-1">
+                      <p className="text-slate-400 text-sm">{agent.description}</p>
+                      <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                         <span>Asset: <strong className="text-slate-300">{agent.assetSymbol}</strong></span>
                         <span>Mode: <strong className="text-slate-300">{agent.tradeType.toUpperCase()}</strong></span>
                         {agent.tradeType === 'perp' && <span>Leverage: <strong className="text-slate-300">{agent.leverage}x</strong></span>}
@@ -363,7 +363,7 @@ export default function AgentWorkshop({
                           className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors cursor-pointer"
                           title="Revoke Strategy"
                         >
-                          <span className="text-[10px] font-bold px-0.5">REVOKE</span>
+                          <span className="text-xs font-bold px-0.5">REVOKE</span>
                         </button>
                       )}
                       <button
@@ -468,14 +468,14 @@ export default function AgentWorkshop({
                     <div>
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-white">{strat.name}</span>
-                        <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
+                        <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
                           {strat.assetSymbol}
                         </span>
                       </div>
-                      <p className="text-slate-400 text-[11px] mt-1.5">{strat.description}</p>
+                      <p className="text-slate-400 text-sm mt-1.5">{strat.description}</p>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[10px] text-slate-500">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-xs text-slate-500">
                       <span>Copied {strat.copiedCount} times</span>
                       <button
                         onClick={() => handleCopyStrategy(strat.id)}
@@ -505,7 +505,7 @@ export default function AgentWorkshop({
               <div className="overflow-x-auto">
                 <table className="w-full text-left font-mono text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-500 uppercase text-[10px]">
+                    <tr className="border-b border-slate-800 text-slate-500 uppercase text-xs">
                       <th className="py-2.5 px-3">Time</th>
                       <th className="py-2.5 px-3">Asset</th>
                       <th className="py-2.5 px-3">Action</th>
@@ -519,14 +519,14 @@ export default function AgentWorkshop({
                       const isBuy = trade.side === 'buy' || trade.side === 'long';
                       return (
                         <tr key={trade.id} className="hover:bg-slate-950/20 text-slate-300 transition-colors">
-                          <td className="py-2.5 px-3 text-slate-500 text-[10px]">
+                          <td className="py-2.5 px-3 text-slate-500 text-xs">
                             {new Date(trade.timestamp).toLocaleTimeString()}
                           </td>
                           <td className="py-2.5 px-3 font-bold text-slate-200">
                             {trade.assetSymbol}
                           </td>
                           <td className="py-2.5 px-3">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
                               isBuy ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                             }`}>
                               {trade.side}

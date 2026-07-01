@@ -143,21 +143,14 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
       
       {/* Interactive Terminal Order Panel */}
       <div className="lg:col-span-4 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:bg-slate-900/80 transition-all">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none group-hover:bg-indigo-500/10 transition-all duration-700" />
-        
         <form onSubmit={handleSubmitTrade} className="space-y-5 relative z-10">
           <div className="flex items-center justify-between border-b border-slate-700/50 pb-4">
-            <h3 className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <ArrowRightLeft className="w-4 h-4 text-indigo-400" />
-              Execution Terminal
+            <h3 className="text-base font-bold text-white">
+              Order Entry
             </h3>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1.5 shadow-inner">
-               <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                </span>
-              Live Sink
-            </span>
+            <div className="bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-emerald-400 text-xs font-bold uppercase tracking-wider">
+              Paper Trading
+            </div>
           </div>
 
           {/* Mode Switch: Spot vs Perps */}
@@ -183,7 +176,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
           </div>
 
           {/* Price strip */}
-          <div className="flex gap-2 bg-slate-950/60 p-2 rounded-2xl border border-slate-800 font-mono text-[10px] text-center overflow-x-auto custom-scrollbar shadow-inner">
+          <div className="flex gap-2 bg-slate-950/60 p-2 rounded-2xl border border-slate-800 font-mono text-xs text-center overflow-x-auto custom-scrollbar shadow-inner">
             {Object.entries(simPrices).map(([symbol, price]) => (
               <button
                 key={symbol}
@@ -207,7 +200,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {/* Select Bot */}
           <div className="space-y-1.5">
-            <label className="text-[11px] font-mono text-slate-400 uppercase">Authorizing Agent Bot</label>
+            <label className="text-sm font-medium text-slate-400">Select Agent</label>
             {filteredAgents.length === 0 ? (
               <div className="bg-rose-500/5 border border-rose-500/20 p-3 rounded-xl text-xs text-rose-300 font-mono">
                 No active <b>{tradeType === 'perp' ? 'Perp' : 'Spot'}</b> bots found. Assemble a bot in the <b>Agents</b> tab and toggle its status to Active to begin.
@@ -235,20 +228,20 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 <button
                   type="button"
                   onClick={() => setSide('buy')}
-                  className={`py-2 text-xs font-mono font-bold rounded-xl transition-all border ${
+                  className={`py-2 text-sm font-medium rounded-xl transition-all border ${
                     side === 'buy' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-md shadow-emerald-500/5' : 'bg-slate-950/20 text-slate-500 border-transparent hover:text-slate-300'
                   }`}
                 >
-                  SPOT BUY
+                  Spot Buy
                 </button>
                 <button
                   type="button"
                   onClick={() => setSide('sell')}
-                  className={`py-2 text-xs font-mono font-bold rounded-xl transition-all border ${
+                  className={`py-2 text-sm font-medium rounded-xl transition-all border ${
                     side === 'sell' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-md shadow-rose-500/5' : 'bg-slate-950/20 text-slate-500 border-transparent hover:text-slate-300'
                   }`}
                 >
-                  SPOT SELL
+                  Spot Sell
                 </button>
               </>
             ) : (
@@ -256,20 +249,20 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 <button
                   type="button"
                   onClick={() => setSide('long')}
-                  className={`py-2 text-xs font-mono font-bold rounded-xl transition-all border ${
+                  className={`py-2 text-sm font-medium rounded-xl transition-all border ${
                     side === 'long' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-md shadow-emerald-500/5' : 'bg-slate-950/20 text-slate-500 border-transparent hover:text-slate-300'
                   }`}
                 >
-                  PERP LONG
+                  Perp Long
                 </button>
                 <button
                   type="button"
                   onClick={() => setSide('short')}
-                  className={`py-2 text-xs font-mono font-bold rounded-xl transition-all border ${
+                  className={`py-2 text-sm font-medium rounded-xl transition-all border ${
                     side === 'short' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-md shadow-rose-500/5' : 'bg-slate-950/20 text-slate-500 border-transparent hover:text-slate-300'
                   }`}
                 >
-                  PERP SHORT
+                  Perp Short
                 </button>
               </>
             )}
@@ -277,9 +270,9 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {/* Input Size */}
           <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-[11px] font-mono text-slate-400">
+            <div className="flex justify-between items-center text-sm font-medium text-slate-400">
               <span>Order Size</span>
-              <span>Available: ${currentUser.paperBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+              <span className="text-slate-500 text-xs">Available: ${currentUser.paperBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
             </div>
             <div className="relative">
               <input
@@ -290,16 +283,16 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 value={size}
                 onChange={(e) => setSize(e.target.value)}
                 placeholder="0.0"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs font-mono text-white focus:border-indigo-500 focus:outline-none"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:border-indigo-500 focus:outline-none"
               />
-              <span className="absolute right-3.5 top-2.5 text-xs font-mono text-slate-500">{assetSymbol}</span>
+              <span className="absolute right-3.5 top-2.5 text-sm font-mono text-slate-500">{assetSymbol}</span>
             </div>
           </div>
 
           {/* Leverage slider */}
           {tradeType === 'perp' && (
             <div className="space-y-2 bg-slate-950/30 p-3 rounded-xl border border-slate-900/60">
-              <div className="flex justify-between items-center text-[11px] font-mono">
+              <div className="flex justify-between items-center text-sm font-medium">
                 <span className="text-slate-400">Custom Leverage</span>
                 <span className="text-indigo-400 font-bold">{leverage}x</span>
               </div>
@@ -311,7 +304,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 onChange={(e) => setLeverage(Number(e.target.value))}
                 className="w-full accent-indigo-500 h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer"
               />
-              <div className="flex justify-between text-[9px] font-mono text-slate-600">
+              <div className="flex justify-between text-xs text-slate-600">
                 <span>1x</span>
                 <span>25x</span>
                 <span>50x</span>
@@ -327,9 +320,9 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">Trailing Stop</span>
+                <span className="text-xs font-medium text-slate-300">Trailing Stop</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Attempts to lock upside</span>
+              <span className="text-xs text-slate-500 leading-tight group-hover:text-slate-400">Attempts to lock upside</span>
             </button>
             <button
               type="button"
@@ -337,21 +330,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
             >
               <div className="flex items-center gap-1.5 mb-1">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">Take-Profit Target</span>
+                <span className="text-xs font-medium text-slate-300">Take-Profit Target</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Auto-exit on resistance</span>
+              <span className="text-xs text-slate-500 leading-tight group-hover:text-slate-400">Auto-exit on resistance</span>
             </button>
           </div>
 
           {/* Agent Parameters Box */}
           {selectedAgentId && (
-            <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 flex gap-3 shadow-inner">
-              <div className="shrink-0 mt-0.5">
-                <Sparkles className="w-4 h-4 text-indigo-400" />
-              </div>
+            <div className="bg-slate-950/40 border border-slate-800/80 rounded-xl p-3 flex gap-3 shadow-inner mt-4">
               <div>
-                <h5 className="text-[10px] font-bold text-slate-300 font-mono uppercase tracking-widest mb-1">Agent Parameters</h5>
-                <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                <h5 className="text-xs font-bold text-slate-300 mb-1">Agent Details</h5>
+                <p className="text-sm text-slate-400 leading-relaxed">
                   Routing order via {filteredAgents.find(a => a.id === selectedAgentId)?.name || 'Agent'}. 
                   Target asset: {assetSymbol}.
                   {tradeType === 'perp' 
@@ -366,24 +356,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
           <button
             type="submit"
             disabled={submitting || !selectedAgentId}
-            className={`w-full py-3 rounded-xl font-mono text-xs font-bold shadow-lg transition-all cursor-pointer ${
+            className={`w-full py-3 mt-4 rounded-xl text-sm font-bold shadow-lg transition-all cursor-pointer ${
               side === 'buy' || side === 'long'
                 ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/10 text-white'
                 : 'bg-rose-600 hover:bg-rose-500 shadow-rose-500/10 text-white'
             } disabled:opacity-40`}
           >
-            {submitting ? 'EXECUTING...' : !selectedAgentId ? 'NO BOT SELECTED' : `EXECUTE ${side.toUpperCase()}`}
+            {submitting ? 'EXECUTING...' : !selectedAgentId ? 'SELECT AGENT' : `EXECUTE ${side.toUpperCase()}`}
           </button>
 
-          {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
-          {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
+          {error && <p className="text-sm text-rose-400 text-center mt-2">{error}</p>}
+          {success && <p className="text-sm text-emerald-400 text-center mt-2">{success}</p>}
         </form>
-
-        {/* Telemetry Status Footer */}
-        <div className="text-[10px] font-mono text-slate-500 bg-slate-950/20 p-3 rounded-xl border border-slate-900/30 mt-4 flex items-center gap-1.5 justify-center">
-          <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-          Autonomous multi-agent execution auth active
-        </div>
       </div>
 
       {/* Margins, Mark-to-market valuations and Positions logs */}
@@ -391,75 +375,66 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         
         {/* Margin metrics board */}
         <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 shadow-2xl hover:border-indigo-500/30 transition-all group">
-          <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
-            <span className="w-2 h-4 bg-indigo-500 rounded-sm"></span>
-            Position Analytics
+          <h4 className="text-base font-bold text-white mb-4">
+            Margin Details
           </h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner group-hover:border-slate-700 transition-colors">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Notional Size</div>
-              <div className="text-sm font-bold text-slate-200 mt-2">${notional.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-slate-500 font-medium">Notional Size</div>
+              <div className="text-lg font-bold text-slate-200 mt-1 font-mono">${notional.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
             <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner group-hover:border-indigo-900/50 transition-colors">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Margin Required</div>
-              <div className="text-sm font-bold text-indigo-400 mt-2">${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-slate-500 font-medium">Margin Required</div>
+              <div className="text-lg font-bold text-indigo-400 mt-1 font-mono">${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
             <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner group-hover:border-rose-900/50 transition-colors">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Est. Liquidation</div>
-              <div className="text-sm font-bold text-rose-400 mt-2">
+              <div className="text-xs text-slate-500 font-medium">Est. Liquidation</div>
+              <div className="text-lg font-bold text-rose-400 mt-1 font-mono">
                 {tradeType === 'perp' && positionSize > 0 ? `$${estLiquidation.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
               </div>
             </div>
             <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 shadow-inner group-hover:border-emerald-900/50 transition-colors">
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider">Current Price</div>
-              <div className="text-sm font-bold text-emerald-400 mt-2">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
+              <div className="text-xs text-slate-500 font-medium">Current Price</div>
+              <div className="text-lg font-bold text-emerald-400 mt-1 font-mono">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
             </div>
           </div>
 
           {/* Position Targets & Boundaries Visualization */}
           {positionSize > 0 && (
-            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-6 pt-5 border-t border-slate-700/50 font-mono text-xs text-slate-300">
-              <div className="flex items-center gap-2 mb-4 text-indigo-400 font-bold uppercase text-[10px] tracking-widest">
-                <Sparkles className="w-4 h-4 text-indigo-400" />
+            <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-6 pt-5 border-t border-slate-700/50">
+              <div className="flex items-center gap-2 mb-4 font-bold text-slate-300">
                 Risk Boundaries
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-slate-950/40 p-3.5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                  <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Where Entered</span>
-                  <span className="text-xs font-bold text-slate-200 mt-2">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  <span className="text-[9px] text-slate-500 mt-1">Average Cost Basis</span>
+                  <span className="text-xs text-slate-500 font-medium">Entry</span>
+                  <span className="text-sm font-bold text-slate-200 mt-2 font-mono">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="bg-slate-950/40 p-3.5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                  <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Break-even Price</span>
-                  <span className="text-xs font-bold text-slate-300 mt-2">
+                  <span className="text-xs text-slate-500 font-medium">Break-even</span>
+                  <span className="text-sm font-bold text-slate-300 mt-2 font-mono">
                     ${(side === 'long' || side === 'buy' ? currentPrice * 1.0005 : currentPrice * 0.9995).toLocaleString(undefined, { minimumFractionDigits: assetSymbol === 'DOGE' ? 4 : 2 })}
                   </span>
-                  <span className="text-[9px] text-slate-500 mt-1">Incl. 0.05% Exchange Fee</span>
                 </div>
                 <div className="bg-slate-950/40 p-3.5 rounded-2xl border border-slate-800 flex flex-col justify-between">
-                  <span className="text-[10px] text-slate-500 block uppercase tracking-wider">Profit Target Goals</span>
-                  <div className="space-y-1 mt-2 text-[11px]">
+                  <span className="text-xs text-slate-500 font-medium">Profit Goals</span>
+                  <div className="space-y-1 mt-2 text-sm font-mono">
                     <div className="flex justify-between">
-                      <span className="text-slate-500 text-[10px]">+10%:</span>
+                      <span className="text-slate-500 text-xs">+10%:</span>
                       <span className="text-emerald-400 font-bold">${(side === 'long' || side === 'buy' ? currentPrice * 1.10 : currentPrice * 0.90).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-slate-500 text-[10px]">+25%:</span>
+                      <span className="text-slate-500 text-xs">+25%:</span>
                       <span className="text-emerald-400 font-bold">${(side === 'long' || side === 'buy' ? currentPrice * 1.25 : currentPrice * 0.75).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                     </div>
                   </div>
-                  <span className="text-[9px] text-slate-500 mt-1">Dynamic take profit limits</span>
                 </div>
                 <div className="bg-slate-950/40 p-3.5 rounded-2xl border border-rose-950/30 flex flex-col justify-between relative overflow-hidden">
-                  <div className="absolute top-0 right-0 w-16 h-16 bg-rose-500/10 blur-[20px] pointer-events-none" />
-                  <span className="text-[10px] text-rose-400 block uppercase tracking-wider relative z-10">Full Loss / Liq</span>
-                  <span className="text-xs font-bold text-rose-400 mt-2 relative z-10">
+                  <span className="text-xs text-rose-400 font-medium relative z-10">Liquidation</span>
+                  <span className="text-sm font-bold text-rose-400 mt-2 relative z-10 font-mono">
                     {tradeType === 'perp' 
                       ? `$${estLiquidation.toLocaleString(undefined, { minimumFractionDigits: 2 })}` 
-                      : 'N/A (Asset must go to $0)'}
-                  </span>
-                  <span className="text-[9px] text-slate-500 mt-1 relative z-10">
-                    {tradeType === 'perp' ? 'Margin requirement boundary' : 'No margin liquidation risk in Spot'}
+                      : 'N/A'}
                   </span>
                 </div>
               </div>
@@ -470,29 +445,28 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         {/* Live positions list */}
         <div className="bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex-1 shadow-2xl hover:border-slate-500/50 transition-all">
           <div className="flex justify-between items-center mb-6 border-b border-slate-700/50 pb-4">
-            <h4 className="text-xs font-mono text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <Activity className="w-4 h-4 text-emerald-400" />
-              Active Leveraged Positions & Spot Fills
+            <h4 className="text-base font-bold text-white">
+              Positions
             </h4>
             {trades.length > 0 && onClearAllTrades && (
               <button
                 onClick={onClearAllTrades}
-                className="text-[10px] font-mono text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-inner"
+                className="text-xs font-medium text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
               >
-                Clear All History
+                Clear All
               </button>
             )}
           </div>
 
           {trades.length === 0 ? (
-            <div className="text-center py-12 text-xs text-slate-500 font-mono bg-slate-950/20 rounded-xl border border-slate-900/40">
+            <div className="text-center py-12 text-sm text-slate-500 bg-slate-950/20 rounded-xl border border-slate-900/40">
               No positions recorded under your active bot authorizations. Place an order to execute paper trades.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left font-mono text-xs border-collapse">
+              <table className="w-full text-left text-sm border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-500 uppercase text-[10px]">
+                  <tr className="border-b border-slate-800 text-slate-400 text-xs uppercase font-medium">
                     <th className="py-2.5 px-3">Time</th>
                     <th className="py-2.5 px-3">Asset</th>
                     <th className="py-2.5 px-3">Type</th>
@@ -504,7 +478,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                     <th className="py-2.5 px-3"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-900/60">
+                <tbody className="divide-y divide-slate-900/60 font-mono">
                   {[...trades].sort((a,b) => b.timestamp - a.timestamp).map((trade) => {
                     const isBuy = trade.side === 'buy' || trade.side === 'long';
                     const currentAssetPrice = simPrices[trade.assetSymbol] || trade.price;
@@ -530,18 +504,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
                     return (
                       <tr key={trade.id} className="hover:bg-slate-950/20 text-slate-300 transition-colors">
-                        <td className="py-2.5 px-3 text-slate-500 text-[10px]">
+                        <td className="py-2.5 px-3 text-slate-500 text-xs">
                           {new Date(trade.timestamp).toLocaleTimeString()}
                         </td>
                         <td className="py-2.5 px-3 font-bold text-slate-200 flex items-center gap-1.5 mt-2">
                           <span className={`w-1.5 h-1.5 rounded-full ${trade.status === 'OPEN' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-600'}`}></span>
                           {trade.assetSymbol}
                         </td>
-                        <td className="py-2.5 px-3 uppercase text-[10px] text-slate-400">
+                        <td className="py-2.5 px-3 uppercase text-xs text-slate-400">
                           {trade.tradeType === 'perp' ? `${trade.leverage}x Perp` : 'Spot Token'}
                         </td>
                         <td className="py-2.5 px-3">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
                             isBuy ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                           }`}>
                             {trade.side}
@@ -577,7 +551,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           {trade.status === 'OPEN' ? (
                             <button
                               onClick={() => onCloseTrade && onCloseTrade(trade.id, currentAssetPrice)}
-                              className="px-2 py-1 text-[10px] font-bold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded transition-colors"
+                              className="px-2 py-1 text-xs font-bold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 rounded transition-colors"
                             >
                               SETTLE
                             </button>

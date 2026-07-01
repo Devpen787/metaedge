@@ -124,11 +124,11 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
                   }`}
                 >
                   <div className="flex items-center justify-between w-full">
-                    <div className="space-y-1 font-mono">
-                      <p className={`text-sm font-bold ${activeVaultId === v.id ? 'text-indigo-300' : 'text-slate-300'}`}>{v.name}</p>
-                      <p className="text-[10px] text-slate-500 truncate max-w-[150px]">{v.description || 'No target description'}</p>
+                    <div className="space-y-1">
+                      <p className={`text-sm font-medium ${activeVaultId === v.id ? 'text-indigo-300' : 'text-slate-300'}`}>{v.name}</p>
+                      <p className="text-xs text-slate-500 truncate max-w-[150px]">{v.description || 'No target description'}</p>
                     </div>
-                    <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-md border ${
+                    <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-md border ${
                       activeVaultId === v.id ? 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30' : 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20'
                     }`}>
                       ${v.simulatedTotalContribution.toLocaleString()}
@@ -166,7 +166,7 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
                   <p className="text-xs text-slate-400 font-mono mt-1">{activeVault.description || 'No target thesis.'}</p>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] font-mono text-slate-500 block">Simulated Total Pool</span>
+                  <span className="text-xs text-slate-500 block">Simulated Total Pool</span>
                   <span className="text-lg font-bold text-emerald-400 font-mono">
                     ${activeVault.simulatedTotalContribution.toLocaleString()} USD
                   </span>
@@ -174,12 +174,12 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
               </div>
 
               {/* Warnings and Disclosure */}
-              <div className="bg-slate-950/50 rounded-xl border border-slate-900 p-4 space-y-2 font-mono text-[11px] text-slate-400">
-                <div className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold">
+              <div className="bg-slate-950/50 rounded-xl border border-slate-900 p-4 space-y-2 text-xs text-slate-400">
+                <div className="flex items-center gap-1.5 font-semibold">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   READ-ONLY COORDINATION DISCLOSURE
                 </div>
-                <p className="leading-relaxed text-[11px]">
+                <p className="leading-relaxed text-slate-500">
                   This Vault Club is entirely simulated. Contributions use mock Paper Balance credits. No custodial ownership, investment yields, or pooled funds claims exist. Live smart contracts remain locked.
                 </p>
               </div>
@@ -243,7 +243,7 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
                       </div>
                       <div>
                         <span className="text-slate-200 font-medium leading-relaxed block mb-1">{milestone}</span>
-                        <span className="text-[9px] text-slate-500 uppercase tracking-widest">Milestone 0{idx + 1}</span>
+                        <span className="text-xs text-slate-500">Milestone 0{idx + 1}</span>
                       </div>
                     </div>
                   ))}

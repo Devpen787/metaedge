@@ -132,6 +132,16 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     return () => clearTimeout(t);
   }, [celebration]);
 
+  // Arena share links: /arena?league=<id> opens that league's board directly
+  // (the visitor still joins deliberately via "Enter the Arena").
+  useEffect(() => {
+    const lg = new URLSearchParams(window.location.search).get('league');
+    if (lg) {
+      setActiveLeagueId(lg);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
   const loadPositions = React.useCallback(async () => {
     try {
       const res = await apiFetch('/api/arena/positions');

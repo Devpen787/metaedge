@@ -110,6 +110,11 @@ export default function App() {
       if (token) {
         handleAutoJoinInvite(token);
       }
+      // Arena share links (/arena?league=...) land straight in the Arena;
+      // AgentArena picks up the league id from the same param.
+      if (params.get('league')) {
+        setActiveTab('arena');
+      }
     }
   }, [currentUser]);
 

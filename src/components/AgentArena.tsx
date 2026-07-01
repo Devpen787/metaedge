@@ -146,6 +146,22 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
 
   useEffect(() => { loadArena(); }, [loadArena]);
 
+  // Real, computed arena stats derived from the live leaderboard (never faked).
+  // `leaderboard` already reflects the active league (global or a specific one).
+  const arenaStats = React.useMemo(() => {
+    const participants = leaderboard.length;
+    const capitalInPlay = leaderboard.reduce((s, p) => s + (p.currentBal || 0), 0);
+    const topReturn = leaderboard[0]?.roi ?? '—';
+    const inProfit = leaderboard.filter((p) => (p.roiValue || 0) > 0).length;
+    const myRank = leaderboard.find((p) => p.userId === user.id)?.rank ?? null;
+    return { participants, capitalInPlay, topReturn, inProfit, myRank };
+  }, [leaderboard, user.id]);
+
+  const fmtUsd = (n: number) =>
+    n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
+    : n >= 1_000 ? `$${(n / 1_000).toFixed(1)}K`
+    : `$${Math.round(n)}`;
+
   const handleShare = () => {
     const link = `${window.location.origin}/arena?league=${activeLeagueId}`;
     navigator.clipboard.writeText(link);
@@ -411,7 +427,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                     ) : (
                       <div className="px-6 py-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
                         <div className="text-xs text-slate-500 font-mono uppercase">Your Rank</div>
-                        <div className="text-2xl font-bold text-yellow-500">#{activeLeagueId === 'global' ? 42 : 1}</div>
+                        <div className="text-2xl font-bold text-yellow-500">{arenaStats.myRank ? `#${arenaStats.myRank}` : 'Unranked'}</div>
                       </div>
                     )}
                   </div>
@@ -420,60 +436,49 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                   <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Total participants</div>
+                    <div className="text-xs text-slate-500 mb-1">Competitors</div>
                     <div className="text-2xl font-bold text-white font-mono">
-                      {activeLeagueId === 'global' ? '4,821' : leagues.find(l => l.id === activeLeagueId)?.participants}
+                      {arenaStats.participants}
                     </div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Total volume</div>
+                    <div className="text-xs text-slate-500 mb-1">Capital in play</div>
                     <div className="text-2xl font-bold text-white font-mono">
-                      {activeLeagueId === 'global' ? '$14.2M' : '$124.5K'}
+                      {fmtUsd(arenaStats.capitalInPlay)}
                     </div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
                     <div className="text-xs text-slate-500 mb-1">Top return</div>
                     <div className="text-2xl font-bold text-emerald-400 font-mono">
-                      {activeLeagueId === 'global' ? '+145.0%' : '+22.4%'}
+                      {arenaStats.topReturn}
                     </div>
                   </div>
                   <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Total winners</div>
+                    <div className="text-xs text-slate-500 mb-1">In profit</div>
                     <div className="text-2xl font-bold text-white font-mono">
-                      {activeLeagueId === 'global' ? '50' : '1'}
+                      {arenaStats.inProfit}
                     </div>
                   </div>
                 </div>
 
-                {/* Prize Pool Progress */}
+                {/* Prize / Reward */}
                 <div className="bg-slate-950 rounded-xl p-5 border border-slate-800">
-                  <h3 className="text-sm font-bold text-white mb-4">Prize pool</h3>
+                  <h3 className="text-sm font-bold text-white mb-4">{activeLeagueId === 'global' ? 'Reward' : 'Prize pool'}</h3>
                   <div className="flex justify-between items-end mb-2">
                     <div>
-                      <div className="text-xs text-slate-500 mb-1">Current</div>
+                      <div className="text-xs text-slate-500 mb-1">{activeLeagueId === 'global' ? 'On the line' : 'Set by league creator'}</div>
                       <div className="text-3xl font-bold text-yellow-500 font-mono">
-                        {activeLeagueId === 'global' ? '$50,000' : leagues.find(l => l.id === activeLeagueId)?.prize}
+                        {activeLeagueId === 'global' ? 'Leaderboard Glory' : (leagues.find(l => l.id === activeLeagueId)?.prize || 'Reputation Badge')}
                       </div>
                     </div>
-                    {activeLeagueId === 'global' && (
-                      <div className="text-right">
-                        <div className="text-xs text-slate-500 mb-1">Next Milestone</div>
-                        <div className="text-xl font-bold text-slate-300 font-mono">$100,000</div>
-                      </div>
-                    )}
                   </div>
                   {activeLeagueId === 'global' ? (
-                    <>
-                      <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden mb-2">
-                        <div className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 rounded-full" style={{ width: '71%' }} />
-                      </div>
-                      <div className="text-xs text-slate-500 font-mono">
-                        $14.2M of $20M volume reached
-                      </div>
-                    </>
+                    <div className="text-xs text-slate-500 font-mono">
+                      Ranked by real agent P&amp;L · {arenaStats.participants} competing · {fmtUsd(arenaStats.capitalInPlay)} in play
+                    </div>
                   ) : (
                     <div className="text-xs text-slate-500 font-mono">
-                      Custom League - Fixed Prize Pool
+                      Custom league · winner takes the pool
                     </div>
                   )}
                 </div>
@@ -669,43 +674,23 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
-                    {activeLeagueId !== 'global' && joinedLeagues.includes(activeLeagueId) && (
-                      <tr className="bg-indigo-500/10 border-l-2 border-indigo-500 shadow-inner">
-                         <td className="px-4 py-4 font-mono font-bold text-indigo-400">
-                           <Crown className="w-5 h-5 text-yellow-500" />
-                         </td>
-                         <td className="px-4 py-4">
-                           <div className="font-bold text-white text-base">You</div>
-                         </td>
-                         <td className="px-4 py-4 text-indigo-300">{activeAgents.length} <span className="text-xs ml-1 bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-400">Custom</span></td>
-                         <td className="px-4 py-4 text-right">
-                           <span className={`font-mono font-bold text-base ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                             {totalPnL >= 0 ? '+' : ''}{totalPnL.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                           </span>
-                         </td>
-                         <td className="px-4 py-4 text-right">
-                            <span className={`font-mono font-bold text-lg ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {totalPnL >= 0 ? '+' : ''}{((totalPnL / 10000) * 100).toFixed(2)}%
-                            </span>
-                         </td>
-                         <td className="px-4 py-4"></td>
-                      </tr>
-                    )}
-                    
-                    {leaderboard.map((player) => (
-                      <tr 
-                        key={player.rank} 
+
+                    {leaderboard.map((player) => {
+                      const isYou = player.userId === user.id;
+                      return (
+                      <tr
+                        key={player.rank}
                         onClick={() => setInspectedPlayerRank(player.rank)}
-                        className="hover:bg-slate-800/50 transition-colors group cursor-pointer"
+                        className={`transition-colors group cursor-pointer ${isYou ? 'bg-indigo-500/10 border-l-2 border-indigo-500' : 'hover:bg-slate-800/50'}`}
                       >
-                        <td className="px-4 py-4 font-mono font-bold text-slate-300">
-                          {player.rank === 1 ? <Crown className="w-5 h-5 text-yellow-500" /> : 
+                        <td className={`px-4 py-4 font-mono font-bold ${isYou ? 'text-indigo-400' : 'text-slate-300'}`}>
+                          {player.rank === 1 ? <Crown className="w-5 h-5 text-yellow-500" /> :
                            player.rank === 2 ? <Crown className="w-5 h-5 text-slate-300" /> :
                            player.rank === 3 ? <Crown className="w-5 h-5 text-amber-700" /> :
                            `0${player.rank}`}
                         </td>
                         <td className="px-4 py-4">
-                          <div className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">{player.address.substring(0, 6)}...</div>
+                          <div className="font-bold text-white text-base group-hover:text-indigo-400 transition-colors">{player.address.substring(0, 6)}...{isYou && <span className="ml-2 text-xs text-indigo-400 font-mono">You</span>}</div>
                           <div className="text-xs text-slate-500">{player.name}</div>
                         </td>
                         <td className="px-4 py-4 text-slate-400">{player.agents} <span className="text-xs ml-1 bg-slate-800 group-hover:bg-indigo-500/10 group-hover:text-indigo-300 px-2 py-0.5 rounded text-slate-500 transition-colors">{player.strategy}</span></td>
@@ -722,26 +707,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                           <ChevronRight className="w-5 h-5 text-slate-400 inline-block" />
                         </td>
                       </tr>
-                    ))}
-                    {/* Current user placeholder in leaderboard */}
-                    {activeLeagueId === 'global' && joinedLeagues.includes(activeLeagueId) && (
-                      <tr className="bg-indigo-500/10 border-l-2 border-indigo-500 shadow-inner">
-                         <td className="px-4 py-4 font-mono font-bold text-indigo-400">42</td>
-                         <td className="px-4 py-4">
-                           <div className="font-bold text-white text-base">You</div>
-                         </td>
-                         <td className="px-4 py-4 text-indigo-300">{activeAgents.length} <span className="text-xs ml-1 bg-indigo-500/20 px-2 py-0.5 rounded text-indigo-400">Custom</span></td>
-                         <td className="px-4 py-4 text-right">
-                           <span className={`font-mono font-bold text-base ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                             {totalPnL >= 0 ? '+' : ''}{totalPnL.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
-                           </span>
-                         </td>
-                         <td className="px-4 py-4 text-right">
-                            <span className={`font-mono font-bold text-lg ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                              {totalPnL >= 0 ? '+' : ''}{((totalPnL / 10000) * 100).toFixed(2)}%
-                            </span>
-                         </td>
-                         <td className="px-4 py-4"></td>
+                      );
+                    })}
+                    {leaderboard.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-slate-500 text-sm">
+                          No agents competing yet. Deploy an agent to claim the top spot.
+                        </td>
                       </tr>
                     )}
                   </tbody>

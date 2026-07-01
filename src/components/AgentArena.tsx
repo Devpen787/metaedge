@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Swords, Users, Target, Award, TrendingUp, Plus, Bot, Zap, ShieldCheck, Clock, ChevronRight, Crown, Activity, Rocket, DollarSign, PieChart, Play, Pause, X, Wallet, Settings, Terminal, ArrowUpRight, ArrowDownRight, Sliders, Share2 } from 'lucide-react';
 import { User } from '../types';
+import { apiFetch } from '../lib/api';
+
+function msToLeft(endsAt: number): string {
+  const ms = endsAt - Date.now();
+  if (ms <= 0) return 'Ended';
+  const days = Math.floor(ms / 86400000);
+  if (days >= 1) return `${days} Day${days > 1 ? 's' : ''} Left`;
+  const hrs = Math.max(1, Math.floor(ms / 3600000));
+  return `${hrs} Hr${hrs !== 1 ? 's' : ''} Left`;
+}
 
 const AnimatedValue = ({ value, formatter, className }: { value: number, formatter: (val: number) => string, className?: string }) => {
   const prevValue = useRef(value);
@@ -35,20 +45,6 @@ const AnimatedValue = ({ value, formatter, className }: { value: number, formatt
 interface AgentArenaProps {
   user: User;
 }
-
-const GLOBAL_LEADERBOARD = [
-  { rank: 1, address: '0x7F...3b2', name: 'AlphaSeeker.eth', agents: 3, strategy: 'Arb + Sniping', startBal: 10000, currentBal: 24500, roi: '+145.0%' },
-  { rank: 2, address: '0x2A...9c1', name: 'YieldFarmer_99', agents: 2, strategy: 'Delta Neutral', startBal: 10000, currentBal: 18200, roi: '+82.0%' },
-  { rank: 3, address: '0x9C...1a4', name: 'PerpMaster', agents: 1, strategy: 'High Lev Perps', startBal: 10000, currentBal: 15400, roi: '+54.0%' },
-  { rank: 4, address: '0x4D...5f2', name: 'CopyCat_Bot', agents: 4, strategy: 'Social Copying', startBal: 10000, currentBal: 12100, roi: '+21.0%' },
-  { rank: 5, address: '0x1E...8d5', name: 'SafeYield', agents: 1, strategy: 'Auto Rebalancing', startBal: 10000, currentBal: 10800, roi: '+8.0%' },
-];
-
-const CUSTOM_LEAGUES = [
-  { id: 1, name: 'Degen Perps Only', creator: '0x44...B12', participants: 142, prize: '500 USDC Pool', time: '2 Days Left', risk: 'High' },
-  { id: 2, name: 'Blue Chip Autopilot', creator: '0x8A...C99', participants: 856, prize: 'Reputation Badge', time: '14 Days Left', risk: 'Low' },
-  { id: 3, name: 'Kalshi vs Poly Arbitrage', creator: '0x11...D22', participants: 53, prize: 'Winner Takes All', time: '6 Hrs Left', risk: 'Medium' },
-];
 
 const AVAILABLE_AGENTS = [
   { id: 'a1', name: 'Swarm Copilot', type: 'Generalist', risk: 'Medium', desc: 'Executes text-based intents dynamically across all markets.' },
@@ -93,7 +89,7 @@ const DataStreamBackground = () => {
 
 export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leagues' | 'create'>('dashboard');
-  const [activeLeagueId, setActiveLeagueId] = useState<number | 'global'>('global');
+  const [activeLeagueId, setActiveLeagueId] = useState<string | 'global'>('global');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -103,8 +99,9 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [activeAgents, setActiveAgents] = useState<any[]>([]);
   const [totalPnL, setTotalPnL] = useState(0);
 
-  const [leagues, setLeagues] = useState(CUSTOM_LEAGUES);
-  const [joinedLeagues, setJoinedLeagues] = useState<(number | 'global')[]>([]);
+  const [leagues, setLeagues] = useState<any[]>([]);
+  const [joinedLeagues, setJoinedLeagues] = useState<(string | 'global')[]>(['global']);
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [newLeagueName, setNewLeagueName] = useState('');
   const [newLeagueBalance, setNewLeagueBalance] = useState(10000);
   const [newLeagueDuration, setNewLeagueDuration] = useState(7);
@@ -122,6 +119,33 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [inspectedPlayerRank, setInspectedPlayerRank] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
 
+  const loadArena = React.useCallback(async () => {
+    try {
+      const [lgRes, lbRes] = await Promise.all([
+        apiFetch('/api/arena/leagues'),
+        apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(activeLeagueId)}`),
+      ]);
+      if (lgRes.ok) {
+        const data = await lgRes.json();
+        const mapped = (data.leagues || []).map((l: any) => ({
+          id: l.id, name: l.name, creator: l.creatorName,
+          participants: l.participants, prize: l.prize,
+          time: msToLeft(l.endsAt), risk: l.risk, joined: l.joined,
+        }));
+        setLeagues(mapped);
+        setJoinedLeagues(['global', ...mapped.filter((l: any) => l.joined).map((l: any) => l.id)]);
+      }
+      if (lbRes.ok) {
+        const data = await lbRes.json();
+        setLeaderboard(data.leaderboard || []);
+      }
+    } catch {
+      /* keep last good state */
+    }
+  }, [activeLeagueId]);
+
+  useEffect(() => { loadArena(); }, [loadArena]);
+
   const handleShare = () => {
     const link = `${window.location.origin}/arena?league=${activeLeagueId}`;
     navigator.clipboard.writeText(link);
@@ -129,38 +153,49 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     setTimeout(() => setShareCopied(false), 2000);
   };
 
-  const handleJoinLeague = (id: number | 'global') => {
-    if (joinedLeagues.includes(id)) {
+  const handleJoinLeague = async (id: string | 'global') => {
+    if (id === 'global' || joinedLeagues.includes(id)) {
       setActiveLeagueId(id);
       setActiveTab('dashboard');
       return;
     }
-    setJoinedLeagues(prev => [...prev, id]);
-    if (id !== 'global') {
-      setLeagues(prev => prev.map(l => l.id === id ? { ...l, participants: l.participants + 1 } : l));
+    try {
+      const res = await apiFetch(`/api/arena/leagues/${id}/join`, { method: 'POST' });
+      if (res.ok || res.status === 409) {
+        setActiveLeagueId(id);
+        setActiveTab('dashboard');
+        await loadArena();
+      }
+    } catch {
+      /* ignore transient failures; state stays consistent on next load */
     }
   };
 
-  const handleCreateLeague = (e: React.FormEvent) => {
+  const handleCreateLeague = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLeagueName.trim()) return;
-    
-    const newLeague = {
-      id: Date.now(),
-      name: newLeagueName,
-      creator: '0xYou...123',
-      participants: 1,
-      prize: 'Custom Pool',
-      time: `${newLeagueDuration} Days Left`,
-      risk: 'Custom'
-    };
-    
-    setLeagues(prev => [newLeague, ...prev]);
-    setJoinedLeagues(prev => [...prev, newLeague.id]);
-    setActiveTab('leagues');
-    setNewLeagueName('');
-    setNewLeagueBalance(10000);
-    setNewLeagueDuration(7);
+    try {
+      const res = await apiFetch('/api/arena/leagues', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: newLeagueName,
+          startBalance: newLeagueBalance,
+          durationDays: newLeagueDuration,
+          risk: 'Medium',
+          prize: 'Community Pool',
+        }),
+      });
+      if (res.ok) {
+        setActiveTab('leagues');
+        setNewLeagueName('');
+        setNewLeagueBalance(10000);
+        setNewLeagueDuration(7);
+        await loadArena();
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   // Simulated live PnL updates
@@ -657,7 +692,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       </tr>
                     )}
                     
-                    {(activeLeagueId === 'global' ? GLOBAL_LEADERBOARD : GLOBAL_LEADERBOARD.slice(1, 3).map((p, i) => ({ ...p, rank: i + 2 }))).map((player) => (
+                    {leaderboard.map((player) => (
                       <tr 
                         key={player.rank} 
                         onClick={() => setInspectedPlayerRank(player.rank)}
@@ -1182,7 +1217,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
               style={{ maxHeight: '90vh' }}
             >
               {(() => {
-                const player = GLOBAL_LEADERBOARD.find(p => p.rank === inspectedPlayerRank);
+                const player = leaderboard.find(p => p.rank === inspectedPlayerRank);
                 if (!player) return null;
                 
                 return (

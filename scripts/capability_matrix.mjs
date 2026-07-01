@@ -61,20 +61,23 @@ function orchestratedBy(cliSubcmd) {
 }
 
 // The capability catalogue. `cli` is the mm subcommand the route runs, used to
-// detect orchestration reachability. `kind`: readonly | execute | auth | ai.
+// detect orchestration reachability. `kind`: readonly | execute | auth | ai | removed.
+// `lockedLabel` (execute only) is the visible-but-locked affordance the UI renders;
+// we grep the wallet modal for it so "surfaced as locked" stays honest.
+const walletModal = fs.readFileSync(path.join(root, 'src', 'components', 'AgentWalletModal.tsx'), 'utf8');
 const CAPS = [
   { cap: 'Wallet readiness',   route: '/api/mm/readiness',        kind: 'readonly' },
   { cap: 'Wallet status',      route: '/api/mm/status',           kind: 'readonly' },
   { cap: 'Browser login',      route: '/api/mm/login-browser',    kind: 'auth' },
-  { cap: 'Token login',        route: '/api/mm/login',            kind: 'auth' },
+  { cap: 'Token login',        route: '/api/mm/login',            kind: 'removed', note: 'returns 410 by design — MetaEdge never accepts wallet secrets' },
   { cap: 'Wallet address',     route: '/api/mm/address',          kind: 'readonly', cli: "'address'" },
   { cap: 'Wallet balance',     route: '/api/mm/balance',          kind: 'readonly', cli: "'balance'" },
-  { cap: 'Transfer / send',    route: '/api/mm/transfer',         kind: 'execute' },
+  { cap: 'Transfer / send',    route: '/api/mm/transfer',         kind: 'execute', lockedLabel: "label=\"Send\"" },
   { cap: 'Swap quote',         route: '/api/mm/swap/quote',       kind: 'readonly', cli: "'swap', 'quote'" },
-  { cap: 'Swap execute',       route: '/api/mm/swap/execute',     kind: 'execute' },
+  { cap: 'Swap execute',       route: '/api/mm/swap/execute',     kind: 'execute', lockedLabel: "label=\"Execute swap\"" },
   { cap: 'Perps balance',      route: '/api/mm/perps/balance',    kind: 'readonly' },
   { cap: 'Perps quote',        route: '/api/mm/perps/quote',      kind: 'readonly' },
-  { cap: 'Perps open',         route: '/api/mm/perps/open',       kind: 'execute' },
+  { cap: 'Perps open',         route: '/api/mm/perps/open',       kind: 'execute', lockedLabel: "label=\"Open position\"" },
   { cap: 'Predict markets',    route: '/api/mm/predict/markets',  kind: 'readonly', cli: "'predict', 'markets'" },
   { cap: 'Predict quote',      route: '/api/mm/predict/quote',    kind: 'readonly' },
   { cap: 'Intent solver',      route: '/api/mm/intent/solve',     kind: 'ai' },
@@ -86,11 +89,14 @@ const rows = CAPS.map((c) => {
   const present = mmSrc.includes(`'${c.route}'`);
   const direct = uiCallers(c.route);
   const orch = c.cli ? orchestratedBy(c.cli) : [];
+  const lockedUi = c.lockedLabel ? walletModal.includes(c.lockedLabel) : false;
   let status;
-  if (direct.length) status = 'DIRECT';
+  if (c.kind === 'removed') status = 'REMOVED';
+  else if (direct.length) status = 'DIRECT';
   else if (orch.length) status = 'ORCHESTRATED';
+  else if (lockedUi) status = 'GATED-UI';
   else status = 'UNREACHABLE';
-  return { ...c, present, direct, orch, status };
+  return { ...c, present, direct, orch, lockedUi, status };
 });
 
 const pad = (s, n) => String(s).padEnd(n);
@@ -100,26 +106,33 @@ console.log('-'.repeat(96));
 for (const r of rows) {
   const entry = r.direct.length ? r.direct.join(', ')
     : r.orch.length ? `via ${r.orch.join(' / ')} (read-only)`
+    : r.status === 'GATED-UI' ? 'AgentWalletModal (visible, locked)'
+    : r.status === 'REMOVED' ? (r.note || 'intentionally removed')
     : '—';
   console.log(pad(r.cap, 20), pad(r.kind, 10), pad(r.present ? 'yes' : 'NO', 9), pad(r.status, 13), entry);
 }
 
 const present = rows.filter(r => r.present).length;
-const reachable = rows.filter(r => r.status !== 'UNREACHABLE').length;
+// "Surfaced" = a user can see/reach it in the UI: direct, orchestrated, or a
+// visible-but-locked execute affordance. REMOVED is intentional and not a gap.
+const surfaced = rows.filter(r => ['DIRECT', 'ORCHESTRATED', 'GATED-UI'].includes(r.status));
 const unreachable = rows.filter(r => r.status === 'UNREACHABLE');
 console.log('-'.repeat(96));
-console.log(`\nPresent: ${present}/${rows.length}   Reachable: ${reachable}/${rows.length}   Unreachable: ${unreachable.length}`);
+console.log(`\nPresent: ${present}/${rows.length}   Surfaced in UI: ${surfaced.length}/${rows.length}   Removed by design: ${rows.filter(r => r.status === 'REMOVED').length}   Unreachable gaps: ${unreachable.length}`);
 if (unreachable.length) {
   console.log('\nUNREACHABLE (present in backend, no UI path):');
   for (const r of unreachable) console.log(`  - ${r.cap} (${r.route}) [${r.kind}]`);
+} else {
+  console.log('\nNo unreachable gaps: every present capability is either surfaced in the UI or removed by design.');
 }
 
-// --strict: fail if a capability is present but unreachable AND read-only/auth
-// (execute paths are intentionally gated, so they don't fail the gate).
+// --strict: fail if any present capability is UNREACHABLE. REMOVED (410) and
+// GATED-UI (visible-but-locked execute) both count as intentionally handled.
 if (process.argv.includes('--strict')) {
-  const regressions = unreachable.filter(r => r.present && r.kind !== 'execute');
+  const regressions = unreachable.filter(r => r.present);
   if (regressions.length) {
-    console.error(`\nSTRICT FAIL: ${regressions.length} reachable-safe capabilit(ies) have no UI path.`);
+    console.error(`\nSTRICT FAIL: ${regressions.length} capabilit(ies) present but with no UI path.`);
     process.exit(1);
   }
+  console.log('STRICT OK: no capability is present-but-unreachable.');
 }

@@ -13,54 +13,51 @@ node scripts/capability_matrix.mjs --strict   # exit 1 if a safe capability lose
 
 ## Snapshot
 
-**Present: 17/17 · Reachable: 7/17 · Unreachable: 10**
+**Present: 17/17 · Surfaced in UI: 16/17 · Removed by design: 1 · Unreachable gaps: 0**
 
-| Capability | Kind | Present | Reachable | UI entry |
+| Capability | Kind | Present | Status | UI entry |
 |---|---|---|---|---|
 | Wallet readiness | readonly | yes | **direct** | AgentWalletModal, ReadinessSheet |
-| Wallet status | readonly | yes | — | none |
+| Wallet status | readonly | yes | **direct** | AgentWalletModal → Overview |
 | Browser login | auth | yes | **direct** | AgentWalletModal |
-| Token login | auth | yes | — | none |
-| Wallet address | readonly | yes | — | none |
-| Wallet balance | readonly | yes | — | none |
-| Transfer / send | execute | yes | — | none (gated) |
-| Swap quote | readonly | yes | **orchestrated** | Intent Solver / Autopilot (read-only) |
-| Swap execute | execute | yes | — | none (gated) |
-| Perps balance | readonly | yes | — | none |
-| Perps quote | readonly | yes | — | none |
-| Perps open | execute | yes | — | none (gated) |
-| Predict markets | readonly | yes | **orchestrated** | Intent Solver / Autopilot (read-only) |
-| Predict quote | readonly | yes | — | none |
+| Token login | removed | yes | **removed** | returns 410 — MetaEdge never accepts wallet secrets |
+| Wallet address | readonly | yes | **direct** | AgentWalletModal → Overview |
+| Wallet balance | readonly | yes | **direct** | AgentWalletModal → Overview |
+| Transfer / send | execute | yes | **gated-ui** | AgentWalletModal → Overview (visible, locked) |
+| Swap quote | readonly | yes | **direct** | AgentWalletModal → Swaps |
+| Swap execute | execute | yes | **gated-ui** | AgentWalletModal → Swaps (visible, locked) |
+| Perps balance | readonly | yes | **direct** | AgentWalletModal → Perps |
+| Perps quote | readonly | yes | **direct** | AgentWalletModal → Perps |
+| Perps open | execute | yes | **gated-ui** | AgentWalletModal → Perps (visible, locked) |
+| Predict markets | readonly | yes | **direct** | AgentWalletModal → Markets |
+| Predict quote | readonly | yes | **direct** | AgentWalletModal → Markets |
 | Intent solver | ai | yes | **direct** | IntentSolver |
 | Swarm copilot chat | ai | yes | **direct** | SwarmCopilot |
 | Autopilot planner | ai | yes | **direct** | AgenticAutopilot |
 
 "Direct" = a UI component fetches the endpoint. "Orchestrated" = a
-natural-language endpoint runs the capability under the hood (read-only quote /
-market search). "Gated" = an execute path deliberately behind
-`LIVE_EXECUTION_ENABLED`.
+natural-language endpoint runs the capability under the hood. "Gated-UI" = an
+execute path deliberately behind `LIVE_EXECUTION_ENABLED`, shown as a
+visible-but-locked button. "Removed" = intentionally disabled (410).
 
-## The 10 gaps, and what to do with each
+## How the gaps were closed
 
-**Safe to surface now (read-only / auth — no live execution unlocked): 7**
-- Wallet status, Wallet address, Wallet balance
-- Perps balance, Perps quote
-- Predict quote
-- Token login
+The `AgentWalletModal` was promoted from descriptive cards into a **live panel**
+that fetches real Agent Wallet data on every tab:
+- **Overview** — real `status` (auth), `address`, `balance`, plus a
+  visible-but-locked Send/transfer form.
+- **Swaps** — real `swap/quote` (route + fee), locked Execute.
+- **Perps** — real `perps/balance` and `perps/quote`, locked Open.
+- **Markets** — real `predict/markets` search and `predict/quote`, locked Place.
 
-These are all read-only previews or auth. Surfacing them makes the wallet
-genuinely inspectable without touching the live lock. Recommended home: promote
-the **Agent Wallet modal** from descriptive cards into a live panel — Overview
-(address + balance + status), Swaps (real quote), Perps (balance + quote
-preview), Predict (markets + quote preview). Each shows the real preview and an
-"Execute — locked in paper mode" affordance.
+Verified against a live, authenticated `mm` CLI: status returns
+`isAuthenticated: true`, address returns a real `0x…`, swap/quote returns a real
+`quoteId` + route, perps/balance returns the real Hyperliquid balance.
 
-**Intentionally gated (execute — keep locked until live is switched on): 3**
-- Transfer / send, Swap execute, Perps open
-
-These stay unreachable *by design* until `LIVE_EXECUTION_ENABLED=true`. The UI
-should show them as visible-but-locked so testers see the full surface without
-being able to move real funds. `--strict` does **not** fail on these.
+**Still gated by design (3 execute paths):** Transfer/send, Swap execute, Perps
+open stay locked until `LIVE_EXECUTION_ENABLED=true`. They're shown as
+visible-but-locked so testers see the full surface without moving real funds.
+`--strict` treats these (and the removed token login) as intentionally handled.
 
 ## How reachability is verified
 

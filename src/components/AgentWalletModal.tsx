@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, Check, KeyRound, Gauge, Landmark } from 'lucide-react';
+import { X, Wallet, ShieldCheck, Activity, RefreshCw, AlertTriangle, ArrowRightLeft, TrendingUp, Lock, KeyRound, Send, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
 
@@ -37,6 +37,7 @@ interface MetaMaskReadiness {
 
 const tabs = [
   { id: 'readiness', label: 'Readiness', icon: ShieldCheck },
+  { id: 'overview', label: 'Overview', icon: Wallet },
   { id: 'swap', label: 'Swaps', icon: ArrowRightLeft },
   { id: 'perps', label: 'Perps', icon: TrendingUp },
   { id: 'predict', label: 'Markets', icon: Activity }
@@ -58,30 +59,53 @@ function StatusPill({ status }: { status: CheckStatus }) {
   );
 }
 
-function ProductCard({
-  icon: Icon,
-  title,
-  body,
-  footer
-}: {
-  icon: React.ElementType;
-  title: string;
-  body: string;
-  footer: string;
-}) {
+function Field({ label, ...props }: { label: string } & React.InputHTMLAttributes<HTMLInputElement>) {
   return (
-    <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center shrink-0">
-          <Icon className="w-5 h-5 text-orange-400" />
-        </div>
-        <div>
-          <h4 className="text-sm font-bold text-slate-100">{title}</h4>
-          <p className="text-xs text-slate-400 leading-relaxed mt-1">{body}</p>
-          <p className="text-[10px] text-slate-500 font-mono mt-3">{footer}</p>
-        </div>
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">{label}</span>
+      <input
+        {...props}
+        className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-orange-500/50 focus:outline-none transition-colors disabled:opacity-50"
+      />
+    </label>
+  );
+}
+
+// A read-only capability preview: fires a real endpoint, shows the returned data
+// or the error. This is what makes a capability genuinely "reachable" from the UI.
+function Preview({ error, data, empty }: { error?: string; data?: any; empty?: string }) {
+  if (error) {
+    return (
+      <div className="bg-amber-950/30 border border-amber-900/50 rounded-xl p-3 flex items-start gap-2 text-amber-200 text-xs">
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" /> <div>{error}</div>
       </div>
-    </div>
+    );
+  }
+  if (data === undefined || data === null) {
+    return <div className="text-xs text-slate-500 font-mono">{empty || 'No preview yet.'}</div>;
+  }
+  return (
+    <pre className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-emerald-200/90 font-mono overflow-x-auto max-h-52 custom-scrollbar">
+      {typeof data === 'string' ? data : JSON.stringify(data, null, 2)}
+    </pre>
+  );
+}
+
+// A visible-but-locked execute affordance. Real fund movement stays gated behind
+// LIVE_EXECUTION_ENABLED, so testers see the full surface without moving funds.
+function LockedAction({ label, locked }: { label: string; locked: boolean }) {
+  return (
+    <button
+      disabled={locked}
+      title={locked ? 'Live execution is locked in paper mode' : undefined}
+      className={`w-full py-2.5 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition-colors ${
+        locked
+          ? 'bg-slate-800/60 text-slate-500 cursor-not-allowed border border-slate-800'
+          : 'bg-orange-600 hover:bg-orange-500 text-white'
+      }`}
+    >
+      <Lock className="w-3.5 h-3.5" /> {locked ? `${label} — locked in paper mode` : label}
+    </button>
   );
 }
 
@@ -91,12 +115,39 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [activeTab, setActiveTab] = useState<ActiveTab>('readiness');
   const [message, setMessage] = useState('');
 
+  // Overview (status + address + balance)
+  const [overview, setOverview] = useState<{ error?: string; status?: any; address?: string; balance?: any } | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [sendTo, setSendTo] = useState('');
+  const [sendAmount, setSendAmount] = useState('');
+
+  // Swap quote
+  const [swapForm, setSwapForm] = useState({ from: 'USDC', to: 'WETH', amount: '10' });
+  const [swapQuote, setSwapQuote] = useState<{ error?: string; data?: any }>({});
+  const [swapLoading, setSwapLoading] = useState(false);
+
+  // Perps
+  const [perpsBal, setPerpsBal] = useState<{ error?: string; data?: any }>({});
+  const [perpsForm, setPerpsForm] = useState({ symbol: 'ETH', side: 'long', size: '0.1', leverage: '2' });
+  const [perpsQuote, setPerpsQuote] = useState<{ error?: string; data?: any }>({});
+  const [perpsLoading, setPerpsLoading] = useState(false);
+
+  // Predict
+  const [predictQuery, setPredictQuery] = useState('crypto');
+  const [predictMarkets, setPredictMarkets] = useState<{ error?: string; data?: any }>({});
+  const [predictForm, setPredictForm] = useState({ tokenId: '', side: 'buy', size: '10' });
+  const [predictQuote, setPredictQuote] = useState<{ error?: string; data?: any }>({});
+  const [predictLoading, setPredictLoading] = useState(false);
+
   const blockedCount = useMemo(
     () => readiness?.checks.filter((check) => check.status === 'blocked').length ?? 0,
     [readiness]
   );
-
   const walletAddress = readiness?.wallet?.address;
+  const swapLocked = readiness?.capabilities?.swaps?.executeLocked ?? true;
+  const perpsLocked = readiness?.capabilities?.perps?.openLocked ?? true;
+  const predictLocked = readiness?.capabilities?.predictionMarkets?.placeLocked ?? true;
+  const transferLocked = readiness?.liveModeGlobalLock ?? true;
 
   async function loadReadiness() {
     try {
@@ -127,12 +178,102 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
+  // Small helper: GET/POST an mm endpoint and normalise into { error?, data? }.
+  async function callMm(path: string, init?: RequestInit, pick?: (d: any) => any) {
+    const res = await apiFetch(path, init);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: body.message || body.error || `Request failed (${res.status}).` };
+    return { data: pick ? pick(body) : body };
+  }
+
+  // The address endpoint returns the raw CLI text, which can be a JSON blob like
+  // {"ok":true,"data":{"address":"0x…"}}. Dig out the actual 0x address.
+  function normalizeAddress(raw: any): string | undefined {
+    if (typeof raw !== 'string') return undefined;
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('0x')) return trimmed;
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed?.data?.address || parsed?.address || undefined;
+    } catch {
+      const m = trimmed.match(/0x[a-fA-F0-9]{40}/);
+      return m ? m[0] : undefined;
+    }
+  }
+
+  async function loadOverview() {
+    setOverviewLoading(true);
+    try {
+      const [status, address, balance] = await Promise.all([
+        callMm('/api/mm/status'),
+        callMm('/api/mm/address', undefined, (d) => normalizeAddress(d.address)),
+        callMm('/api/mm/balance', undefined, (d) => d.balance)
+      ]);
+      const firstErr = status.error && address.error && balance.error ? status.error : undefined;
+      setOverview({
+        error: firstErr,
+        status: status.data,
+        address: address.data,
+        balance: balance.data
+      });
+    } finally {
+      setOverviewLoading(false);
+    }
+  }
+
+  async function getSwapQuote() {
+    setSwapLoading(true);
+    setSwapQuote(await callMm('/api/mm/swap/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(swapForm)
+    }, (d) => d.quote));
+    setSwapLoading(false);
+  }
+
+  async function getPerpsBalance() {
+    setPerpsBal(await callMm('/api/mm/perps/balance', undefined, (d) => d.balance));
+  }
+
+  async function getPerpsQuote() {
+    setPerpsLoading(true);
+    setPerpsQuote(await callMm('/api/mm/perps/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(perpsForm)
+    }, (d) => d.quote));
+    setPerpsLoading(false);
+  }
+
+  async function searchMarkets() {
+    setPredictLoading(true);
+    setPredictMarkets(await callMm(`/api/mm/predict/markets?query=${encodeURIComponent(predictQuery)}`, undefined, (d) => d.markets));
+    setPredictLoading(false);
+  }
+
+  async function getPredictQuote() {
+    setPredictLoading(true);
+    setPredictQuote(await callMm('/api/mm/predict/quote', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(predictForm)
+    }, (d) => d.quote));
+    setPredictLoading(false);
+  }
+
   useEffect(() => {
     if (isOpen) {
       setActiveTab('readiness');
       loadReadiness();
     }
   }, [isOpen]);
+
+  // Lazy-load a tab's live data the first time it's opened.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (activeTab === 'overview' && !overview && !overviewLoading) loadOverview();
+    if (activeTab === 'predict' && !predictMarkets.data && !predictMarkets.error && !predictLoading) searchMarkets();
+  }, [activeTab, isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen) return null;
 
@@ -153,7 +294,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
               </div>
               <div>
                 <h3 className="text-xl font-bold text-white tracking-tight">MetaMask Agent Wallet</h3>
-                <p className="text-xs text-orange-400/80 font-mono mt-0.5">Live review stays locked until MetaMask approval is ready.</p>
+                <p className="text-xs text-orange-400/80 font-mono mt-0.5">Live previews are real. Execution stays locked until MetaMask approval is ready.</p>
               </div>
             </div>
             <button
@@ -173,7 +314,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                   <div>
                     <h4 className="text-sm font-bold text-slate-100">Live locked</h4>
                     <p className="text-xs text-slate-400 leading-relaxed mt-1">
-                      MetaEdge can prepare previews and readiness checks, but real movement requires MetaMask browser login, policy limits, quote review, and a human approval prompt.
+                      Every tab below fetches real Agent Wallet data (balances, routes, quotes). Actual movement requires MetaMask browser login, policy limits, quote review, and a human approval prompt.
                     </p>
                   </div>
                 </div>
@@ -253,54 +394,126 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
               </div>
             )}
 
+            {activeTab === 'overview' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-slate-100">Wallet overview</h4>
+                  <button onClick={loadOverview} disabled={overviewLoading} className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1.5 disabled:opacity-50">
+                    <RefreshCw className={`w-3.5 h-3.5 ${overviewLoading ? 'animate-spin' : ''}`} /> Refresh
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-3 gap-3">
+                  <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Auth status</div>
+                    <div className="text-sm text-slate-100 font-bold mt-1">
+                      {overview?.status?.isAuthenticated ? 'Authenticated' : overview ? 'Not logged in' : '—'}
+                    </div>
+                  </div>
+                  <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Address</div>
+                    <div className="text-sm text-slate-100 font-bold mt-1 truncate font-mono">
+                      {overview?.address ? `${overview.address.slice(0, 8)}…${overview.address.slice(-6)}` : '—'}
+                    </div>
+                  </div>
+                  <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Base balance</div>
+                    <div className="text-sm text-slate-100 font-bold mt-1">
+                      {overview?.balance ? 'Loaded below' : '—'}
+                    </div>
+                  </div>
+                </div>
+                <Preview error={overview?.error} data={overview?.balance} empty={overviewLoading ? 'Loading balance…' : 'Refresh to load balance.'} />
+
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-slate-100 text-sm font-bold"><Send className="w-4 h-4 text-orange-400" /> Send / transfer</div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="To address" placeholder="0x…" value={sendTo} onChange={(e) => setSendTo(e.target.value)} disabled={transferLocked} />
+                    <Field label="Amount" placeholder="0.0" value={sendAmount} onChange={(e) => setSendAmount(e.target.value)} disabled={transferLocked} />
+                  </div>
+                  <LockedAction label="Send" locked={transferLocked} />
+                </div>
+              </div>
+            )}
+
             {activeTab === 'swap' && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <ProductCard
-                  icon={ArrowRightLeft}
-                  title="Quote before swap"
-                  body="MetaEdge can ask Agent Wallet for a swap or bridge preview with route, expected output, and fees before execution."
-                  footer="Live execution still needs MetaMask approval."
-                />
-                <ProductCard
-                  icon={Gauge}
-                  title="Refuel supported"
-                  body="Cross-chain bridge previews can include destination gas top-up when the route supports it."
-                  footer="Paper mode remains the default."
-                />
+              <div className="space-y-4">
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="grid grid-cols-3 gap-3">
+                    <Field label="From" value={swapForm.from} onChange={(e) => setSwapForm({ ...swapForm, from: e.target.value.toUpperCase() })} />
+                    <Field label="To" value={swapForm.to} onChange={(e) => setSwapForm({ ...swapForm, to: e.target.value.toUpperCase() })} />
+                    <Field label="Amount" value={swapForm.amount} onChange={(e) => setSwapForm({ ...swapForm, amount: e.target.value })} />
+                  </div>
+                  <button onClick={getSwapQuote} disabled={swapLoading} className="w-full py-2.5 px-4 rounded-lg text-sm font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center gap-2 disabled:opacity-50">
+                    {swapLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get swap quote
+                  </button>
+                  <Preview error={swapQuote.error} data={swapQuote.data} empty="Enter a pair and fetch a live route + fee preview." />
+                  <LockedAction label="Execute swap" locked={swapLocked} />
+                </div>
               </div>
             )}
 
             {activeTab === 'perps' && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <ProductCard
-                  icon={TrendingUp}
-                  title="Perps preview"
-                  body="Perp actions should first show venue, margin, estimated entry, fees, and liquidation before any open action."
-                  footer="Open positions stay locked here."
-                />
-                <ProductCard
-                  icon={Landmark}
-                  title="Deposit required"
-                  body="Hyperliquid perps require venue funding and balance checks before a real position can be reviewed."
-                  footer="Use paper fills until ready."
-                />
+              <div className="space-y-4">
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-bold text-slate-100">Hyperliquid margin balance</div>
+                    <button onClick={getPerpsBalance} className="text-xs text-orange-400 hover:text-orange-300 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5" /> Check
+                    </button>
+                  </div>
+                  <Preview error={perpsBal.error} data={perpsBal.data} empty="Check your venue margin balance." />
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Field label="Symbol" value={perpsForm.symbol} onChange={(e) => setPerpsForm({ ...perpsForm, symbol: e.target.value.toUpperCase() })} />
+                    <label className="block">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Side</span>
+                      <select value={perpsForm.side} onChange={(e) => setPerpsForm({ ...perpsForm, side: e.target.value })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-orange-500/50 focus:outline-none">
+                        <option value="long">Long</option>
+                        <option value="short">Short</option>
+                      </select>
+                    </label>
+                    <Field label="Size" value={perpsForm.size} onChange={(e) => setPerpsForm({ ...perpsForm, size: e.target.value })} />
+                    <Field label="Leverage" value={perpsForm.leverage} onChange={(e) => setPerpsForm({ ...perpsForm, leverage: e.target.value })} />
+                  </div>
+                  <button onClick={getPerpsQuote} disabled={perpsLoading} className="w-full py-2.5 px-4 rounded-lg text-sm font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center gap-2 disabled:opacity-50">
+                    {perpsLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get perps quote
+                  </button>
+                  <Preview error={perpsQuote.error} data={perpsQuote.data} empty="Preview entry, fees, and liquidation before opening." />
+                  <LockedAction label="Open position" locked={perpsLocked} />
+                </div>
               </div>
             )}
 
             {activeTab === 'predict' && (
-              <div className="grid md:grid-cols-2 gap-4">
-                <ProductCard
-                  icon={Activity}
-                  title="Prediction preview"
-                  body="Prediction markets need setup, deposit status, market token selection, and order quote before placement."
-                  footer="Real orders remain locked."
-                />
-                <ProductCard
-                  icon={Check}
-                  title="Approval path"
-                  body="MetaMask approval and policy checks must clear before any live prediction-market action."
-                  footer="No hidden execution."
-                />
+              <div className="space-y-4">
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="flex gap-2">
+                    <div className="flex-1"><Field label="Search markets" value={predictQuery} onChange={(e) => setPredictQuery(e.target.value)} /></div>
+                    <button onClick={searchMarkets} disabled={predictLoading} className="self-end py-2 px-4 rounded-lg text-sm font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center gap-2 disabled:opacity-50">
+                      {predictLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
+                    </button>
+                  </div>
+                  <Preview error={predictMarkets.error} data={predictMarkets.data} empty="Search real Polymarket markets." />
+                </div>
+                <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    <Field label="Token ID" placeholder="market token id" value={predictForm.tokenId} onChange={(e) => setPredictForm({ ...predictForm, tokenId: e.target.value })} />
+                    <label className="block">
+                      <span className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Side</span>
+                      <select value={predictForm.side} onChange={(e) => setPredictForm({ ...predictForm, side: e.target.value })} className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-orange-500/50 focus:outline-none">
+                        <option value="buy">Buy (Yes)</option>
+                        <option value="sell">Sell (No)</option>
+                      </select>
+                    </label>
+                    <Field label="Size" value={predictForm.size} onChange={(e) => setPredictForm({ ...predictForm, size: e.target.value })} />
+                  </div>
+                  <button onClick={getPredictQuote} disabled={predictLoading} className="w-full py-2.5 px-4 rounded-lg text-sm font-bold bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center gap-2 disabled:opacity-50">
+                    {predictLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Get order quote
+                  </button>
+                  <Preview error={predictQuote.error} data={predictQuote.data} empty="Preview an order before placement." />
+                  <LockedAction label="Place order" locked={predictLocked} />
+                </div>
               </div>
             )}
           </div>

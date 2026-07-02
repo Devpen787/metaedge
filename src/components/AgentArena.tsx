@@ -560,54 +560,15 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                   </div>
                 </div>
 
-                {/* Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                  <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Competitors</div>
-                    <div className="text-2xl font-bold text-white font-mono">
-                      {arenaStats.participants}
-                    </div>
-                  </div>
-                  <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Capital in play</div>
-                    <div className="text-2xl font-bold text-white font-mono">
-                      {fmtUsd(arenaStats.capitalInPlay)}
-                    </div>
-                  </div>
-                  <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">Top return</div>
-                    <div className="text-2xl font-bold text-emerald-400 font-mono">
-                      {arenaStats.topReturn}
-                    </div>
-                  </div>
-                  <div className="bg-slate-950/50 rounded-xl p-4 border border-slate-800/50">
-                    <div className="text-xs text-slate-500 mb-1">In profit</div>
-                    <div className="text-2xl font-bold text-white font-mono">
-                      {arenaStats.inProfit}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Prize / Reward */}
-                <div className="bg-slate-950 rounded-xl p-5 border border-slate-800">
-                  <h3 className="text-sm font-bold text-white mb-4">{activeLeagueId === 'global' ? 'Reward' : 'Prize pool'}</h3>
-                  <div className="flex justify-between items-end mb-2">
-                    <div>
-                      <div className="text-xs text-slate-500 mb-1">{activeLeagueId === 'global' ? 'On the line' : 'Set by league creator'}</div>
-                      <div className="text-3xl font-bold text-yellow-500 font-mono">
-                        {activeLeagueId === 'global' ? 'Leaderboard Glory' : (leagues.find(l => l.id === activeLeagueId)?.prize || 'Reputation Badge')}
-                      </div>
-                    </div>
-                  </div>
-                  {activeLeagueId === 'global' ? (
-                    <div className="text-xs text-slate-500 font-mono">
-                      Ranked by real agent P&amp;L · {arenaStats.participants} competing · {fmtUsd(arenaStats.capitalInPlay)} in play
-                    </div>
-                  ) : (
-                    <div className="text-xs text-slate-500 font-mono">
-                      Custom league · winner takes the pool
-                    </div>
-                  )}
+                {/* One honest stat line — the board below is the real content. */}
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-mono text-slate-400">
+                  <span><span className="text-white font-bold">{arenaStats.participants}</span> competing</span>
+                  <span className="text-slate-700">·</span>
+                  <span><span className="text-white font-bold">{fmtUsd(arenaStats.capitalInPlay)}</span> in play</span>
+                  <span className="text-slate-700">·</span>
+                  <span>top <span className="text-emerald-400 font-bold">{arenaStats.topReturn}</span></span>
+                  <span className="text-slate-700">·</span>
+                  <span className="text-yellow-500/90">{activeLeagueId === 'global' ? 'prize: leaderboard glory' : `prize: ${leagues.find(l => l.id === activeLeagueId)?.prize || 'Reputation Badge'}`}</span>
                 </div>
               </div>
             </motion.div>

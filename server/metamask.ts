@@ -130,6 +130,22 @@ async function runMmAs(userId: string, args: string[], timeout = 12_000) {
   return runMmCore(args, timeout, profileHome(userId));
 }
 
+// One person = one mm login. Public lookups (quotes, market search) run under
+// the USER's own session once they've connected — their quota, their account.
+// The server profile only bridges guests, and catches an expired user session
+// so public data never breaks.
+async function runMmFor(req: any, args: string[], timeout = 12_000) {
+  const userId = req?.userId;
+  if (userId) {
+    const db = readDatabase();
+    if (db.users[userId]?.walletAddress) {
+      const result = await runMmAs(userId, args, timeout);
+      if (isCommandOk(result)) return result;
+    }
+  }
+  return runMm(args, timeout);
+}
+
 // Gate for capabilities that act as a wallet: the user must have connected
 // their own MetaMask Agent Wallet first. Competing requires this too.
 function requireWallet(req: any, res: any, next: any) {
@@ -558,7 +574,7 @@ metamaskRouter.post('/api/mm/transfer', requireWallet, async (req: any, res) => 
   }
 });
 
-metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/swap/quote', async (req: any, res) => {
   try {
     const from = validateSymbol(req.body.from, 'Source token');
     const to = validateSymbol(req.body.to, 'Destination token');
@@ -568,7 +584,7 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
     if (req.body.toChain) args.push('--to-chain', validateChain(req.body.toChain, fromChain));
     if (req.body.slippage) args.push('--slippage', validatePositiveAmount(req.body.slippage, 'Slippage'));
     if (req.body.refuel === true) args.push('--refuel');
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
       executeLocked: !LIVE_EXECUTION_ENABLED,
@@ -587,7 +603,7 @@ metamaskRouter.post('/api/mm/swap/execute', requireWallet, async (req: any, res)
       const to = validateSymbol(req.body.to, 'Destination token');
       const amount = validatePositiveAmount(req.body.amount, 'Amount');
       const fromChain = validateChain(req.body.fromChain, '8453');
-      const q = await runMm(['swap', 'quote', '--from', from, '--to', to, '--amount', amount, '--from-chain', fromChain, '--json'], 30_000);
+      const q = await runMmFor(req, ['swap', 'quote', '--from', from, '--to', to, '--amount', amount, '--from-chain', fromChain, '--json'], 30_000);
       const quote = unwrap(q) || {};
       const inner = quote.quote || {};
       const dec = Number(inner?.destAsset?.decimals);
@@ -617,7 +633,7 @@ metamaskRouter.get('/api/mm/perps/balance', requireWallet, async (req: any, res)
   });
 });
 
-metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/perps/quote', async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
@@ -627,7 +643,7 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
     const type = req.body.type === 'limit' ? 'limit' : 'market';
     const args = ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', type, '--json'];
     if (type === 'limit') args.push('--limit-px', validatePositiveAmount(req.body.limitPx, 'Limit price'));
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
       openLocked: !LIVE_EXECUTION_ENABLED,
@@ -646,7 +662,7 @@ metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) =
     const size = validatePositiveAmount(req.body.size, 'Size');
     const leverage = validatePositiveAmount(req.body.leverage || 1, 'Leverage');
     if (!LIVE_EXECUTION_ENABLED) {
-      const q = await runMm(['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
+      const q = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
       const quote = unwrap(q) || {};
       const arena = recordArenaPosition(req.userId, { assetSymbol: symbol, side, size: Number(size), tradeType: 'perp', leverage: Number(leverage) });
       return res.json(paperFill(req, 'perps_open', `${side} ${size} ${symbol} @ ${leverage}x`, {
@@ -686,10 +702,10 @@ function normalizePolymarket(raw: any[]): any[] {
   });
 }
 
-metamaskRouter.get('/api/mm/predict/markets', async (req, res) => {
+metamaskRouter.get('/api/mm/predict/markets', async (req: any, res) => {
   const query = asString(req.query.query || 'crypto').replace(/[^\w\s-]/g, '').trim().slice(0, 80) || 'crypto';
 
-  const result = await runMm(['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
+  const result = await runMmFor(req, ['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
   if (isCommandOk(result)) {
     res.json({ markets: result.data, source: 'metamask', message: 'Prediction markets loaded via MetaMask.' });
     return;
@@ -715,7 +731,7 @@ metamaskRouter.get('/api/mm/predict/markets', async (req, res) => {
   res.status(503).json({ markets: null, source: 'none', message: 'Prediction markets are unavailable right now (MetaMask and Polymarket both unreachable).' });
 });
 
-metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/predict/quote', async (req: any, res) => {
   try {
     const tokenId = validateTokenId(req.body.tokenId);
     const side = asString(req.body.side).trim().toLowerCase();
@@ -723,7 +739,7 @@ metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
     const size = validatePositiveAmount(req.body.size, 'Size');
     const args = ['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'];
     if (req.body.limitPrice) args.push('--limit-price', validatePositiveAmount(req.body.limitPrice, 'Limit price'));
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
       placeLocked: !LIVE_EXECUTION_ENABLED,
@@ -741,7 +757,7 @@ metamaskRouter.post('/api/mm/predict/place', requireWallet, async (req: any, res
     if (side !== 'buy' && side !== 'sell') throw new Error('Side must be buy or sell.');
     const size = validatePositiveAmount(req.body.size, 'Size');
     if (!LIVE_EXECUTION_ENABLED) {
-      const q = await runMm(['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'], 30_000);
+      const q = await runMmFor(req, ['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'], 30_000);
       const quote = unwrap(q) || {};
       const price = quote.price ?? quote.avgPrice ?? quote.limitPrice ?? null;
       return res.json(paperFill(req, 'predict_place', `${side} ${size} @ ${tokenId.slice(0, 8)}…`, {

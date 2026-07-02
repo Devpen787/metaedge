@@ -42,6 +42,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [connected, setConnected] = useState(false);
   const [connectedAddress, setConnectedAddress] = useState<string | undefined>(undefined);
   const [connectPolling, setConnectPolling] = useState(false);
+  const [loginUrl, setLoginUrl] = useState<string | undefined>(undefined);
   const [tokenInput, setTokenInput] = useState('');
   const [showTokenField, setShowTokenField] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
@@ -75,26 +76,28 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
-  // One-click connect: open MetaMask's login page in the user's browser and
-  // poll until their per-user profile is authenticated.
+  // Connect flow: fetch a MetaMask login link, SHOW it as a button the user
+  // clicks themselves (popup blockers eat window.open calls that happen after
+  // an await), and poll until their per-user profile is authenticated.
   async function startConnect() {
     try {
       setLoading(true);
       setMessage('');
       const res = await apiFetch('/api/mm/connect/start', { method: 'POST' });
       const data = await res.json();
-      if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login.');
-      window.open(data.loginUrl, '_blank', 'noopener');
+      if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login. Try again in a few seconds.');
+      setLoginUrl(data.loginUrl);
       setConnectPolling(true);
-      setMessage('Finish signing in on the MetaMask page we opened — this updates automatically.');
-      for (let i = 0; i < 40; i++) {
+      // Poll in the background while the user completes login in their tab.
+      for (let i = 0; i < 60; i++) {
         await new Promise((r) => setTimeout(r, 3500));
         if (await checkStatus()) {
+          setLoginUrl(undefined);
           await finishConnect();
           return;
         }
       }
-      setMessage('Still not connected — reopen the login link or use a CLI token.');
+      setMessage('Still not connected — click the sign-in link again, or use a CLI token.');
     } catch (error: any) {
       setMessage(error.message || 'Could not start MetaMask login.');
     } finally {
@@ -186,14 +189,31 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                 <p className="text-sm text-slate-400 leading-relaxed">
                   Bring your own wallet. Connecting lets you compete in the Agent Arena — and switch to Live trading when you're ready.
                 </p>
-                <button
-                  onClick={startConnect}
-                  disabled={loading || connectPolling}
-                  className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-bold px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
-                >
-                  {connectPolling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-                  {connectPolling ? 'Waiting for MetaMask…' : 'Connect your MetaMask'}
-                </button>
+                {!loginUrl ? (
+                  <button
+                    onClick={startConnect}
+                    disabled={loading || connectPolling}
+                    className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-bold px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+                  >
+                    {loading || connectPolling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                    {loading || connectPolling ? 'Getting your sign-in link…' : 'Connect your MetaMask'}
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <a
+                      href={loginUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+                    >
+                      <KeyRound className="w-4 h-4" /> Open MetaMask sign-in ↗
+                    </a>
+                    <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-2">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Sign in on that page — this screen updates by itself.
+                    </p>
+                  </div>
+                )}
                 <button onClick={() => setShowTokenField(!showTokenField)} className="w-full text-center text-xs text-slate-500 hover:text-slate-300">
                   or use a CLI token
                 </button>

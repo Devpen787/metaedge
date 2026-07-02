@@ -105,8 +105,13 @@ predictionsRouter.post('/api/predictions/:id/bet', (req: any, res) => {
   res.json({ success: true, market, balance: user.paperBalance });
 });
 
-// Resolve a prediction market (for simulated/interactive resolution)
+// Resolve a prediction market. Dev-only: letting any player mint outcomes
+// would corrupt the game, so this is gated behind an operator env flag.
 predictionsRouter.post('/api/predictions/:id/resolve', (req: any, res) => {
+  if (process.env.METAEDGE_DEV_TOOLS !== 'true') {
+    res.status(403).json({ error: 'Market resolution is operator-only. Markets settle at their end date.' });
+    return;
+  }
   const userId = req.userId;
   const marketId = req.params.id;
   const { outcome } = req.body;

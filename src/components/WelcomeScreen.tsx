@@ -53,7 +53,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
             MetaEdge
           </h1>
           <p className="text-slate-400 text-sm mt-2">
-            Social agent-wallet trading room. Play with paper strategies, coordinate in vault clubs, and audit evidence securely.
+            Learn MetaMask agent trading with paper money, then compete against friends and bots in the Agent Arena. No signup, no real funds.
           </p>
         </div>
 
@@ -74,7 +74,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
                 RND
               </button>
             </div>
-            <span className="text-xs text-slate-500 font-mono">Simulated Agent Profile Seed</span>
+            <span className="text-xs text-slate-500 font-mono">Your avatar — tap to reroll</span>
           </div>
 
           {/* Form Fields */}
@@ -123,11 +123,11 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
         <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-[11px] font-mono text-slate-500">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            Paper Default
+            Paper money — zero risk
           </span>
           <span className="flex items-center gap-1.5">
             <Wallet className="w-3.5 h-3.5 text-indigo-400" />
-            MetaMask Integration
+            Bring your own MetaMask
           </span>
         </div>
       </motion.div>

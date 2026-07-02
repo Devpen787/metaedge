@@ -198,28 +198,23 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
             {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
             {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
 
-            {/* Test resolution panel for admins/devs */}
-            <div className="pt-4 border-t border-slate-800 mt-4 space-y-2.5">
-              <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Simulated Resolution Trigger</h5>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleResolveMarket(selectedMarket.id, 'yes')}
-                  disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg cursor-pointer transition-all"
-                >
-                  Resolve YES
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleResolveMarket(selectedMarket.id, 'no')}
-                  disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg cursor-pointer transition-all"
-                >
-                  Resolve NO
-                </button>
+            {/* Dev-only resolution trigger — hidden from players; markets settle
+                at their end date. Enable locally with VITE_DEV_TOOLS=true. */}
+            {(import.meta as any).env?.VITE_DEV_TOOLS === 'true' && (
+              <div className="pt-4 border-t border-slate-800 mt-4 space-y-2.5">
+                <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Dev: Force Resolution</h5>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => handleResolveMarket(selectedMarket.id, 'yes')} disabled={resolving}
+                    className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg transition-all">
+                    Resolve YES
+                  </button>
+                  <button type="button" onClick={() => handleResolveMarket(selectedMarket.id, 'no')} disabled={resolving}
+                    className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition-all">
+                    Resolve NO
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </form>
         ) : (
           <div className="text-center py-12 text-xs text-slate-500 font-mono">

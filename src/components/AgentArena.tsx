@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Swords, Users, Target, Award, TrendingUp, Plus, Bot, Zap, ShieldCheck, Clock, ChevronRight, Crown, Activity, Rocket, DollarSign, PieChart, Play, Pause, X, Wallet, Settings, Terminal, ArrowUpRight, ArrowDownRight, Sliders, Share2 } from 'lucide-react';
-import { User } from '../types';
+import { User, TradingAgent, PaperTrade } from '../types';
 import { apiFetch } from '../lib/api';
 import { burst } from '../lib/fx';
 
@@ -45,14 +45,20 @@ const AnimatedValue = ({ value, formatter, className }: { value: number, formatt
 
 interface AgentArenaProps {
   user: User;
+  agents: TradingAgent[];
+  trades: PaperTrade[];
+  onAgentCreated: (payload: any) => Promise<void>;
+  onAgentStatusChanged: (id: string, status: 'active' | 'paused' | 'revoked') => Promise<void>;
 }
 
-const AVAILABLE_AGENTS = [
-  { id: 'a1', name: 'Swarm Copilot', type: 'Generalist', risk: 'Medium', desc: 'Executes text-based intents dynamically across all markets.' },
-  { id: 'a2', name: 'Delta Farmer', type: 'Yield', risk: 'Low', desc: 'Farms stablecoin yields and hedges volatile assets.' },
-  { id: 'a3', name: 'Perp Sniper', type: 'Leverage', risk: 'High', desc: 'Takes high conviction leveraged positions based on social sentiment.' },
-  { id: 'a4', name: 'Arb Finder', type: 'Arbitrage', risk: 'Low', desc: 'Exploits price differences across L2s instantly.' },
-];
+// Deploy templates: picking one creates a REAL trading agent (same backend as
+// the Trading Agents tab) with a sensible strategy + market preset.
+const AGENT_TEMPLATES = [
+  { id: 't1', name: 'Swarm Copilot', type: 'Generalist', risk: 'Medium', desc: 'Adaptive AI strategy across majors.', strategyType: 'custom_ai', assetSymbol: 'ETH', tradeType: 'token' },
+  { id: 't2', name: 'Delta Farmer', type: 'Yield', risk: 'Low', desc: 'Grid strategy that harvests range-bound moves.', strategyType: 'grid', assetSymbol: 'ETH', tradeType: 'token' },
+  { id: 't3', name: 'Perp Sniper', type: 'Leverage', risk: 'High', desc: 'Momentum entries on BTC with leverage.', strategyType: 'momentum', assetSymbol: 'BTC', tradeType: 'perp' },
+  { id: 't4', name: 'Arb Finder', type: 'Mean Reversion', risk: 'Low', desc: 'Fades overextended moves on SOL.', strategyType: 'mean_reversion', assetSymbol: 'SOL', tradeType: 'token' },
+] as const;
 
 const DataStreamBackground = () => {
   return (
@@ -88,17 +94,12 @@ const DataStreamBackground = () => {
   );
 };
 
-export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
+export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, onAgentCreated, onAgentStatusChanged }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leagues' | 'create'>('dashboard');
   const [activeLeagueId, setActiveLeagueId] = useState<string | 'global'>('global');
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
-  const [allocation, setAllocation] = useState<number>(1000);
-  
-  const [availableCapital, setAvailableCapital] = useState(10000);
-  const [activeAgents, setActiveAgents] = useState<any[]>([]);
-  const [totalPnL, setTotalPnL] = useState(0);
+  const [deployError, setDeployError] = useState('');
 
   const [leagues, setLeagues] = useState<any[]>([]);
   const [joinedLeagues, setJoinedLeagues] = useState<(string | 'global')[]>(['global']);
@@ -108,17 +109,29 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
   const [newLeagueDuration, setNewLeagueDuration] = useState(7);
   const [activeTier, setActiveTier] = useState('All');
 
-  const [customAgents, setCustomAgents] = useState<{id: string, name: string, type: string, risk: string, desc: string}[]>([]);
-  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
-  const [newAgentForm, setNewAgentForm] = useState({ name: '', type: 'Generalist', risk: 'Medium', desc: '' });
-  
   const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
-  const [inspectTab, setInspectTab] = useState<'logs' | 'settings'>('logs');
-  const [inspectDepositAmount, setInspectDepositAmount] = useState(0);
-  const [inspectWithdrawAmount, setInspectWithdrawAmount] = useState(0);
-  
+
   const [inspectedPlayerRank, setInspectedPlayerRank] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+
+  // ---- Real portfolio, real agents, real P&L — no simulation in this layer.
+  // Your agents are the SAME agents as the Trading Agents tab; P&L is the sum
+  // of actual realized fills recorded by the trading engine.
+  const myAgents = agents.filter((a) => a.status !== 'revoked');
+  const activeAgents = myAgents.filter((a) => a.status === 'active');
+  const realizedByAgent = React.useMemo(() => {
+    const m: Record<string, { pnl: number; trades: number }> = {};
+    for (const t of trades) {
+      const e = (m[t.agentId] = m[t.agentId] || { pnl: 0, trades: 0 });
+      e.trades += 1;
+      if (typeof t.pnl === 'number') e.pnl += t.pnl;
+    }
+    return m;
+  }, [trades]);
+  const totalPnL = React.useMemo(
+    () => trades.reduce((s, t) => s + (typeof t.pnl === 'number' ? t.pnl : 0), 0),
+    [trades]
+  );
 
   const [positions, setPositions] = useState<any[]>([]);
   const [closingId, setClosingId] = useState<string | null>(null);
@@ -312,121 +325,32 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     }
   };
 
-  // Simulated live PnL updates
-  useEffect(() => {
-    if (activeAgents.length === 0) return;
-    
-    const interval = setInterval(() => {
-      setActiveAgents(prev => prev.map(agent => {
-        const volatility = agent.risk === 'High' ? 0.05 : agent.risk === 'Medium' ? 0.02 : 0.005;
-        const change = agent.allocated * volatility * (Math.random() - 0.4); // slightly biased to positive
-        return {
-          ...agent,
-          pnl: agent.pnl + change,
-          currentValue: agent.allocated + agent.pnl + change
-        };
-      }));
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [activeAgents.length]);
-
-  // Live trading simulation
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveAgents(prev => {
-        if (prev.length === 0) return prev;
-        return prev.map(agent => {
-          // Determine volatility based on risk profile
-          const volatility = agent.risk === 'High' ? 0.04 : agent.risk === 'Low' ? 0.008 : 0.02;
-          // Random walk with slight positive drift
-          const changePercent = (Math.random() - 0.48) * volatility; 
-          const pnlChange = agent.allocated * changePercent;
-          const newPnl = agent.pnl + pnlChange;
-          return {
-            ...agent,
-            pnl: newPnl,
-            currentValue: agent.allocated + newPnl
-          };
-        });
-      });
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const total = activeAgents.reduce((sum, a) => sum + a.pnl, 0);
-    setTotalPnL(total);
-  }, [activeAgents]);
-
-  const handleDeploy = () => {
-    if (!selectedAgent || allocation <= 0 || allocation > availableCapital) return;
-    
-    const agentData = [...customAgents, ...AVAILABLE_AGENTS].find(a => a.id === selectedAgent);
-    if (!agentData) return;
-
+  // Deploy a template as a REAL agent (same backend as the Trading Agents tab).
+  const handleDeployTemplate = async (tpl: (typeof AGENT_TEMPLATES)[number]) => {
     setIsDeploying(true);
-    
-    setTimeout(() => {
-      setActiveAgents(prev => [
-        ...prev,
-        {
-          id: Math.random().toString(),
-          ...agentData,
-          allocated: allocation,
-          currentValue: allocation,
-          pnl: 0,
-          status: 'active'
-        }
-      ]);
-      setAvailableCapital(prev => prev - allocation);
-      setIsDeploying(false);
+    setDeployError('');
+    try {
+      await onAgentCreated({
+        name: `${tpl.name} #${myAgents.length + 1}`,
+        description: tpl.desc,
+        assetSymbol: tpl.assetSymbol,
+        tradeType: tpl.tradeType,
+        strategyType: tpl.strategyType,
+        leverage: tpl.tradeType === 'perp' ? 5 : 1,
+      });
       setDeployModalOpen(false);
-      setSelectedAgent(null);
-    }, 1500);
-  };
-
-  const handleInspectDeposit = () => {
-    if (inspectDepositAmount <= 0 || inspectDepositAmount > availableCapital || !inspectedAgentId) return;
-    setActiveAgents(prev => prev.map(a => {
-      if (a.id === inspectedAgentId) {
-        return { ...a, allocated: a.allocated + inspectDepositAmount, currentValue: a.currentValue + inspectDepositAmount };
-      }
-      return a;
-    }));
-    setAvailableCapital(prev => prev - inspectDepositAmount);
-    setInspectDepositAmount(0);
-  };
-
-  const handleInspectWithdraw = () => {
-    const agent = activeAgents.find(a => a.id === inspectedAgentId);
-    if (!agent || inspectWithdrawAmount <= 0 || inspectWithdrawAmount > agent.currentValue) return;
-    
-    if (Math.abs(inspectWithdrawAmount - agent.currentValue) < 0.01) {
-      handleRemoveAgent(agent.id, agent.currentValue);
-      setInspectedAgentId(null);
-      setInspectWithdrawAmount(0);
-      return;
+      setCelebration(`🤖 ${tpl.name} deployed — it can trade from the Trading Desk now`);
+    } catch (e: any) {
+      setDeployError(e.message || 'Could not deploy agent.');
+    } finally {
+      setIsDeploying(false);
     }
-
-    setActiveAgents(prev => prev.map(a => {
-      if (a.id === inspectedAgentId) {
-        const fraction = inspectWithdrawAmount / a.currentValue;
-        const newAllocated = a.allocated * (1 - fraction);
-        const newCurrent = a.currentValue - inspectWithdrawAmount;
-        const newPnl = newCurrent - newAllocated;
-        return { ...a, allocated: newAllocated, currentValue: newCurrent, pnl: newPnl };
-      }
-      return a;
-    }));
-    setAvailableCapital(prev => prev + inspectWithdrawAmount);
-    setInspectWithdrawAmount(0);
   };
 
-  const handleRemoveAgent = (id: string, value: number) => {
-    setActiveAgents(prev => prev.filter(a => a.id !== id));
-    setAvailableCapital(prev => prev + value);
+  const handlePauseResume = async (agent: TradingAgent) => {
+    try {
+      await onAgentStatusChanged(agent.id, agent.status === 'active' ? 'paused' : 'active');
+    } catch { /* refreshed state will tell the truth */ }
   };
 
   return (
@@ -582,18 +506,18 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                     
                     <div className="flex justify-between items-start mb-6 relative z-10">
                       <div>
-                        <h3 className="text-slate-400 text-sm font-mono uppercase tracking-wider mb-1">Your Portfolio Value</h3>
+                        <h3 className="text-slate-400 text-sm font-mono uppercase tracking-wider mb-1">Your Paper Balance</h3>
                         <div className="text-4xl font-mono font-bold text-white">
-                          <AnimatedValue 
-                            value={10000 + totalPnL} 
-                            formatter={(v) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} 
+                          <AnimatedValue
+                            value={user.paperBalance}
+                            formatter={(v) => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                           />
                         </div>
                         <div className={`text-sm font-mono mt-2 flex items-center gap-1 ${totalPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingUp className="w-4 h-4 rotate-180" />}
-                          <AnimatedValue 
-                            value={totalPnL} 
-                            formatter={(v) => `${v >= 0 ? '+' : ''}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${((v / 10000) * 100).toFixed(2)}%)`} 
+                          <AnimatedValue
+                            value={totalPnL}
+                            formatter={(v) => `${v >= 0 ? '+' : ''}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} realized P&L`}
                           />
                         </div>
                       </div>
@@ -601,12 +525,12 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
 
                     <div className="grid grid-cols-2 gap-4 mt-8 pt-6 border-t border-slate-800/50 relative z-10">
                        <div>
-                         <div className="text-xs text-slate-500 font-mono uppercase mb-1 flex items-center gap-1"><Wallet className="w-3 h-3" /> Unallocated</div>
-                         <div className="text-xl font-mono text-slate-200">${availableCapital.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                         <div className="text-xs text-slate-500 font-mono uppercase mb-1 flex items-center gap-1"><Activity className="w-3 h-3" /> Trades Made</div>
+                         <div className="text-xl font-mono text-slate-200">{trades.length}</div>
                        </div>
                        <div>
                          <div className="text-xs text-slate-500 font-mono uppercase mb-1 flex items-center gap-1"><Bot className="w-3 h-3" /> Active Agents</div>
-                         <div className="text-xl font-mono text-slate-200">{activeAgents.length} / 5</div>
+                         <div className="text-xl font-mono text-slate-200">{activeAgents.length}</div>
                        </div>
                     </div>
                   </motion.div>
@@ -621,97 +545,95 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                      <div className="absolute inset-0 bg-indigo-500/5 pointer-events-none" />
                      <Rocket className="w-12 h-12 text-indigo-400 mb-4" />
                      <h3 className="text-lg font-bold text-white mb-2">Deploy New Agent</h3>
-                     <p className="text-xs text-slate-400 mb-6">Allocate your virtual capital to specialized AI agents and watch them trade.</p>
-                     <button 
+                     <p className="text-xs text-slate-400 mb-6">Deploy a real trading agent, then trade with it from the Trading Desk — its P&L ranks you here.</p>
+                     <button
                        onClick={() => setDeployModalOpen(true)}
-                       disabled={availableCapital <= 0 || activeAgents.length >= 5}
                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors relative z-10"
                      >
-                       <Plus className="w-5 h-5" /> Select Agent
+                       <Plus className="w-5 h-5" /> Deploy Agent
                      </button>
                   </motion.div>
                 </div>
 
-                {/* Active Agents List */}
+                {/* Your Agents — the REAL ones (same as the Trading Agents tab) */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Activity className="w-5 h-5 text-indigo-400" /> Live Arena Operations
+                    <Activity className="w-5 h-5 text-indigo-400" /> Your Agents
                   </h3>
-                  
-                  {activeAgents.length === 0 ? (
+
+                  {myAgents.length === 0 ? (
                     <div className="bg-slate-900/50 border border-slate-800 border-dashed rounded-2xl p-12 flex flex-col items-center justify-center text-center">
                       <div className="w-16 h-16 bg-slate-800/50 rounded-full flex items-center justify-center mb-4">
                         <Bot className="w-8 h-8 text-slate-500" />
                       </div>
-                      <h4 className="text-xl font-bold text-white mb-2">No Agents Deployed</h4>
-                      <p className="text-slate-400 mb-6 max-w-sm mx-auto">Allocate your virtual capital to specialized AI agents to start competing in the arena.</p>
-                      <button 
+                      <h4 className="text-xl font-bold text-white mb-2">No Agents Yet</h4>
+                      <p className="text-slate-400 mb-6 max-w-sm mx-auto">Deploy an agent, trade with it from the Trading Desk, and its real P&L puts you on the board.</p>
+                      <button
                         onClick={() => setDeployModalOpen(true)}
                         className="px-6 py-3 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 hover:text-indigo-300 font-bold rounded-xl transition-colors border border-indigo-500/30 flex items-center gap-2"
                       >
-                        <Plus className="w-4 h-4" /> Select Your First Agent
+                        <Plus className="w-4 h-4" /> Deploy Your First Agent
                       </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <AnimatePresence>
-                        {activeAgents.map(agent => (
+                        {myAgents.map(agent => {
+                          const stats = realizedByAgent[agent.id] || { pnl: 0, trades: 0 };
+                          const paused = agent.status === 'paused';
+                          return (
                           <motion.div
                             key={agent.id}
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
                             layout
-                            className="bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group hover:border-indigo-500/50 transition-colors"
+                            className={`bg-slate-900 border border-slate-800 rounded-2xl p-5 relative overflow-hidden group transition-colors ${paused ? 'opacity-60' : 'hover:border-indigo-500/50'}`}
                           >
-                            <motion.div 
-                              animate={{ opacity: [0, 0.05, 0] }}
-                              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut", delay: Math.random() * 2 }}
-                              className="absolute inset-0 bg-indigo-500 pointer-events-none" 
-                            />
-                            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500" />
+                            <div className={`absolute top-0 left-0 w-1 h-full ${paused ? 'bg-slate-600' : 'bg-indigo-500'}`} />
                             <div className="flex justify-between items-start mb-4 relative z-10">
                                <div>
                                  <h4 className="font-bold text-white flex items-center gap-2">
                                    {agent.name}
-                                   <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-[10px] uppercase">
-                                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /> Live
+                                   <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase ${paused ? 'bg-slate-700/40 text-slate-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                                     {!paused && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />} {paused ? 'Paused' : 'Active'}
                                    </span>
                                  </h4>
-                                 <span className="text-xs text-slate-500">{agent.type} Strategy</span>
+                                 <span className="text-xs text-slate-500">{agent.strategyType.replace('_', ' ')} · {agent.assetSymbol} · {agent.tradeType === 'perp' ? `${agent.leverage}x perp` : 'spot'}</span>
                                </div>
                                <div className="flex items-center gap-2">
-                                 <button 
+                                 <button
                                    onClick={() => setInspectedAgentId(agent.id)}
                                    className="p-1.5 text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
-                                   title="Manage Agent"
+                                   title="Agent details"
                                  >
                                    <Settings className="w-4 h-4" />
                                  </button>
-                                 <button 
-                                   onClick={() => handleRemoveAgent(agent.id, agent.currentValue)}
-                                   className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
-                                   title="Stop Agent & Withdraw"
+                                 <button
+                                   onClick={() => handlePauseResume(agent)}
+                                   className="p-1.5 text-slate-500 hover:text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
+                                   title={paused ? 'Resume agent' : 'Pause agent'}
                                  >
-                                   <Pause className="w-4 h-4" />
+                                   {paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                                  </button>
                                </div>
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4 bg-slate-950 rounded-xl p-3 relative z-10">
                               <div>
-                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Allocated</div>
-                                <div className="font-mono text-sm">${agent.allocated.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Trades</div>
+                                <div className="font-mono text-sm">{stats.trades}</div>
                               </div>
                               <div>
-                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Current Value</div>
-                                <div className={`font-mono text-sm font-bold ${agent.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                  <AnimatedValue value={agent.currentValue} formatter={v => `$${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                                <div className="text-[10px] text-slate-500 font-mono uppercase mb-1">Realized P&L</div>
+                                <div className={`font-mono text-sm font-bold ${stats.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                  {stats.pnl >= 0 ? '+' : ''}{stats.pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
                                 </div>
                               </div>
                             </div>
                           </motion.div>
-                        ))}
+                          );
+                        })}
                       </AnimatePresence>
                     </div>
                   )}
@@ -1007,150 +929,69 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
-              onClick={() => { setDeployModalOpen(false); setIsCreatingAgent(false); }}
+              onClick={() => setDeployModalOpen(false)}
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl p-6 z-50 shadow-2xl"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-indigo-400" /> {isCreatingAgent ? 'Create Custom Agent' : 'Designate Agent'}</h3>
-                <button onClick={() => { setDeployModalOpen(false); setIsCreatingAgent(false); }} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-indigo-400" /> Deploy an Agent</h3>
+                <button onClick={() => setDeployModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
+              <p className="text-xs text-slate-500 mb-5">
+                Pick a starter — this creates a real trading agent (it also appears in the Trading Agents tab). Trade with it from the Trading Desk; its P&L ranks you on the board.
+              </p>
 
-              {isCreatingAgent ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Agent Name</label>
-                    <input type="text" value={newAgentForm.name} onChange={e => setNewAgentForm({...newAgentForm, name: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500" placeholder="e.g., Alpha Seeker" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">Strategy Type</label>
-                      <select value={newAgentForm.type} onChange={e => setNewAgentForm({...newAgentForm, type: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
-                        <option>Generalist</option>
-                        <option>Yield Farmer</option>
-                        <option>Arbitrage</option>
-                        <option>Momentum</option>
-                      </select>
+              <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
+                {AGENT_TEMPLATES.map(tpl => (
+                  <button
+                    key={tpl.id}
+                    onClick={() => handleDeployTemplate(tpl)}
+                    disabled={isDeploying}
+                    className="w-full text-left p-4 rounded-xl border bg-slate-950 border-slate-800 hover:border-indigo-500 hover:bg-indigo-500/5 transition-all disabled:opacity-50"
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="font-bold text-white">{tpl.name}</div>
+                      <div className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">{tpl.risk} Risk</div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-300 mb-1">Risk Profile</label>
-                      <select value={newAgentForm.risk} onChange={e => setNewAgentForm({...newAgentForm, risk: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500">
-                        <option>Low</option>
-                        <option>Medium</option>
-                        <option>High</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-1">Instructions / Description</label>
-                    <textarea value={newAgentForm.desc} onChange={e => setNewAgentForm({...newAgentForm, desc: e.target.value})} className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500 h-24" placeholder="Describe the agent's behavior..." />
-                  </div>
-                  <div className="flex gap-3 pt-2">
-                    <button onClick={() => setIsCreatingAgent(false)} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Cancel</button>
-                    <button 
-                      onClick={() => {
-                        const newId = 'custom-' + Date.now();
-                        setCustomAgents(prev => [{...newAgentForm, id: newId}, ...prev]);
-                        setSelectedAgent(newId);
-                        setIsCreatingAgent(false);
-                        setNewAgentForm({ name: '', type: 'Generalist', risk: 'Medium', desc: '' });
-                      }} 
-                      disabled={!newAgentForm.name}
-                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl transition-colors"
-                    >
-                      Save Agent
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-                    <button 
-                      onClick={() => setIsCreatingAgent(true)}
-                      className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-slate-600 hover:border-indigo-500 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all font-medium"
-                    >
-                      + Create Custom Agent
-                    </button>
-                    {[...customAgents, ...AVAILABLE_AGENTS].map(agent => (
-                      <button
-                        key={agent.id}
-                        onClick={() => setSelectedAgent(agent.id)}
-                        className={`w-full text-left p-4 rounded-xl border transition-all ${
-                          selectedAgent === agent.id 
-                            ? 'bg-indigo-500/10 border-indigo-500' 
-                            : 'bg-slate-950 border-slate-800 hover:border-slate-600'
-                        }`}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <div className="font-bold text-white">{agent.name}</div>
-                          <div className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">{agent.risk} Risk</div>
-                        </div>
-                        <div className="text-xs text-slate-500 font-mono mb-2">{agent.type}</div>
-                        <p className="text-sm text-slate-400 leading-relaxed">{agent.desc}</p>
-                      </button>
-                    ))}
-                  </div>
+                    <div className="text-xs text-slate-500 font-mono mb-2">{tpl.type} · {tpl.assetSymbol} · {tpl.tradeType === 'perp' ? 'perps' : 'spot'}</div>
+                    <p className="text-sm text-slate-400 leading-relaxed">{tpl.desc}</p>
+                  </button>
+                ))}
+                <button
+                  onClick={() => { setDeployModalOpen(false); window.dispatchEvent(new CustomEvent('navigate', { detail: 'agents' })); }}
+                  className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-slate-600 hover:border-indigo-500 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all font-medium"
+                >
+                  Build a custom agent in the Trading Agents tab →
+                </button>
+              </div>
 
-                  {selectedAgent && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-6 pt-6 border-t border-slate-800 overflow-hidden">
-                      <label className="block text-sm font-medium text-slate-300 mb-2">Allocate Capital (Max: ${availableCapital.toLocaleString()})</label>
-                      <div className="flex items-center gap-3 mb-6">
-                        <div className="relative flex-1">
-                          <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                          <input 
-                            type="number" 
-                            value={allocation}
-                            onChange={(e) => setAllocation(Math.min(Number(e.target.value), availableCapital))}
-                            max={availableCapital}
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-3 text-white font-mono focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => setAllocation(availableCapital)}
-                          className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-xs font-mono font-bold rounded-xl transition-colors"
-                        >
-                          MAX
-                        </button>
-                      </div>
-
-                      <button 
-                        onClick={handleDeploy}
-                        disabled={isDeploying || allocation <= 0 || allocation > availableCapital}
-                        className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all"
-                      >
-                        {isDeploying ? (
-                          <><Activity className="w-5 h-5 animate-spin" /> Initializing Agent...</>
-                        ) : (
-                          <><Play className="w-5 h-5 fill-current" /> Execute Deployment</>
-                        )}
-                      </button>
-                    </motion.div>
-                  )}
-                </>
+              {isDeploying && (
+                <div className="mt-4 text-sm text-indigo-300 flex items-center gap-2"><Activity className="w-4 h-4 animate-spin" /> Deploying…</div>
               )}
+              {deployError && <p className="mt-4 text-sm text-rose-400">{deployError}</p>}
             </motion.div>
           </>
         )}
       </AnimatePresence>
 
-      {/* Inspected Agent Modal */}
+      {/* Inspected Agent Modal — real agent data + real trade history */}
       <AnimatePresence>
-        {inspectedAgentId && activeAgents.find(a => a.id === inspectedAgentId) && (
+        {inspectedAgentId && myAgents.find(a => a.id === inspectedAgentId) && (
           <>
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
               onClick={() => setInspectedAgentId(null)}
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1158,156 +999,78 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
               style={{ maxHeight: '90vh' }}
             >
               {(() => {
-                const agent = activeAgents.find(a => a.id === inspectedAgentId);
-                if (!agent) return null;
-                
+                const agent = myAgents.find(a => a.id === inspectedAgentId)!;
+                const stats = realizedByAgent[agent.id] || { pnl: 0, trades: 0 };
+                const agentTrades = trades.filter(t => t.agentId === agent.id).slice(0, 12);
+                const paused = agent.status === 'paused';
                 return (
                   <>
                     <div className="p-6 border-b border-slate-800 flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
                           <h3 className="text-2xl font-bold text-white">{agent.name}</h3>
-                          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 text-xs uppercase font-mono">
-                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" /> Active
+                          <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs uppercase font-mono ${paused ? 'bg-slate-700/40 text-slate-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+                            {!paused && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />} {paused ? 'Paused' : 'Active'}
                           </span>
                         </div>
-                        <div className="text-slate-500 text-sm">{agent.type} Strategy • {agent.risk || 'Medium'} Risk</div>
+                        <div className="text-slate-500 text-sm">{agent.strategyType.replace('_', ' ')} · {agent.assetSymbol} · {agent.tradeType === 'perp' ? `${agent.leverage}x perp` : 'spot'}</div>
                       </div>
                       <button onClick={() => setInspectedAgentId(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
 
-                    <div className="flex border-b border-slate-800 bg-slate-950">
-                      <button 
-                        onClick={() => setInspectTab('logs')}
-                        className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 border-b-2 ${inspectTab === 'logs' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
-                      >
-                        <Terminal className="w-4 h-4" /> Live Logs
-                      </button>
-                      <button 
-                        onClick={() => setInspectTab('settings')}
-                        className={`flex-1 py-3 text-sm font-medium transition-colors flex items-center justify-center gap-2 border-b-2 ${inspectTab === 'settings' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-400 hover:text-slate-300'}`}
-                      >
-                        <Sliders className="w-4 h-4" /> Manage Agent
-                      </button>
-                    </div>
-
-                    <div className="p-6 overflow-y-auto">
-                      {inspectTab === 'logs' && (
-                        <div className="bg-black border border-slate-800 rounded-xl p-4 h-64 font-mono text-xs overflow-y-auto flex flex-col gap-2 custom-scrollbar">
-                          <div className="text-emerald-500">[System] {agent.name} initialized and connected to mainnet feed.</div>
-                          <div className="text-slate-400">[{new Date(Date.now() - 300000).toLocaleTimeString()}] Analyzing current market volatility...</div>
-                          <div className="text-slate-400">[{new Date(Date.now() - 240000).toLocaleTimeString()}] Opportunity detected on ETH/USDC pair.</div>
-                          <div className="text-indigo-400">[{new Date(Date.now() - 120000).toLocaleTimeString()}] Executing trade. Swap confirmed on Uniswap V3.</div>
-                          <div className="text-emerald-400">[{new Date(Date.now() - 60000).toLocaleTimeString()}] Position closed. Net PnL: {agent.pnl >= 0 ? '+' : ''}${agent.pnl.toFixed(2)}</div>
-                          <div className="text-slate-500 flex items-center gap-2 mt-2"><Activity className="w-3 h-3 animate-pulse" /> Monitoring for next signal...</div>
+                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Trades</div>
+                          <div className="text-2xl font-bold text-white">{stats.trades}</div>
                         </div>
-                      )}
-                      
-                      {inspectTab === 'settings' && (
-                        <div className="space-y-6">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-500 font-mono uppercase mb-1">Current Value</div>
-                              <div className="text-2xl font-bold text-white">${agent.currentValue.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                            </div>
-                            <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                              <div className="text-xs text-slate-500 font-mono uppercase mb-1">Net ROI</div>
-                              <div className={`text-2xl font-bold ${agent.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                                {agent.pnl >= 0 ? '+' : ''}{((agent.pnl / agent.allocated) * 100).toFixed(2)}%
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="bg-slate-950/50 p-5 rounded-xl border border-slate-800">
-                            <h4 className="text-sm font-bold text-white mb-4">Agent Configuration</h4>
-                            <div className="grid grid-cols-2 gap-4">
-                              <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">Risk Profile</label>
-                                <select 
-                                  value={agent.risk || 'Medium'} 
-                                  onChange={(e) => {
-                                    setActiveAgents(prev => prev.map(a => a.id === agent.id ? { ...a, risk: e.target.value } : a));
-                                  }}
-                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                >
-                                  <option>Low</option>
-                                  <option>Medium</option>
-                                  <option>High</option>
-                                </select>
-                              </div>
-                              <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-1">Strategy Focus</label>
-                                <select 
-                                  value={agent.type} 
-                                  onChange={(e) => {
-                                    setActiveAgents(prev => prev.map(a => a.id === agent.id ? { ...a, type: e.target.value } : a));
-                                  }}
-                                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
-                                >
-                                  <option>Generalist</option>
-                                  <option>Yield</option>
-                                  <option>Arbitrage</option>
-                                  <option>Leverage</option>
-                                  <option>Momentum</option>
-                                </select>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-800">
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300 mb-2">Inject Capital</label>
-                              <div className="flex gap-2 mb-2">
-                                <div className="relative flex-1">
-                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                  <input 
-                                    type="number" 
-                                    value={inspectDepositAmount || ''}
-                                    onChange={(e) => setInspectDepositAmount(Number(e.target.value))}
-                                    placeholder="0"
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white font-mono focus:outline-none focus:border-emerald-500"
-                                  />
-                                </div>
-                                <button onClick={() => setInspectDepositAmount(availableCapital)} className="px-3 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 hover:text-white">MAX</button>
-                              </div>
-                              <button 
-                                onClick={handleInspectDeposit}
-                                disabled={!inspectDepositAmount || inspectDepositAmount <= 0 || inspectDepositAmount > availableCapital}
-                                className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                              >
-                                <ArrowDownRight className="w-4 h-4" /> Deposit
-                              </button>
-                              <div className="text-xs text-slate-500 mt-2">Available: ${availableCapital.toLocaleString()}</div>
-                            </div>
-
-                            <div>
-                              <label className="block text-sm font-medium text-slate-300 mb-2">Withdraw Capital</label>
-                              <div className="flex gap-2 mb-2">
-                                <div className="relative flex-1">
-                                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                  <input 
-                                    type="number" 
-                                    value={inspectWithdrawAmount || ''}
-                                    onChange={(e) => setInspectWithdrawAmount(Number(e.target.value))}
-                                    placeholder="0"
-                                    className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-white font-mono focus:outline-none focus:border-rose-500"
-                                  />
-                                </div>
-                                <button onClick={() => setInspectWithdrawAmount(agent.currentValue)} className="px-3 bg-slate-800 rounded-lg text-xs font-bold text-slate-300 hover:text-white">MAX</button>
-                              </div>
-                              <button 
-                                onClick={handleInspectWithdraw}
-                                disabled={!inspectWithdrawAmount || inspectWithdrawAmount <= 0 || inspectWithdrawAmount > agent.currentValue}
-                                className="w-full py-2 bg-rose-600 hover:bg-rose-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-                              >
-                                <ArrowUpRight className="w-4 h-4" /> Withdraw
-                              </button>
-                            </div>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Realized P&L</div>
+                          <div className={`text-2xl font-bold ${stats.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {stats.pnl >= 0 ? '+' : ''}{stats.pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
                           </div>
                         </div>
-                      )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Recent Fills</h4>
+                        {agentTrades.length === 0 ? (
+                          <div className="bg-slate-950/50 border border-slate-800 border-dashed rounded-xl p-6 text-center text-sm text-slate-500">
+                            No trades yet — take this agent to the <b className="text-slate-300">Trading Desk</b> and place its first fill.
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {agentTrades.map((t) => (
+                              <div key={t.id} className="flex items-center justify-between gap-3 text-xs font-mono bg-slate-950/50 rounded-lg px-3 py-2 border border-slate-900/60">
+                                <span className={t.side === 'buy' || t.side === 'long' ? 'text-emerald-400' : 'text-rose-400'}>
+                                  {t.side.toUpperCase()} {t.size} {t.assetSymbol} @ ${t.price.toLocaleString()}
+                                </span>
+                                <span className="text-slate-500">
+                                  {typeof t.pnl === 'number' && <span className={`mr-3 font-bold ${t.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}</span>}
+                                  {new Date(t.timestamp).toLocaleString()}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-3 pt-2 border-t border-slate-800">
+                        <button
+                          onClick={() => handlePauseResume(agent)}
+                          className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+                        >
+                          {paused ? <><Play className="w-4 h-4" /> Resume</> : <><Pause className="w-4 h-4" /> Pause</>}
+                        </button>
+                        <button
+                          onClick={async () => { await onAgentStatusChanged(agent.id, 'revoked'); setInspectedAgentId(null); }}
+                          className="flex-1 py-3 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 font-bold rounded-xl transition-colors border border-rose-900/50"
+                        >
+                          Retire Agent
+                        </button>
+                      </div>
                     </div>
                   </>
                 );

@@ -845,7 +845,13 @@ export default function App() {
                 )}
 
                 {currentUser && activeTab === 'arena' && (
-                  <AgentArena user={currentUser} />
+                  <AgentArena
+                    user={currentUser}
+                    agents={agents}
+                    trades={trades}
+                    onAgentCreated={handleAgentCreated}
+                    onAgentStatusChanged={handleAgentStatusChanged}
+                  />
                 )}
 
                 {currentUser && activeTab === 'analytics' && (

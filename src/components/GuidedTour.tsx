@@ -48,12 +48,20 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
     }
   };
 
+  // Escape or clicking outside dismisses for good — never trap the user.
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onComplete(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onComplete]);
+
   const Step = TOUR_STEPS[currentStep];
   const Icon = Step.icon;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" onClick={onComplete}>
       <motion.div
+        onClick={(e) => e.stopPropagation()}
         key={Step.id}
         initial={{ opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}

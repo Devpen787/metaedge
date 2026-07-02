@@ -16,7 +16,8 @@
     "smoke:agents": "node scripts/agent_strategy_journey_smoke.mjs",
     "smoke:metamask": "node scripts/metamask_readiness_smoke.mjs",
     "smoke:tabs": "node scripts/all_tabs_smoke.mjs",
-    "capability:matrix": "node scripts/capability_matrix.mjs"
+    "capability:matrix": "node scripts/capability_matrix.mjs",
+    "bots:battle": "node scripts/arena_bots.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

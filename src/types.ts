@@ -18,6 +18,10 @@ export interface User {
   lastActiveAt: number;
   paperBalance: number; // Defaults to e.g. 100,000 USD for paper trading
   faucetClaimedCount: number;
+  // Set when the user connects THEIR OWN MetaMask Agent Wallet (per-user CLI
+  // profile on the server). Connecting is required to compete in the Arena.
+  walletAddress?: string;
+  walletConnectedAt?: number;
 }
 
 export interface SessionRecord {

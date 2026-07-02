@@ -1,15 +1,31 @@
 import { Router } from 'express';
 import { execFile } from 'child_process';
 import util from 'util';
-import { generateId, readDatabase, writeDatabase } from './storage.js';
+import path from 'path';
+import fs from 'fs';
+import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
 
 const MM_PACKAGE = '@metamask/agentic-cli@3';
+// Prefer the locally installed binary (fast, deterministic); fall back to npx.
+const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
 const LIVE_EXECUTION_ENABLED = process.env.LIVE_EXECUTION_ENABLED === 'true';
-const ALLOW_BROWSER_LOGIN = process.env.METAEDGE_ALLOW_MM_BROWSER_LOGIN === 'true';
+
+// Each user gets their OWN MetaMask CLI profile (an isolated HOME) on the
+// server, so wallet capabilities run as THEIR wallet — never a shared one.
+// A profile holds only the CLI's own session state; MetaEdge never sees keys.
+const PROFILES_DIR = path.join(path.dirname(DB_FILE), 'mm-profiles');
+const SAFE_USER_ID_RE = /^usr_[A-Za-z0-9_-]{4,64}$/;
+
+function profileHome(userId: string): string {
+  if (!SAFE_USER_ID_RE.test(userId)) throw new Error('Invalid session.');
+  const dir = path.join(PROFILES_DIR, userId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 const SAFE_SYMBOL_RE = /^[A-Z0-9._:-]{1,32}$/;
 const SAFE_CHAIN_RE = /^[0-9]{1,10}$/;
 const SAFE_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -51,12 +67,17 @@ function cliCommand(args: string[]) {
   return `mm ${args.filter((arg) => arg !== '--json').join(' ')}`;
 }
 
-async function runMm(args: string[], timeout = 12_000) {
+async function runMmCore(args: string[], timeout: number, home?: string) {
+  const env = home ? { ...process.env, HOME: home } : process.env;
   try {
-    const { stdout } = await execFileAsync('npx', ['-y', MM_PACKAGE, ...args], {
+    const useLocal = fs.existsSync(MM_LOCAL_BIN);
+    const bin = useLocal ? MM_LOCAL_BIN : 'npx';
+    const finalArgs = useLocal ? args : ['-y', MM_PACKAGE, ...args];
+    const { stdout } = await execFileAsync(bin, finalArgs, {
       timeout,
       maxBuffer: 1024 * 1024,
-      shell: false
+      shell: false,
+      env
     });
     return {
       ok: true,
@@ -65,13 +86,42 @@ async function runMm(args: string[], timeout = 12_000) {
       summary: 'Ready'
     };
   } catch (error) {
+    // The CLI writes structured errors to stderr on failure — surface those
+    // as data so callers can distinguish "not logged in" from "CLI missing".
+    const stderr = asString((error as any)?.stderr);
     return {
       ok: false,
       command: cliCommand(args),
-      data: null,
+      data: parseJsonOrText(stderr),
       summary: productSafeError(error)
     };
   }
+}
+
+// Server-profile run: used only for public market data (quotes-as-data,
+// market search) and AI helpers — never for anything that acts as a wallet.
+async function runMm(args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout);
+}
+
+// Per-user run: executes under the USER's own CLI profile, i.e. their wallet.
+async function runMmAs(userId: string, args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout, profileHome(userId));
+}
+
+// Gate for capabilities that act as a wallet: the user must have connected
+// their own MetaMask Agent Wallet first. Competing requires this too.
+function requireWallet(req: any, res: any, next: any) {
+  const db = readDatabase();
+  const user = db.users[req.userId];
+  if (!user?.walletAddress) {
+    res.status(403).json({
+      error: 'wallet_required',
+      message: 'Connect your MetaMask Agent Wallet to use this capability.'
+    });
+    return;
+  }
+  next();
 }
 
 function isCommandOk(result: Awaited<ReturnType<typeof runMm>>) {
@@ -251,14 +301,16 @@ function recordArenaPosition(
 }
 
 metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
+  // Readiness reflects the USER's own wallet profile, not a shared one.
+  const uid = req.userId;
   const [doctor, auth, init, address, balance, tradingMode, policy] = await Promise.all([
-    runMm(['doctor', '--json']),
-    runMm(['auth', 'status', '--json']),
-    runMm(['init', 'show', '--json']),
-    runMm(['wallet', 'address']),
-    runMm(['wallet', 'balance', '--chain', '8453', '--json']),
-    runMm(['wallet', 'trading-mode', 'get', '--json']),
-    runMm(['wallet', 'policy', 'get'], 10_000)
+    runMmAs(uid, ['doctor', '--json']),
+    runMmAs(uid, ['auth', 'status', '--json']),
+    runMmAs(uid, ['init', 'show', '--json']),
+    runMmAs(uid, ['wallet', 'address']),
+    runMmAs(uid, ['wallet', 'balance', '--chain', '8453', '--json']),
+    runMmAs(uid, ['wallet', 'trading-mode', 'get', '--json']),
+    runMmAs(uid, ['wallet', 'policy', 'get'], 10_000)
   ]);
 
   const policyText = extractText(policy).toLowerCase();
@@ -267,9 +319,16 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
   const isGuardMode = tradingModeText.includes('guard');
   const isBeastMode = tradingModeText.includes('beast');
 
+  const isAuthed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
   const checks: MmCheck[] = [
     makeCheck('cli_v3', 'Agent Wallet v3', doctor, 'Agent Wallet CLI v3 responded to health check.'),
-    makeCheck('browser_login', 'Browser login', auth, 'MetaMask browser login is active.', 'Run MetaMask browser login before live review.'),
+    {
+      id: 'wallet_connected',
+      label: 'Your wallet connected',
+      status: isAuthed ? 'ready' : 'blocked',
+      summary: isAuthed ? 'Your MetaMask Agent Wallet is connected.' : 'Connect your own MetaMask Agent Wallet to compete.',
+      command: auth.command
+    },
     makeCheck('wallet_init', 'Wallet setup', init, 'Wallet mode and trading mode are initialized.'),
     makeCheck('wallet_address', 'Wallet address', address, 'Active wallet address is available.'),
     makeCheck('base_balance', 'Base balance', balance, 'Base balance check completed.'),
@@ -354,53 +413,103 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
   });
 });
 
-metamaskRouter.get('/api/mm/status', async (_req, res) => {
-  const auth = await runMm(['auth', 'status', '--json']);
-  res.status(isCommandOk(auth) ? 200 : 503).json({
-    isAuthenticated: isCommandOk(auth),
-    loginCommand: 'mm login browser',
-    message: isCommandOk(auth) ? 'MetaMask browser login is active.' : 'Needs MetaMask approval.',
+// ---- Per-user wallet connect. Each user logs in with THEIR OWN MetaMask
+// Agent Wallet: a one-click login link (opened in their browser) or a
+// pre-minted CLI token. The token is used once for login and never stored. ----
+
+function extractWalletAddress(result: Awaited<ReturnType<typeof runMm>>): string | null {
+  const text = extractText(result);
+  const m = text.match(/0x[a-fA-F0-9]{40}/);
+  return m ? m[0] : null;
+}
+
+async function finalizeConnect(req: any, res: any) {
+  const userId = req.userId;
+  const auth = await runMmAs(userId, ['auth', 'status', '--json']);
+  const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  if (!authed) {
+    res.json({ connected: false });
+    return;
+  }
+  const addrResult = await runMmAs(userId, ['wallet', 'address']);
+  const address = extractWalletAddress(addrResult);
+  const db = readDatabase();
+  const user = db.users[userId];
+  if (user) {
+    user.walletAddress = address || user.walletAddress || 'connected';
+    user.walletConnectedAt = user.walletConnectedAt || Date.now();
+    writeDatabase(db);
+  }
+  recordMetaMaskEvent(req, 'METAMASK_WALLET_CONNECTED', `Connected own Agent Wallet${address ? ` (${address.slice(0, 6)}…${address.slice(-4)})` : ''}.`);
+  res.json({ connected: true, address });
+}
+
+// Start the one-click connect: returns a MetaMask login URL the user opens in
+// THEIR browser. The CLI session lands in their isolated profile.
+metamaskRouter.post('/api/mm/connect/start', async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['login', 'browser', '--no-wait', '--json'], 45_000);
+  const loginUrl = (result.data as any)?.data?.loginUrl;
+  if (!loginUrl) {
+    res.status(503).json({ error: 'Could not start MetaMask login.', message: result.summary });
+    return;
+  }
+  res.json({ loginUrl });
+});
+
+// Poll while the user completes login in their browser.
+metamaskRouter.get('/api/mm/connect/status', async (req: any, res) => {
+  await finalizeConnect(req, res);
+});
+
+// Pro path: connect with a pre-minted CLI token (used once, never stored).
+metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
+  const token = asString(req.body?.token).trim();
+  if (!/^[A-Za-z0-9._-]{16,512}$/.test(token)) {
+    res.status(400).json({ error: 'That does not look like a MetaMask CLI token.' });
+    return;
+  }
+  const result = await runMmAs(req.userId, ['login', '--token', token, '--json'], 45_000);
+  if (!isCommandOk(result)) {
+    res.status(401).json({ error: 'Token login failed.', message: result.summary });
+    return;
+  }
+  await finalizeConnect(req, res);
+});
+
+metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
+  await runMmAs(req.userId, ['logout', '--json'], 20_000);
+  const db = readDatabase();
+  const user = db.users[req.userId];
+  if (user) {
+    delete user.walletAddress;
+    delete user.walletConnectedAt;
+    writeDatabase(db);
+  }
+  res.json({ success: true });
+});
+
+metamaskRouter.get('/api/mm/status', async (req: any, res) => {
+  const auth = await runMmAs(req.userId, ['auth', 'status', '--json']);
+  const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  res.json({
+    isAuthenticated: authed,
+    message: authed ? 'Your MetaMask Agent Wallet is connected.' : 'Connect your MetaMask Agent Wallet.',
     command: auth.command
   });
 });
 
-metamaskRouter.post('/api/mm/login-browser', async (req: any, res) => {
-  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Requested MetaMask browser login guidance.');
-  if (!ALLOW_BROWSER_LOGIN) {
-    return res.status(409).json({
-      success: false,
-      command: 'mm login browser',
-      message: 'Run MetaMask browser login locally. This app never accepts or stores wallet secrets.'
-    });
-  }
-
-  const result = await runMm(['login', 'browser'], 120_000);
-  res.status(isCommandOk(result) ? 200 : 503).json({
-    success: isCommandOk(result),
-    command: result.command,
-    message: isCommandOk(result) ? 'MetaMask browser login completed.' : result.summary
-  });
-});
-
-metamaskRouter.post('/api/mm/login', (_req, res) => {
-  res.status(410).json({
-    error: 'Token login removed',
-    message: 'Use MetaMask browser login. MetaEdge never accepts wallet secrets.'
-  });
-});
-
-metamaskRouter.get('/api/mm/address', async (_req, res) => {
-  const result = await runMm(['wallet', 'address']);
+metamaskRouter.get('/api/mm/address', requireWallet, async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['wallet', 'address']);
   res.status(isCommandOk(result) ? 200 : 503).json({
     address: isCommandOk(result) ? extractText(result).trim() : null,
     message: isCommandOk(result) ? 'Wallet address available.' : result.summary
   });
 });
 
-metamaskRouter.get('/api/mm/balance', async (req, res) => {
+metamaskRouter.get('/api/mm/balance', requireWallet, async (req: any, res) => {
   try {
     const chainId = validateChain(req.query.chain, '8453');
-    const result = await runMm(['wallet', 'balance', '--chain', chainId, '--json']);
+    const result = await runMmAs(req.userId, ['wallet', 'balance', '--chain', chainId, '--json']);
     res.status(isCommandOk(result) ? 200 : 503).json({
       balance: result.data,
       message: isCommandOk(result) ? 'Balance check completed.' : result.summary
@@ -410,7 +519,7 @@ metamaskRouter.get('/api/mm/balance', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/transfer', async (req, res) => {
+metamaskRouter.post('/api/mm/transfer', requireWallet, async (req: any, res) => {
   try {
     const to = validateAddress(req.body.to);
     const amount = validatePositiveAmount(req.body.amount, 'Amount');
@@ -421,7 +530,7 @@ metamaskRouter.post('/api/mm/transfer', async (req, res) => {
         to, amount, token, chainId, status: 'paper_filled'
       }));
     }
-    const result = await runMm(['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
+    const result = await runMmAs(req.userId, ['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -449,7 +558,7 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/swap/execute', async (req: any, res) => {
+metamaskRouter.post('/api/mm/swap/execute', requireWallet, async (req: any, res) => {
   try {
     if (!LIVE_EXECUTION_ENABLED) {
       // Build the paper fill from a real quote so the numbers are honest.
@@ -472,15 +581,15 @@ metamaskRouter.post('/api/mm/swap/execute', async (req: any, res) => {
       }));
     }
     const quoteId = validateQuoteId(req.body.quoteId);
-    const result = await runMm(['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
+    const result = await runMmAs(req.userId, ['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-metamaskRouter.get('/api/mm/perps/balance', async (_req, res) => {
-  const result = await runMm(['perps', 'balance', '--venue', 'hyperliquid', '--json']);
+metamaskRouter.get('/api/mm/perps/balance', requireWallet, async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json']);
   res.status(isCommandOk(result) ? 200 : 503).json({
     balance: result.data,
     message: isCommandOk(result) ? 'Perps balance check completed.' : result.summary
@@ -508,7 +617,7 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/perps/open', async (req: any, res) => {
+metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
@@ -529,7 +638,7 @@ metamaskRouter.post('/api/mm/perps/open', async (req: any, res) => {
         arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
       }));
     }
-    const result = await runMm(['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
+    const result = await runMmAs(req.userId, ['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -564,7 +673,7 @@ metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/predict/place', async (req, res) => {
+metamaskRouter.post('/api/mm/predict/place', requireWallet, async (req: any, res) => {
   try {
     const tokenId = validateTokenId(req.body.tokenId);
     const side = asString(req.body.side).trim().toLowerCase();

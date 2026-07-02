@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { User } from '../types';
 import { Sparkles, ArrowRight, ShieldCheck, Wallet } from 'lucide-react';
+import ParticleField from './ParticleField';
 
 interface WelcomeScreenProps {
   user: User;
@@ -35,6 +36,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
       {/* Background radial effects */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl" />
       <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-cyan-600/15 rounded-full blur-3xl" />
+      <ParticleField className="absolute inset-0" />
 
       <motion.div
         initial={{ opacity: 0, y: 30 }}

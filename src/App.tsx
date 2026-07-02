@@ -141,10 +141,21 @@ export default function App() {
     };
     window.addEventListener('agent-processing', handleAgentProcessing);
 
+    // Refresh the session after a wallet connect/disconnect so
+    // currentUser.walletAddress (the compete gate) stays accurate.
+    const handleWalletConnected = () => { loadSession(); };
+    window.addEventListener('wallet-connected', handleWalletConnected);
+
+    // Any component can prompt the user to connect their wallet.
+    const handleOpenWalletModal = () => setShowWalletModal(true);
+    window.addEventListener('open-wallet-modal', handleOpenWalletModal);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('navigate', handleNavigate);
       window.removeEventListener('agent-processing', handleAgentProcessing);
+      window.removeEventListener('wallet-connected', handleWalletConnected);
+      window.removeEventListener('open-wallet-modal', handleOpenWalletModal);
     };
   }, []);
 

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Swords, Users, Target, Award, TrendingUp, Plus, Bot, Zap, ShieldCheck, Clock, ChevronRight, Crown, Activity, Rocket, DollarSign, PieChart, Play, Pause, X, Wallet, Settings, Terminal, ArrowUpRight, ArrowDownRight, Sliders, Share2 } from 'lucide-react';
 import { User } from '../types';
 import { apiFetch } from '../lib/api';
+import { burst } from '../lib/fx';
 
 function msToLeft(endsAt: number): string {
   const ms = endsAt - Date.now();
@@ -175,6 +176,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
         const prev = prevRankRef.current;
         if (mine && prev && prev.leagueId === activeLeagueId && mine.rank < prev.rank) {
           setCelebration(`🚀 Rank up! #${prev.rank} → #${mine.rank}`);
+          burst('rankup');
         }
         prevRankRef.current = mine ? { leagueId: activeLeagueId, rank: mine.rank } : null;
       }
@@ -192,6 +194,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
         const pnl = data?.position?.pnl;
         if (typeof pnl === 'number' && pnl > 0) {
           setCelebration(`💰 +${pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} locked in!`);
+          burst('profit');
         }
         await loadPositions();
         await loadArena();
@@ -254,7 +257,12 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
     setTimeout(() => setShareCopied(false), 2000);
   };
 
+  // Competing requires the user's own MetaMask Agent Wallet.
+  const walletConnected = !!user.walletAddress;
+  const promptConnect = () => window.dispatchEvent(new Event('open-wallet-modal'));
+
   const handleJoinLeague = async (id: string | 'global') => {
+    if (!walletConnected) { promptConnect(); return; }
     if (id === 'global' || joinedLeagues.includes(id)) {
       setActiveLeagueId(id);
       setActiveTab('dashboard');
@@ -266,6 +274,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
         setActiveLeagueId(id);
         setActiveTab('dashboard');
         await loadArena();
+      } else if (res.status === 403) {
+        promptConnect();
       }
     } catch {
       /* ignore transient failures; state stays consistent on next load */
@@ -274,6 +284,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
 
   const handleCreateLeague = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!walletConnected) { promptConnect(); return; }
     if (!newLeagueName.trim()) return;
     try {
       const res = await apiFetch('/api/arena/leagues', {
@@ -293,6 +304,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
         setNewLeagueBalance(10000);
         setNewLeagueDuration(7);
         await loadArena();
+      } else if (res.status === 403) {
+        promptConnect();
       }
     } catch {
       /* ignore */
@@ -524,8 +537,15 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
                       <Share2 className="w-4 h-4" />
                       {shareCopied ? 'Link Copied!' : 'Share Strategy'}
                     </button>
-                    {!joinedLeagues.includes(activeLeagueId) ? (
-                      <button 
+                    {!walletConnected ? (
+                      <button
+                        onClick={promptConnect}
+                        className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 transition-all shadow-[0_0_30px_rgba(234,88,12,0.35)] hover:scale-105"
+                      >
+                        <Wallet className="w-5 h-5" /> Connect MetaMask to Compete
+                      </button>
+                    ) : !joinedLeagues.includes(activeLeagueId) ? (
+                      <button
                         onClick={() => handleJoinLeague(activeLeagueId)}
                         className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-yellow-950 font-bold rounded-xl flex items-center justify-center gap-3 transition-all shadow-[0_0_30px_rgba(234,179,8,0.3)] hover:scale-105"
                       >

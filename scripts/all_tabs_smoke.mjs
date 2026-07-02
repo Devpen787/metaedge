@@ -105,6 +105,9 @@ try {
       if (status >= 200 && status < 300) verdict = 'OK';
       else if (status === 503) verdict = 'REACHABLE (mm unavailable)';
       else if (status === 0 || status >= 500) verdict = 'BROKEN';
+      // 403 = the connect-your-wallet gate working as designed for a fresh
+      // anonymous session (competing requires the user's own wallet).
+      else if (status === 403) verdict = 'OK (wallet gate)';
       else verdict = 'REACHABLE (no wallet)';
     } else if (status >= 200 && status < 300) verdict = 'OK';
     else if (status === 0 || status >= 500) verdict = 'BROKEN';
@@ -117,7 +120,7 @@ try {
     const mark = r.verdict === 'OK' ? '✅' : r.verdict === 'BROKEN' ? '❌' : '⚠️ ';
     console.log(`  ${mark} ${r.tab.padEnd(28)} ${String(r.status).padStart(3)}  ${r.path}${r.verdict === 'OK' ? '' : `  (${r.verdict})`}`);
   }
-  const ok = results.filter((r) => r.verdict === 'OK' || r.verdict === 'OK (registered)').length;
+  const ok = results.filter((r) => r.verdict === 'OK' || r.verdict === 'OK (registered)' || r.verdict === 'OK (wallet gate)').length;
   const broken = results.filter((r) => r.verdict === 'BROKEN');
   console.log(`\n${ok}/${results.length} OK · ${broken.length} broken · ${results.length - ok - broken.length} needs attention\n`);
   if (broken.length) {

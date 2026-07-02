@@ -155,6 +155,13 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [execResult, setExecResult] = useState<Record<string, { error?: string; data?: any }>>({});
   const [execLoading, setExecLoading] = useState<string>('');
 
+  // Per-user wallet connection (required to compete).
+  const [connected, setConnected] = useState(false);
+  const [connectedAddress, setConnectedAddress] = useState<string | undefined>(undefined);
+  const [connectPolling, setConnectPolling] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [showTokenField, setShowTokenField] = useState(false);
+
   const blockedCount = useMemo(
     () => readiness?.checks.filter((check) => check.status === 'blocked').length ?? 0,
     [readiness]
@@ -179,15 +186,75 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
-  async function requestBrowserLogin() {
+  // ---- Connect YOUR OWN MetaMask Agent Wallet (required to compete). ----
+  // One-click: we get a MetaMask login link, the user finishes it in their own
+  // browser, and we poll until their per-user profile is authenticated.
+  async function startConnect() {
     try {
       setLoading(true);
-      const res = await apiFetch('/api/mm/login-browser', { method: 'POST' });
+      setMessage('');
+      const res = await apiFetch('/api/mm/connect/start', { method: 'POST' });
       const data = await res.json();
-      setMessage(data.message || `Run ${data.command || 'mm login browser'} locally.`);
-      await loadReadiness();
+      if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login.');
+      window.open(data.loginUrl, '_blank', 'noopener');
+      setConnectPolling(true);
+      setMessage('Finish signing in on the MetaMask page we just opened — this updates automatically.');
+      for (let i = 0; i < 40; i++) {
+        await new Promise((r) => setTimeout(r, 3500));
+        const st = await apiFetch('/api/mm/connect/status');
+        const s = await st.json().catch(() => ({}));
+        if (s.connected) {
+          await finishConnect(s.address);
+          return;
+        }
+      }
+      setMessage('Still not connected — reopen the login link or try a CLI token.');
     } catch (error: any) {
-      setMessage(error.message || 'Run MetaMask browser login locally.');
+      setMessage(error.message || 'Could not start MetaMask login.');
+    } finally {
+      setConnectPolling(false);
+      setLoading(false);
+    }
+  }
+
+  // Pro path: paste a pre-minted CLI token (used once server-side, never stored).
+  async function connectWithToken() {
+    if (!tokenInput.trim()) return;
+    try {
+      setLoading(true);
+      setMessage('');
+      const res = await apiFetch('/api/mm/connect/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: tokenInput.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.connected) throw new Error(data.message || data.error || 'Token login failed.');
+      setTokenInput('');
+      await finishConnect(data.address);
+    } catch (error: any) {
+      setMessage(error.message || 'Token login failed.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function finishConnect(address?: string) {
+    setConnected(true);
+    setConnectedAddress(address);
+    setMessage(`Connected${address ? ` as ${address.slice(0, 6)}…${address.slice(-4)}` : ''} — you can now compete in the Arena.`);
+    window.dispatchEvent(new Event('wallet-connected'));
+    await loadReadiness();
+  }
+
+  async function disconnectWallet() {
+    try {
+      setLoading(true);
+      await apiFetch('/api/mm/connect/disconnect', { method: 'POST' });
+      setConnected(false);
+      setConnectedAddress(undefined);
+      window.dispatchEvent(new Event('wallet-connected'));
+      await loadReadiness();
     } finally {
       setLoading(false);
     }
@@ -293,6 +360,11 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     if (isOpen) {
       setActiveTab('readiness');
       loadReadiness();
+      // One status check so the modal opens knowing whether YOUR wallet is connected.
+      apiFetch('/api/mm/connect/status')
+        .then((r) => r.json())
+        .then((s) => { setConnected(!!s.connected); setConnectedAddress(s.address || undefined); })
+        .catch(() => { /* stays disconnected */ });
     }
   }, [isOpen]);
 
@@ -349,15 +421,53 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                   </div>
                 </div>
               </div>
-              <button
-                onClick={requestBrowserLogin}
-                disabled={loading}
-                className="bg-orange-600 hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold px-5 py-3 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
-              >
-                {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-                Browser login
-              </button>
+              {connected ? (
+                <div className="flex flex-col items-stretch gap-2">
+                  <div className="bg-emerald-950/40 border border-emerald-700/40 text-emerald-300 font-bold px-5 py-3 rounded-2xl flex items-center justify-center gap-2 text-sm">
+                    <ShieldCheck className="w-4 h-4" />
+                    {connectedAddress ? `${connectedAddress.slice(0, 6)}…${connectedAddress.slice(-4)}` : 'Wallet connected'}
+                  </div>
+                  <button onClick={disconnectWallet} disabled={loading} className="text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50">
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-stretch gap-2">
+                  <button
+                    onClick={startConnect}
+                    disabled={loading || connectPolling}
+                    className="bg-orange-600 hover:bg-orange-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold px-5 py-3 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+                  >
+                    {connectPolling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                    {connectPolling ? 'Waiting for MetaMask…' : 'Connect your MetaMask'}
+                  </button>
+                  <button onClick={() => setShowTokenField(!showTokenField)} className="text-xs text-slate-500 hover:text-slate-300">
+                    or use a CLI token
+                  </button>
+                </div>
+              )}
             </div>
+
+            {!connected && showTokenField && (
+              <div className="bg-slate-950/50 border border-slate-800 rounded-2xl p-4 flex gap-3 items-end">
+                <div className="flex-1">
+                  <Field
+                    label="MetaMask CLI token (used once to sign in — never stored)"
+                    placeholder="paste your pre-minted CLI token"
+                    type="password"
+                    value={tokenInput}
+                    onChange={(e) => setTokenInput(e.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={connectWithToken}
+                  disabled={loading || !tokenInput.trim()}
+                  className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 py-2 rounded-lg text-sm disabled:opacity-50"
+                >
+                  Connect
+                </button>
+              </div>
+            )}
 
             {message && (
               <div className="bg-amber-950/30 border border-amber-900/50 rounded-xl p-4 flex items-start gap-3 text-amber-200">

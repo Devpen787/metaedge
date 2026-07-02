@@ -67,8 +67,10 @@ function orchestratedBy(cliSubcmd) {
 const CAPS = [
   { cap: 'Wallet readiness',   route: '/api/mm/readiness',        kind: 'readonly' },
   { cap: 'Wallet status',      route: '/api/mm/status',           kind: 'readonly' },
-  { cap: 'Browser login',      route: '/api/mm/login-browser',    kind: 'auth' },
-  { cap: 'Token login',        route: '/api/mm/login',            kind: 'removed', note: 'returns 410 by design — MetaEdge never accepts wallet secrets' },
+  { cap: 'Connect (login link)', route: '/api/mm/connect/start',  kind: 'auth' },
+  { cap: 'Connect status poll',  route: '/api/mm/connect/status', kind: 'auth' },
+  { cap: 'Connect (CLI token)',  route: '/api/mm/connect/token',  kind: 'auth' },
+  { cap: 'Disconnect wallet',    route: '/api/mm/connect/disconnect', kind: 'auth' },
   { cap: 'Wallet address',     route: '/api/mm/address',          kind: 'readonly', cli: "'address'" },
   { cap: 'Wallet balance',     route: '/api/mm/balance',          kind: 'readonly', cli: "'balance'" },
   { cap: 'Transfer / send',    route: '/api/mm/transfer',         kind: 'execute' },

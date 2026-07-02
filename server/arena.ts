@@ -178,19 +178,23 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
   let entries: { userId: string; username: string; startBalance: number; since: number }[];
   let board: { name: string; endsAt: number };
   if (leagueId === 'global') {
-    // Anyone competing: agent owners plus users with a wallet paper position.
+    // Competing requires bringing your own MetaMask Agent Wallet: the global
+    // board ranks CONNECTED players (agent owners or wallet traders). Guests
+    // can practice solo but don't appear here until they connect.
     // Global scoring is seasonal — floored at the season start — so newcomers
     // always compete fresh.
     const owners = new Set(Object.values(db.agents).map((a) => a.ownerId));
     for (const t of db.trades) {
       if (t.source === 'wallet') owners.add(t.userId);
     }
-    entries = [...owners].map((userId) => ({
-      userId,
-      username: db.users[userId]?.username || 'Anon',
-      startBalance: GLOBAL_START_BALANCE,
-      since: season.startMs,
-    }));
+    entries = [...owners]
+      .filter((userId) => !!db.users[userId]?.walletAddress)
+      .map((userId) => ({
+        userId,
+        username: db.users[userId]?.username || 'Anon',
+        startBalance: GLOBAL_START_BALANCE,
+        since: season.startMs,
+      }));
     board = { name: `Season · ${season.name}`, endsAt: season.endMs };
   } else {
     const league = db.arenaLeagues?.[leagueId];
@@ -213,9 +217,10 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
     .map((e) => {
       const realized = pnl[e.userId] || 0;
       const roiPct = e.startBalance ? (realized / e.startBalance) * 100 : 0;
+      const wallet = db.users[e.userId]?.walletAddress;
       return {
         userId: e.userId,
-        address: shortId(e.userId),
+        address: wallet && wallet.startsWith('0x') ? `${wallet.slice(0, 6)}…${wallet.slice(-4)}` : shortId(e.userId),
         name: e.username,
         agents: agentCount[e.userId] || 0,
         strategy: strategy[e.userId] || 'No agents',
@@ -270,6 +275,11 @@ arenaRouter.post('/api/arena/leagues', (req: any, res) => {
   const user = db.users[userId];
   if (!user) { res.status(401).json({ error: 'No active session.' }); return; }
 
+  if (!user.walletAddress) {
+    res.status(403).json({ error: 'wallet_required', message: 'Connect your MetaMask Agent Wallet to create a league.' });
+    return;
+  }
+
   const name = sanitizeText(req.body?.name || '', 60);
   if (!name) { res.status(400).json({ error: 'League name is required.' }); return; }
   const startBalance = Number(req.body?.startBalance);
@@ -307,6 +317,10 @@ arenaRouter.post('/api/arena/leagues/:id/join', (req: any, res) => {
   const db = readDatabase();
   const user = db.users[userId];
   if (!user) { res.status(401).json({ error: 'No active session.' }); return; }
+  if (!user.walletAddress) {
+    res.status(403).json({ error: 'wallet_required', message: 'Connect your MetaMask Agent Wallet to join a league.' });
+    return;
+  }
   const league = db.arenaLeagues?.[leagueId];
   if (!league) { res.status(404).json({ error: 'League not found.' }); return; }
   db.arenaMembers = db.arenaMembers || [];

@@ -70,10 +70,16 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
-sudo systemctl enable --now metaedge
+sudo systemctl enable metaedge
+sudo systemctl restart metaedge || true
+echo "-- app service: $(systemctl is-active metaedge)"
 
-# 7) HTTPS via Caddy on a free sslip.io hostname (real cert, no domain needed)
-IP=$(curl -s -4 ifconfig.me)
+# 7) HTTPS via Caddy on a free sslip.io hostname (real cert, no domain needed).
+# IP from GCP's metadata server (always reachable), external lookup as fallback.
+echo "-- configuring HTTPS"
+IP=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip" || true)
+[ -z "$IP" ] && IP=$(curl -s -4 --max-time 10 ifconfig.me || true)
+[ -z "$IP" ] && { echo "!! could not determine external IP — configure /etc/caddy/Caddyfile manually"; IP="0.0.0.0"; }
 HOST="${IP//./-}.sslip.io"
 sudo tee /etc/caddy/Caddyfile >/dev/null <<CAD
 $HOST {

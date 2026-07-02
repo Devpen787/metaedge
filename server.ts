@@ -15,7 +15,7 @@ import { metamaskRouter } from './server/metamask.js';
 import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
 app.use(express.json());

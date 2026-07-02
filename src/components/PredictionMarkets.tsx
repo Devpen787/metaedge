@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, PredictionMarket } from '../types';
-import { Landmark, TrendingUp, HelpCircle, AlertCircle, Percent, Coins, ChevronRight, Award } from 'lucide-react';
+import { Landmark, TrendingUp, HelpCircle, AlertCircle, Percent, Coins, ChevronRight, Award, Globe } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 interface PredictionMarketsProps {
   currentUser: User;
@@ -11,6 +12,36 @@ interface PredictionMarketsProps {
 }
 
 export default function PredictionMarkets({ currentUser, markets, onPlacePredictionBet, onResolveMarket }: PredictionMarketsProps) {
+  // Real-world market discovery (MetaMask → Polymarket fallback, labeled).
+  const [liveMarkets, setLiveMarkets] = useState<any[] | null>(null);
+  const [liveSource, setLiveSource] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/mm/predict/markets');
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) { setLiveMarkets([]); return; }
+        setLiveSource(data.source || '');
+        if (data.source === 'polymarket') {
+          setLiveMarkets((data.markets || []).slice(0, 5));
+        } else {
+          // MetaMask CLI shape: dig out the market list and normalize lightly.
+          const raw = data.markets?.data?.result?.markets || data.markets?.result?.markets || [];
+          setLiveMarkets(raw.slice(0, 5).map((m: any) => {
+            let prices: number[] = [];
+            try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); } catch { /* none */ }
+            return { id: m.id, question: m.question, yesPrice: prices[0] ?? null, volume: m.volume ?? m.liquidity ?? null };
+          }));
+        }
+      } catch {
+        if (!cancelled) setLiveMarkets([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [selectedMarketId, setSelectedMarketId] = useState('');
   const [betSide, setBetSide] = useState<'yes' | 'no'>('yes');
   const [betAmount, setBetAmount] = useState('1000');
@@ -203,7 +234,39 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
 
       {/* Markets List catalog */}
       <div className="lg:col-span-7 flex flex-col gap-6">
-        
+
+        {/* Live real-world markets — discovery strip, honestly labeled by source. */}
+        <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Globe className="w-4 h-4 text-orange-400" />
+              Live Markets
+            </h4>
+            {liveSource && (
+              <span className="text-[10px] font-mono text-slate-500">
+                via {liveSource === 'metamask' ? 'MetaMask Agent Wallet' : 'Polymarket (MetaMask unavailable)'}
+              </span>
+            )}
+          </div>
+          {liveMarkets === null ? (
+            <div className="text-[11px] font-mono text-slate-500">Loading real markets…</div>
+          ) : liveMarkets.length === 0 ? (
+            <div className="text-[11px] font-mono text-slate-500">Live markets are unavailable right now — paper pools below still work.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {liveMarkets.map((m) => (
+                <div key={m.id} className="flex items-center justify-between gap-3 text-[11px] font-mono bg-slate-950/30 rounded-lg px-3 py-2 border border-slate-900/50">
+                  <span className="text-slate-300 truncate">{m.question}</span>
+                  <span className="shrink-0 text-slate-500">
+                    {m.yesPrice != null && <span className="text-emerald-400">YES {(Number(m.yesPrice) * 100).toFixed(0)}¢</span>}
+                    {m.volume != null && <span className="ml-2">vol ${Math.round(Number(m.volume)).toLocaleString()}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Active Markets Panel */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 flex-1">
           <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">

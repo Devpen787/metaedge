@@ -9,6 +9,27 @@ import { getSpotPrice, arenaSymbol } from './prices.js';
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
 
+// Every /api/mm/* call spawns a CLI process — the one abuse vector that could
+// pin the server's CPU. Simple per-user sliding window: plenty for real use,
+// a wall for floods.
+const RATE_WINDOW_MS = 30_000;
+const RATE_MAX_CALLS = 15;
+const rateBuckets = new Map<string, number[]>();
+
+metamaskRouter.use((req: any, res, next) => {
+  if (!req.path.startsWith('/api/mm/')) return next();
+  const key = req.userId || req.ip || 'anon';
+  const now = Date.now();
+  const bucket = (rateBuckets.get(key) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (bucket.length >= RATE_MAX_CALLS) {
+    res.status(429).json({ error: 'rate_limited', message: 'Too many wallet requests — try again in a few seconds.' });
+    return;
+  }
+  bucket.push(now);
+  rateBuckets.set(key, bucket);
+  next();
+});
+
 const MM_PACKAGE = '@metamask/agentic-cli@3';
 // Prefer the locally installed binary (fast, deterministic); fall back to npx.
 const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
@@ -645,13 +666,53 @@ metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) =
   }
 });
 
+// Prediction-market discovery with a resilient source chain: MetaMask's predict
+// service first; if it's unavailable (e.g. regional outage), fall back to
+// Polymarket's public data API directly. The response always says which source
+// answered — never present a fallback as the primary.
+function normalizePolymarket(raw: any[]): any[] {
+  return (raw || []).map((m) => {
+    let prices: number[] = [];
+    try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); } catch { /* no prices */ }
+    return {
+      id: String(m.id),
+      question: m.question,
+      endDate: m.endDate,
+      liquidity: m.liquidity,
+      volume: m.volume,
+      yesPrice: prices[0] ?? null,
+      noPrice: prices[1] ?? null,
+    };
+  });
+}
+
 metamaskRouter.get('/api/mm/predict/markets', async (req, res) => {
   const query = asString(req.query.query || 'crypto').replace(/[^\w\s-]/g, '').trim().slice(0, 80) || 'crypto';
+
   const result = await runMm(['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
-  res.status(isCommandOk(result) ? 200 : 503).json({
-    markets: result.data,
-    message: isCommandOk(result) ? 'Prediction markets loaded.' : result.summary
-  });
+  if (isCommandOk(result)) {
+    res.json({ markets: result.data, source: 'metamask', message: 'Prediction markets loaded via MetaMask.' });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    const pm = await fetch(
+      `https://gamma-api.polymarket.com/markets?limit=5&active=true&closed=false&order=volume&ascending=false`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (pm.ok) {
+      const markets = normalizePolymarket(await pm.json());
+      if (markets.length) {
+        res.json({ markets, source: 'polymarket', message: 'MetaMask predict is unavailable right now — showing Polymarket public data.' });
+        return;
+      }
+    }
+  } catch { /* fall through to honest failure */ }
+
+  res.status(503).json({ markets: null, source: 'none', message: 'Prediction markets are unavailable right now (MetaMask and Polymarket both unreachable).' });
 });
 
 metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {

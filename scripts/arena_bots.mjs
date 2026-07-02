@@ -17,8 +17,11 @@ const arg = (name, dflt) => {
 const BOTS = arg('bots', 4);
 const ROUNDS = arg('rounds', 10);
 const INTERVAL = arg('interval', 4000);
-const B = 'http://127.0.0.1:3000';
+const B = process.env.METAEDGE_URL || 'http://127.0.0.1:3000';
 const DB = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
+// Persistent identities: the same bots return every run (no ghost accounts),
+// so they can live on a schedule and keep the board alive.
+const STATE_FILE = path.join(path.dirname(DB), 'arena-bots.json');
 
 const PERSONALITIES = [
   { name: 'Momo', strategy: 'momentum', asset: 'SOL', desc: 'buys strength, cuts weakness' },
@@ -43,11 +46,26 @@ async function prices() {
   return (await r.json()).prices;
 }
 
-// ---- Setup: create bot players (session + agent + simulated wallet link) ----
-console.log(`\n⚔️  Arena bot battle: ${BOTS} bots · ${ROUNDS} rounds · ${INTERVAL / 1000}s per round\n`);
+// ---- Setup: create or RESUME bot players (session + agent + wallet link) ----
+console.log(`\n⚔️  Arena bot battle: ${BOTS} bots · ${ROUNDS} rounds · ${INTERVAL / 1000}s per round · ${B}\n`);
+let saved = {};
+try { saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch { /* first run */ }
+
 const bots = [];
 for (let i = 0; i < BOTS; i++) {
   const p = PERSONALITIES[i % PERSONALITIES.length];
+  const prev = saved[p.name];
+
+  // Try to resume the saved identity; sessions can expire, so verify.
+  if (prev?.cookie) {
+    const me = await (await fetch(B + '/api/session', { headers: { cookie: prev.cookie } })).json().catch(() => null);
+    if (me?.user?.id === prev.userId) {
+      bots.push({ ...p, ...prev, units: prev.units || 0, nonce: prev.nonce || 0 });
+      console.log(`  🤖 ${p.name.padEnd(8)} returns — ${p.strategy} on ${p.asset}`);
+      continue;
+    }
+  }
+
   const r = await fetch(B + '/api/session');
   const cookie = r.headers.get('set-cookie').split(';')[0];
   const me = await (await fetch(B + '/api/session', { headers: { cookie } })).json();
@@ -61,29 +79,45 @@ for (let i = 0; i < BOTS; i++) {
   console.log(`  🤖 ${p.name.padEnd(8)} joined — ${p.strategy} on ${p.asset}`);
 }
 
-// Simulated wallet link (competing requires a connected wallet). Sequential
-// writes while no bot traffic is in flight, verified after write.
-for (const [i, bot] of bots.entries()) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const db = JSON.parse(fs.readFileSync(DB, 'utf8'));
-    if (!db.users[bot.userId]) break;
-    db.users[bot.userId].walletAddress = `0xb07${String(i).padStart(3, '0')}` + 'c0ffee'.repeat(6).slice(0, 34);
-    db.users[bot.userId].walletConnectedAt = Date.now();
-    fs.writeFileSync(DB, JSON.stringify(db, null, 2));
-    const check = JSON.parse(fs.readFileSync(DB, 'utf8'));
-    if (check.users[bot.userId]?.walletAddress) break;
-  }
+function persistBots() {
+  const out = {};
+  for (const b of bots) out[b.name] = { cookie: b.cookie, userId: b.userId, agentId: b.agentId, units: b.units, nonce: b.nonce };
+  try { fs.mkdirSync(path.dirname(STATE_FILE), { recursive: true }); fs.writeFileSync(STATE_FILE, JSON.stringify(out, null, 2)); } catch { /* remote mode */ }
 }
-console.log(`  🔗 all bots wallet-linked (simulated connect)\n`);
+persistBots();
 
-// One bot founds a league; the rest join — exercises the league flow.
-const lg = await api(bots[0], 'POST', '/api/arena/leagues', {
-  name: 'Bot Battle Royale', startBalance: 10000, durationDays: 7, risk: 'High', prize: 'Silicon Glory',
-});
-const leagueId = lg.body.league?.id;
+// Simulated wallet link (competing requires a connected wallet). Only for bots
+// that aren't linked yet; sequential writes verified after each write. Needs
+// local db access — skipped gracefully when running against a remote URL.
+try {
+  for (const [i, bot] of bots.entries()) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const db = JSON.parse(fs.readFileSync(DB, 'utf8'));
+      if (!db.users[bot.userId] || db.users[bot.userId].walletAddress) break;
+      db.users[bot.userId].walletAddress = `0xb07${String(i).padStart(3, '0')}` + 'c0ffee'.repeat(6).slice(0, 34);
+      db.users[bot.userId].walletConnectedAt = Date.now();
+      fs.writeFileSync(DB, JSON.stringify(db, null, 2));
+      const check = JSON.parse(fs.readFileSync(DB, 'utf8'));
+      if (check.users[bot.userId]?.walletAddress) break;
+    }
+  }
+  console.log(`  🔗 all bots wallet-linked\n`);
+} catch {
+  console.log(`  ⚠️  no local db access — bots must already be wallet-linked\n`);
+}
+
+// One shared league — created once, rejoined idempotently on later runs.
+const existing = await api(bots[0], 'GET', '/api/arena/leagues');
+let leagueId = (existing.body.leagues || []).find((l) => l.name === 'Bot Battle Royale')?.id;
+if (!leagueId) {
+  const lg = await api(bots[0], 'POST', '/api/arena/leagues', {
+    name: 'Bot Battle Royale', startBalance: 10000, durationDays: 30, risk: 'High', prize: 'Silicon Glory',
+  });
+  leagueId = lg.body.league?.id;
+}
 if (leagueId) {
-  for (const bot of bots.slice(1)) await api(bot, 'POST', `/api/arena/leagues/${leagueId}/join`, {});
-  console.log(`  🏟  league "Bot Battle Royale" created — all ${BOTS} bots in\n`);
+  for (const bot of bots) await api(bot, 'POST', `/api/arena/leagues/${leagueId}/join`, {});
+  console.log(`  🏟  league "Bot Battle Royale" ready — all ${BOTS} bots in\n`);
 }
 
 // ---- The battle ----
@@ -157,11 +191,13 @@ if (leagueId) {
   console.log(`\n  🏟  Bot Battle Royale: ${(flb.body.leaderboard || []).map((p) => `#${p.rank} ${p.name} ${p.roi}`).join('  ·  ')}`);
 }
 
+persistBots();
+
 const board = finalGlobal.body.leaderboard || [];
 const ranksOk = board.map((p) => p.rank).join(',') === board.map((_, i) => i + 1).join(',');
 const sortedOk = board.every((p, i) => i === 0 || board[i - 1].roiValue >= p.roiValue);
 const botsOn = bots.filter((b) => board.some((p) => p.userId === b.userId)).length;
 console.log(`\n  integrity: ranks ${ranksOk ? 'OK' : 'BROKEN'} · sort ${sortedOk ? 'OK' : 'BROKEN'} · ${botsOn}/${BOTS} bots on board · ${errors.length} request errors`);
 if (errors.length) console.log('  errors:', errors.slice(0, 5).join(' | '));
-console.log('\n  Watch it live: http://localhost:3000 → Agent Arena (bots stay on the board)\n');
+console.log(`\n  Watch it live: ${B} → Agent Arena (bots stay on the board)\n`);
 process.exitCode = ranksOk && sortedOk && botsOn === BOTS && errors.length === 0 ? 0 : 1;

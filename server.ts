@@ -36,6 +36,18 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Agent-facing guide at the /llms.txt convention (AI agents look here first),
+// plus the human quickstart. Served before the SPA catch-all.
+import fsDocs from 'fs';
+app.get(['/llms.txt', '/agents.md'], (_req, res) => {
+  res.type('text/plain; charset=utf-8');
+  res.send(fsDocs.readFileSync(path.join(process.cwd(), 'docs', 'AGENTS.md'), 'utf8'));
+});
+app.get('/how-to', (_req, res) => {
+  res.type('text/plain; charset=utf-8');
+  res.send(fsDocs.readFileSync(path.join(process.cwd(), 'docs', 'HOW_TO.md'), 'utf8'));
+});
+
 app.use(authRouter);
 app.use(pricesRouter);
 app.use(roomsRouter);

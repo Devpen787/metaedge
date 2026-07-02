@@ -27,10 +27,14 @@ required on the account, but the free-tier VM doesn't charge it.
 2. Paste this, press enter, and paste your token when asked (it won't echo):
 
 ```bash
+sudo apt-get update -qq && sudo apt-get install -y -qq git && \
 read -s -p "GitHub token: " GT && echo && \
 git clone -b claude/backend-buildout "https://${GT}@github.com/Devpen787/metaedge.git" ~/metaedge && \
 bash ~/metaedge/scripts/gcp_setup.sh
 ```
+
+(The token prompt hides what you type/paste — blank screen is normal. If the
+token ever leaks in plain text, revoke it on GitHub and mint a new one.)
 
 3. ~5–8 minutes later it prints your URL: `https://<ip>.sslip.io` — that's the
    link you share. (First visit can take ~30s while the HTTPS certificate is

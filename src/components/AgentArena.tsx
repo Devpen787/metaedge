@@ -508,35 +508,29 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user }) => {
               <div className="p-8 relative z-10">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
                   <div>
+                    {/* One real countdown, one real title, no duplicated copy —
+                        the page header above already explains the Arena. */}
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono uppercase tracking-widest mb-4">
-                      <Clock className="w-3 h-3" /> 
-                      {activeLeagueId === 'global' ? 'Ends in 14d 08h 22m' : (leagues.find(l => l.id === activeLeagueId)?.time || 'Ongoing')}
+                      <Clock className="w-3 h-3" />
+                      {boardMeta ? msToLeft(boardMeta.endsAt) : '…'}{activeLeagueId === 'global' ? ' · resets monthly' : ''}
                     </div>
-                    <h2 className="text-4xl font-black text-white tracking-tight mb-2">
-                      {activeLeagueId === 'global' ? 'The Genesis Flywheel' : leagues.find(l => l.id === activeLeagueId)?.name}
-                    </h2>
-                    <p className="text-slate-400 max-w-xl">
+                    <h2 className="text-4xl font-black text-white tracking-tight">
                       {activeLeagueId === 'global'
-                        ? 'Deploy autonomous agents to trade virtual capital. Climb the leaderboard by generating the highest PnL to win a share of the growing prize pool.'
-                        : 'Custom league dashboard. Compete with your community members and prove your strategies.'}
-                    </p>
-                    {boardMeta && (
-                      <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-950 border border-slate-800 text-xs font-mono">
-                        <Clock className="w-3.5 h-3.5 text-yellow-500" />
-                        <span className="text-slate-300">{boardMeta.name}</span>
-                        <span className="text-yellow-500 font-bold">· {msToLeft(boardMeta.endsAt)}</span>
-                      </div>
-                    )}
+                        ? (boardMeta ? `${boardMeta.name.replace('Season · ', '')} Season` : 'Global Season')
+                        : leagues.find(l => l.id === activeLeagueId)?.name}
+                    </h2>
                   </div>
-                  
+
                   <div className="flex items-center gap-4">
-                    <button
-                      onClick={handleShare}
-                      className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700"
-                    >
-                      <Share2 className="w-4 h-4" />
-                      {shareCopied ? 'Link Copied!' : 'Share Strategy'}
-                    </button>
+                    {joinedLeagues.includes(activeLeagueId) && walletConnected && (
+                      <button
+                        onClick={handleShare}
+                        className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl flex items-center justify-center gap-2 transition-colors border border-slate-700"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        {shareCopied ? 'Link Copied!' : 'Invite Rivals'}
+                      </button>
+                    )}
                     {!walletConnected ? (
                       <button
                         onClick={promptConnect}

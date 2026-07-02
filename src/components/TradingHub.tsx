@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, YAxis, ReferenceDot } from 'recharts';
 import { User, TradingAgent, PaperTrade } from '../types';
-import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2 } from 'lucide-react';
+import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2, Wallet, RefreshCw } from 'lucide-react';
+import { apiFetch } from '../lib/api';
 
 interface TradingHubProps {
   currentUser: User;
@@ -30,6 +31,11 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Live-market sanity check via the MetaMask Agent Wallet: one line of real
+  // route/venue data for the trade on the ticket. Fetched on demand (the CLI
+  // call takes a few seconds), rendered as text — never a JSON dump.
+  const [mmRoute, setMmRoute] = useState<{ loading?: boolean; text?: string; error?: string }>({});
 
   // Active agents owned by user
   const myAgents = agents.filter(a => a.status === 'active');
@@ -91,11 +97,45 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const positionSize = Number(size) || 0;
   const notional = positionSize * currentPrice;
   const marginRequired = tradeType === 'perp' ? notional / leverage : notional;
-  const estLiquidation = tradeType === 'perp' 
-    ? side === 'long' 
-      ? currentPrice * (1 - 1 / leverage) 
+  const estLiquidation = tradeType === 'perp'
+    ? side === 'long'
+      ? currentPrice * (1 - 1 / leverage)
       : currentPrice * (1 + 1 / leverage)
     : 0;
+
+  const checkMmRoute = async () => {
+    setMmRoute({ loading: true });
+    try {
+      if (tradeType === 'token') {
+        const usd = Math.max(1, Math.round(notional));
+        const res = await apiFetch('/api/mm/swap/quote', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ from: 'USDC', to: assetSymbol === 'BTC' ? 'WBTC' : assetSymbol === 'ETH' ? 'WETH' : assetSymbol, amount: String(usd) })
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.message || 'No live route for this pair right now.');
+        const inner = body.quote?.data?.quote || {};
+        const dec = Number(inner?.destAsset?.decimals);
+        const out = inner?.destAssetAmount != null && Number.isFinite(dec) ? (Number(inner.destAssetAmount) / 10 ** dec).toFixed(6) : null;
+        if (!out) throw new Error('No live route for this pair right now.');
+        setMmRoute({ text: `${inner.bridgeId || 'MetaMask'} route: ${usd.toLocaleString()} USDC → ${out} ${inner?.destAsset?.symbol || assetSymbol}` });
+      } else {
+        const res = await apiFetch('/api/mm/perps/quote', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ symbol: assetSymbol, side, size: String(positionSize || 0.1), leverage: String(leverage) })
+        });
+        const body = await res.json();
+        if (!res.ok) throw new Error(body.message || 'No live venue quote for this market right now.');
+        const q = body.quote?.data || {};
+        if (!q.entryPrice) throw new Error('No live venue quote for this market right now.');
+        setMmRoute({ text: `hyperliquid: entry $${Number(q.entryPrice).toLocaleString()} · liq $${Number(q.estimatedLiquidationPrice).toLocaleString()} · fee $${q.estimatedFee}` });
+      }
+    } catch (err: any) {
+      setMmRoute({ error: err.message || 'Live route unavailable.' });
+    }
+  };
 
   const handleSubmitTrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,6 +419,21 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
           {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
+
+          {/* Live-market check via MetaMask — one line, on demand. */}
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 space-y-2">
+            <button
+              type="button"
+              onClick={checkMmRoute}
+              disabled={!!mmRoute.loading}
+              className="w-full flex items-center justify-center gap-2 text-[11px] font-mono text-orange-400/90 hover:text-orange-300 disabled:opacity-60 transition-colors"
+            >
+              {mmRoute.loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wallet className="w-3.5 h-3.5" />}
+              {mmRoute.loading ? 'Checking live market…' : 'Check live route (MetaMask)'}
+            </button>
+            {mmRoute.text && <p className="text-[11px] text-emerald-300 font-mono text-center">{mmRoute.text}</p>}
+            {mmRoute.error && <p className="text-[11px] text-slate-500 font-mono text-center">{mmRoute.error}</p>}
+          </div>
         </form>
 
         {/* Telemetry Status Footer */}

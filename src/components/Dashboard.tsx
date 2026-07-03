@@ -229,13 +229,13 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               <NumberTicker value={user.paperBalance} decimals={2} />
             </h2>
             <div className="flex items-center gap-3 mt-4">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-mono rounded-lg shadow-sm font-bold uppercase tracking-widest">
-                <Flame className="w-3 h-3" /> Earning ~4.1% APY
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono rounded-lg shadow-sm font-bold uppercase tracking-widest">
+                <Flame className="w-3 h-3" /> Practice funds
               </span>
-              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">MetaMask Money Base Layer</span>
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Zero risk · no yield</span>
             </div>
             <p className="text-sm text-slate-400 font-mono mt-4 max-w-md leading-relaxed">
-              Active currency for simulating bots & rooms. Your idle capital never stops earning while you trade.
+              Simulated money for your agents, trades, and competitions. (Real balances can earn ~4% APY in MetaMask's Money Account — that's the Live world, when you're ready.)
             </p>
           </div>
 
@@ -286,30 +286,30 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             </div>
           </div>
 
-          {/* Verifier Firewall */}
+          {/* Safety rails — REAL numbers from the audit log, not invented ones. */}
           <div className="flex-1 bg-slate-900/60 backdrop-blur-md border border-amber-500/20 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:border-amber-500/40 transition-all">
              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-[50px] pointer-events-none group-hover:bg-amber-500/10 transition-all duration-700" />
             <div>
               <div className="flex items-center justify-between gap-2 text-[11px] font-mono text-amber-400/80 uppercase tracking-wider mb-2">
                 <span className="flex items-center gap-1.5">
                   <Shield className="w-4 h-4" />
-                  Reasoning Firewall
+                  Safety Rails
                 </span>
-                <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] text-amber-400">ACTIVE</span>
+                <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] text-amber-400">LIVE LOCKED</span>
               </div>
               <div className="flex items-baseline gap-2 mt-1">
                 <h2 className="text-2xl font-bold text-slate-200 font-mono group-hover:text-amber-400 transition-colors">
-                  82%
+                  {audits.length}
                 </h2>
-                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Precision</span>
+                <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Actions audit-logged</span>
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-slate-700/50 text-[10px] font-mono flex items-center justify-between gap-1.5 leading-tight">
-              <span className="text-slate-400">Hallucinations Blocked:</span>
-              <span className="text-amber-400 font-bold">14</span>
+              <span className="text-slate-400">Live actions blocked:</span>
+              <span className="text-amber-400 font-bold">{audits.filter((a) => a.action === 'METAMASK_BLOCKED_ACTION').length}</span>
             </div>
             <p className="text-[9px] text-slate-500 mt-2 font-mono leading-relaxed">
-              Verifying agentic reasoning against on-chain evidence before action. Catches errors before they get expensive.
+              Every action you take is recorded in your audit trail (Evidence Map). Real execution stays locked until you go Live.
             </p>
           </div>
 

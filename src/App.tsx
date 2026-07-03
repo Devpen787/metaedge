@@ -48,7 +48,6 @@ export default function App() {
   const [paperLiveMode, setPaperLiveMode] = useState<'paper' | 'live'>('paper');
   const [showReadiness, setShowReadiness] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [isGlobalAutopilotEnabled, setIsGlobalAutopilotEnabled] = useState(false);
   const [isAgentProcessing, setIsAgentProcessing] = useState(false);
   const [agentProcessingAction, setAgentProcessingAction] = useState<string | null>(null);
 
@@ -658,20 +657,6 @@ export default function App() {
             {/* Mode switch & Wallet */}
             <div className="flex items-center gap-3 ml-auto">
               <button
-                onClick={() => setIsGlobalAutopilotEnabled(!isGlobalAutopilotEnabled)}
-                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-all cursor-pointer shadow-inner ${
-                  isGlobalAutopilotEnabled
-                    ? 'bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-400'
-                }`}
-                title="Toggle Global Autopilot"
-              >
-                <Cpu className={`w-3.5 h-3.5 ${isGlobalAutopilotEnabled ? 'animate-pulse' : ''}`} />
-                <span className="text-xs font-mono hidden md:inline">
-                  Autopilot {isGlobalAutopilotEnabled ? 'ON' : 'OFF'}
-                </span>
-              </button>
-              <button
                 onClick={() => {
                   setProModeEnabled(!proModeEnabled);
                   if (proModeEnabled && activeTab === 'quant') {
@@ -683,10 +668,10 @@ export default function App() {
                     ? 'bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-fuchsia-400 shadow-sm shadow-fuchsia-900/20'
                     : 'bg-slate-950 border-slate-900 hover:bg-slate-900 text-slate-500'
                 }`}
-                title="Toggle Advanced Quant Mode"
+                title={proModeEnabled ? 'Hide the Quant Engine tab' : 'Show the Quant Engine tab (advanced backtesting)'}
               >
                 <Database className="w-3.5 h-3.5" />
-                <span className="text-xs font-mono hidden md:inline">Pro Mode</span>
+                <span className="text-xs font-mono hidden md:inline">{proModeEnabled ? 'Pro Tools: On' : 'Pro Tools'}</span>
               </button>
               <button
                 onClick={() => setShowWalletModal(true)}
@@ -876,28 +861,6 @@ export default function App() {
         </footer>
       </div>
 
-      {/* Global Autopilot Active Indicator */}
-      <AnimatePresence>
-        {isGlobalAutopilotEnabled && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none"
-          >
-            <div className="bg-slate-900/90 backdrop-blur-md border border-blue-500/30 p-3 rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-3">
-              <div className="relative">
-                <Cpu className="w-5 h-5 text-blue-400" />
-                <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white font-mono tracking-tight">AUTOPILOT GLOBAL</p>
-                <p className="text-[10px] text-blue-300/80 font-mono">Running Swarm Background Directives</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Safety Compliance Readiness Sheet */}
       {showReadiness && (

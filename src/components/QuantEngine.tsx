@@ -132,14 +132,14 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           <div className="space-y-3">
             <label className="block text-[10px] text-slate-400 uppercase tracking-wider">Machine Learning & Adaptation</label>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-slate-300">Genetic Algorithm Optimizer</span>
-                <input type="checkbox" defaultChecked className="toggle toggle-sm bg-slate-800 border-slate-700 checked:bg-fuchsia-500 checked:border-fuchsia-500" />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-slate-300">Live Forward-Testing Adjustments</span>
-                <input type="checkbox" defaultChecked className="toggle toggle-sm bg-slate-800 border-slate-700 checked:bg-emerald-500 checked:border-emerald-500" />
-              </label>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Parameter sweep (SMA windows, in-sample)</span>
+                <span className="text-emerald-400 font-bold">✓</span>
+              </div>
+              <div className="flex items-center justify-between text-slate-300">
+                <span>Out-of-sample validation (unseen data)</span>
+                <span className="text-emerald-400 font-bold">✓</span>
+              </div>
             </div>
           </div>
 
@@ -148,15 +148,15 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs space-y-3">
               <div className="flex justify-between items-center text-slate-300">
                 <span>Data Horizon</span>
-                <span className="font-bold text-slate-100">84 Days</span>
+                <span className="font-bold text-slate-100">100 days · real Binance candles</span>
               </div>
               <div className="flex justify-between items-center text-slate-300">
-                <span>Walk-forward Folds</span>
-                <span className="font-bold text-slate-100">5</span>
+                <span>Train / Test Split</span>
+                <span className="font-bold text-slate-100">70% / 30% out-of-sample</span>
               </div>
               <div className="flex justify-between items-center text-slate-300">
-                <span>Transaction Costs</span>
-                <span className="font-bold text-slate-100">0.05% taker</span>
+                <span>Costs Per Fill</span>
+                <span className="font-bold text-slate-100">0.15% (fee + slippage)</span>
               </div>
             </div>
           </div>

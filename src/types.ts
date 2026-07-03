@@ -67,6 +67,10 @@ export interface TradingAgent {
   status: AgentStatus;
   createdAt: number;
   lastTradeAt?: number;
+  // Autopilot: when true (and status active), the server-side autotrader makes
+  // this agent trade by itself on live prices via its strategy. Opt-in.
+  autopilot?: boolean;
+  lastAutoTradeAt?: number;
 }
 
 export interface PaperStrategy {

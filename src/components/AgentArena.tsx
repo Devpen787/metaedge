@@ -49,6 +49,7 @@ interface AgentArenaProps {
   trades: PaperTrade[];
   onAgentCreated: (payload: any) => Promise<void>;
   onAgentStatusChanged: (id: string, status: 'active' | 'paused' | 'revoked') => Promise<void>;
+  onAgentAutopilotChanged: (id: string, enabled: boolean) => Promise<void>;
 }
 
 // Deploy templates: picking one creates a REAL trading agent (same backend as
@@ -94,7 +95,7 @@ const DataStreamBackground = () => {
   );
 };
 
-export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, onAgentCreated, onAgentStatusChanged }) => {
+export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, onAgentCreated, onAgentStatusChanged, onAgentAutopilotChanged }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leagues' | 'create'>('dashboard');
   const [activeLeagueId, setActiveLeagueId] = useState<string | 'global'>('global');
   const [isDeploying, setIsDeploying] = useState(false);
@@ -598,6 +599,11 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                                    <span className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase ${paused ? 'bg-slate-700/40 text-slate-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
                                      {!paused && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />} {paused ? 'Paused' : 'Active'}
                                    </span>
+                                   {agent.autopilot && !paused && (
+                                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                                       <Zap className="w-2.5 h-2.5 animate-pulse" /> Auto
+                                     </span>
+                                   )}
                                  </h4>
                                  <span className="text-xs text-slate-500">{agent.strategyType.replace('_', ' ')} · {agent.assetSymbol} · {agent.tradeType === 'perp' ? `${agent.leverage}x perp` : 'spot'}</span>
                                </div>
@@ -608,6 +614,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                                    title="Agent details"
                                  >
                                    <Settings className="w-4 h-4" />
+                                 </button>
+                                 <button
+                                   onClick={() => onAgentAutopilotChanged(agent.id, !agent.autopilot)}
+                                   className={`p-1.5 rounded-lg transition-colors ${agent.autopilot ? 'text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20' : 'text-slate-500 hover:text-cyan-300 hover:bg-cyan-500/10'}`}
+                                   title={agent.autopilot ? 'Autopilot ON — agent trades itself. Click to stop.' : 'Enable Autopilot — the agent trades by itself on live prices'}
+                                 >
+                                   <Zap className="w-4 h-4" />
                                  </button>
                                  <button
                                    onClick={() => handlePauseResume(agent)}

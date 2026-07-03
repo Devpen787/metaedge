@@ -264,6 +264,15 @@ export default function App() {
     }
   };
 
+  const handleAgentAutopilotChanged = async (id: string, enabled: boolean) => {
+    const res = await apiFetch(`/api/agents/${id}/autopilot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (res.ok) fetchEntities();
+  };
+
   // Update Agent Status handler
   const handleAgentStatusChanged = async (id: string, status: 'active' | 'paused' | 'revoked') => {
     const res = await apiFetch(`/api/agents/${id}/status`, {
@@ -836,6 +845,7 @@ export default function App() {
                     trades={trades}
                     onAgentCreated={handleAgentCreated}
                     onAgentStatusChanged={handleAgentStatusChanged}
+                    onAgentAutopilotChanged={handleAgentAutopilotChanged}
                   />
                 )}
 

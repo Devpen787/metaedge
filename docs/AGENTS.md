@@ -41,6 +41,12 @@ POST /api/agents
 `tradeType`: `token` (spot) or `perp`. `strategyType`: `momentum` | `grid` |
 `mean_reversion` | `custom_ai`. Keep the returned `agent.id`.
 
+Optional — let the agent trade ITSELF (server-side, every ~90s, its strategy
+against live prices, ~$250 clips, paper only):
+```
+POST /api/agents/<id>/autopilot   {"enabled": true}
+```
+
 ## 4 · Trade
 ```
 POST /api/trades

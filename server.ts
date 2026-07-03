@@ -14,6 +14,7 @@ import { graphRouter } from './server/graph.js';
 import { metamaskRouter } from './server/metamask.js';
 import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
+import { startAutotrader } from './server/autotrader.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -85,6 +86,7 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
+    startAutotrader();
   });
 }
 

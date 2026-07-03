@@ -26,27 +26,29 @@ function positionBefore(trades: any[], userId: string, agentId: string, asset: s
   return { size, avgEntry: size > 0 ? cost / size : 0 };
 }
 
-// Post simulated fill
-tradesRouter.post('/api/trades', (req: any, res) => {
-  const userId = req.userId;
-  const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = req.body;
+// Core paper-trade execution: validation -> intent -> risk -> fill -> honest
+// cost-basis ledger -> audit. Shared by the HTTP route and the autotrader so
+// there is exactly ONE way a trade can happen.
+export function placePaperTrade(
+  userId: string,
+  input: { agentId: string; assetSymbol: string; side: 'buy' | 'sell' | 'long' | 'short'; size: number; price: number; leverage?: number; roomId?: string; nonce: string },
+  audit: { action: string; detailsPrefix: string } = { action: 'PAPER_TRADE', detailsPrefix: 'Executed simulated' }
+): { ok: boolean; status?: number; error?: string; trade?: PaperTrade; balance?: number } {
+  const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = input;
 
   if (!agentId || !assetSymbol || !side || !size || !price || !nonce) {
-    res.status(400).json({ error: 'Incomplete fill telemetry or missing idempotency nonce' });
-    return;
+    return { ok: false, status: 400, error: 'Incomplete fill telemetry or missing idempotency nonce' };
   }
 
   const db = readDatabase();
   const agent = db.agents[agentId];
 
   if (!agent || agent.ownerId !== userId) {
-    res.status(403).json({ error: 'Forbidden or agent missing' });
-    return;
+    return { ok: false, status: 403, error: 'Forbidden or agent missing' };
   }
 
   if (agent.status !== 'active') {
-    res.status(400).json({ error: 'Agent is not running and cannot trade.' });
-    return;
+    return { ok: false, status: 400, error: 'Agent is not running and cannot trade.' };
   }
 
   const executionPrice = Number(price);
@@ -55,7 +57,6 @@ tradesRouter.post('/api/trades', (req: any, res) => {
 
   const user = db.users[userId];
 
-  // 1. Create order intent
   let intent;
   try {
     intent = createOrderIntent(userId, {
@@ -68,11 +69,9 @@ tradesRouter.post('/api/trades', (req: any, res) => {
       nonce
     });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
-    return;
+    return { ok: false, status: 400, error: err.message };
   }
 
-  // 2. Risk Evaluation
   try {
     evaluateOrderRisk(intent, {
       userId,
@@ -80,18 +79,15 @@ tradesRouter.post('/api/trades', (req: any, res) => {
       currentPrice: executionPrice
     });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
-    return;
+    return { ok: false, status: 400, error: err.message };
   }
 
-  // 3. Execution & Ledger Updates
   let trade;
   try {
     trade = executeOrderIntent(intent.intentId, executionPrice);
     trade.roomId = roomId || agent.roomId;
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
-    return;
+    return { ok: false, status: 400, error: err.message };
   }
 
   // Honest cost-basis accounting. Opening posts margin; closing returns the
@@ -100,7 +96,6 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   const pos = isClose ? positionBefore(db.trades, userId, agentId, assetSymbol.toUpperCase()) : { size: 0, avgEntry: 0 };
 
   if (!isClose || pos.size <= 0) {
-    // Opening a long/spot, or opening a short with nothing to close against.
     const margin = agent.tradeType === 'perp' ? (tradeSize * executionPrice) / tradeLeverage : (tradeSize * executionPrice);
     user.paperBalance -= margin;
     trade.pnl = undefined;
@@ -119,8 +114,8 @@ tradesRouter.post('/api/trades', (req: any, res) => {
     id: 'aud_' + generateId(),
     userId,
     username: user.username,
-    action: 'PAPER_TRADE',
-    details: `Executed simulated ${side} of ${tradeSize} ${assetSymbol} at $${executionPrice}`,
+    action: audit.action,
+    details: `${audit.detailsPrefix} ${side} of ${tradeSize} ${assetSymbol} at $${executionPrice}`,
     timestamp: Date.now()
   });
 
@@ -135,7 +130,24 @@ tradesRouter.post('/api/trades', (req: any, res) => {
   });
 
   writeDatabase(db);
-  res.json({ success: true, trade, balance: user.paperBalance });
+  return { ok: true, trade, balance: user.paperBalance };
+}
+
+// Expose the cost-basis position for strategy decisions (autotrader).
+export function agentPosition(userId: string, agentId: string, asset: string) {
+  const db = readDatabase();
+  return positionBefore(db.trades, userId, agentId, asset);
+}
+
+// Post simulated fill
+tradesRouter.post('/api/trades', (req: any, res) => {
+  const userId = req.userId;
+  const result = placePaperTrade(userId, req.body);
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error });
+    return;
+  }
+  res.json({ success: true, trade: result.trade, balance: result.balance });
 });
 
 // List trades

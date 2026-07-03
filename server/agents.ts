@@ -107,6 +107,30 @@ agentsRouter.get('/api/agents', (req: any, res) => {
 });
 
 // Toggle Status (Pause / Revoke)
+// Toggle per-agent Autopilot: opt-in server-side self-trading (paper only).
+agentsRouter.post('/api/agents/:id/autopilot', (req: any, res) => {
+  const userId = req.userId;
+  const agentId = req.params.id;
+  const enabled = req.body?.enabled === true;
+
+  const db = readDatabase();
+  const agent = db.agents[agentId];
+  if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
+  if (agent.ownerId !== userId) { res.status(403).json({ error: 'Unauthorized to control this agent' }); return; }
+
+  agent.autopilot = enabled;
+  db.auditEvents.push({
+    id: 'aud_' + generateId(),
+    userId,
+    username: db.users[userId].username,
+    action: 'AGENT_AUTOPILOT',
+    details: `${enabled ? 'Enabled' : 'Disabled'} autopilot for agent ${agent.name}`,
+    timestamp: Date.now()
+  });
+  writeDatabase(db);
+  res.json({ success: true, agent });
+});
+
 agentsRouter.post('/api/agents/:id/status', (req: any, res) => {
   const userId = req.userId;
   const agentId = req.params.id;

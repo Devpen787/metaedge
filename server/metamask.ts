@@ -572,8 +572,13 @@ metamaskRouter.get('/api/mm/connect/status', async (req: any, res) => {
 // Pro path: connect with a pre-minted CLI token (used once, never stored).
 metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
   const token = asString(req.body?.token).trim();
-  if (!/^[A-Za-z0-9._-]{16,512}$/.test(token)) {
-    res.status(400).json({ error: 'That does not look like a MetaMask CLI token.' });
+  // Real MetaMask tokens are `cliToken:cliRefreshToken` (each half a JWT), so
+  // they contain a colon and can be long. We accept any printable, whitespace-
+  // free string of reasonable length and let the CLI be the real validator —
+  // the token is passed as an argv element (shell:false), so there's no
+  // injection risk in being permissive here.
+  if (!/^[\x21-\x7e]{16,8192}$/.test(token)) {
+    res.status(400).json({ error: 'That does not look like a MetaMask CLI token. Paste the whole thing, including everything after the colon.' });
     return;
   }
   const result = await runMmAs(req.userId, ['login', '--token', token, '--json'], 45_000);

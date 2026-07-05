@@ -118,6 +118,17 @@ agentsRouter.post('/api/agents/:id/autopilot', (req: any, res) => {
   if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
   if (agent.ownerId !== userId) { res.status(403).json({ error: 'Unauthorized to control this agent' }); return; }
 
+  // Cap concurrent autopilot agents per user so the server-side engine stays
+  // bounded no matter how many agents someone spins up.
+  const AUTOPILOT_CAP = 8;
+  if (enabled && !agent.autopilot) {
+    const active = Object.values(db.agents).filter((a) => a.ownerId === userId && a.autopilot && a.status === 'active').length;
+    if (active >= AUTOPILOT_CAP) {
+      res.status(400).json({ error: `You can run at most ${AUTOPILOT_CAP} agents on autopilot at once.` });
+      return;
+    }
+  }
+
   agent.autopilot = enabled;
   db.auditEvents.push({
     id: 'aud_' + generateId(),

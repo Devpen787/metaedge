@@ -101,22 +101,32 @@ export function readDatabase(): DatabaseState {
     }
     return parsed;
   } catch (error) {
-    console.error('Error reading database, resetting:', error);
+    console.error('Error reading database:', error);
+    // A parse error must NOT silently wipe everyone's data. Preserve the bad
+    // file for forensics, then try to recover from the newest daily backup
+    // before falling back to an empty state.
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        fs.copyFileSync(DB_FILE, `${DB_FILE}.corrupt-${Date.now()}`);
+      }
+      const dir = path.dirname(DB_FILE);
+      const backups = fs.existsSync(dir)
+        ? fs.readdirSync(dir).filter((f) => f.startsWith('db-backup-')).sort()
+        : [];
+      for (const b of backups.reverse()) {
+        try {
+          const recovered = JSON.parse(fs.readFileSync(path.join(dir, b), 'utf8'));
+          console.warn(`Recovered database from backup: ${b}`);
+          return recovered;
+        } catch { /* try older backup */ }
+      }
+    } catch (recoverErr) {
+      console.error('Backup recovery failed:', recoverErr);
+    }
     return {
-      users: {},
-      sessions: {},
-      rooms: {},
-      agents: {},
-      strategies: {},
-      trades: [],
-      vaultClubs: {},
-      auditEvents: [],
-      graphEvents: [],
-      predictionMarkets: {},
-      arenaLeagues: {},
-      arenaMembers: [],
-      arenaBadges: [],
-      arenaRankSnapshots: {}
+      users: {}, sessions: {}, rooms: {}, agents: {}, strategies: {}, trades: [],
+      vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {},
+      arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {}
     };
   }
 }
@@ -127,7 +137,19 @@ export function writeDatabase(state: DatabaseState) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify(state, null, 2), 'utf8');
+    // Atomic write: serialize, flush to a temp file, then rename over the
+    // target. rename() is atomic on POSIX, so a crash mid-write can never leave
+    // a half-written (corrupt) db.json — readers see either the old or new file.
+    const json = JSON.stringify(state, null, 2);
+    const tmp = `${DB_FILE}.tmp-${process.pid}`;
+    const fd = fs.openSync(tmp, 'w');
+    try {
+      fs.writeFileSync(fd, json, 'utf8');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, DB_FILE);
   } catch (error) {
     console.error('Error writing database:', error);
   }

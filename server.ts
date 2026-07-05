@@ -16,14 +16,19 @@ import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
 import { startAutotrader } from './server/autotrader.js';
 import { platformRouter } from './server/platform.js';
+import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
-app.use(express.json());
+app.disable('x-powered-by');
+app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'metaedge-secret-key-cookie'));
 
 app.use(sessionMiddleware);
+
+// Abuse guard: cap mutating requests per user (after session so we key by userId).
+app.use(mutationLimiter());
 
 // --- HEALTH ENDPOINT ---
 app.get('/api/health', (req, res) => {
@@ -86,11 +91,23 @@ async function startServer() {
     });
   }
 
+  // Last-resort error handler: any thrown/rejected route returns clean JSON
+  // instead of hanging the request or leaking a stack trace.
+  app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('Unhandled route error:', req.method, req.path, err?.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
+  });
+
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
   });
 }
+
+// Keep the process alive on unexpected errors — log, don't crash. A friends
+// beta shouldn't go down because one request hit an edge case.
+process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason));
+process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 
 startServer().catch(err => {
   console.error('Fatal server startup error:', err);

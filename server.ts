@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 
 import { authRouter, sessionMiddleware } from './server/auth.js';
+import { readDatabase } from './server/storage.js';
 import { pricesRouter } from './server/prices.js';
 import { roomsRouter } from './server/rooms.js';
 import { agentsRouter } from './server/agents.js';
@@ -40,15 +41,23 @@ app.use(sessionMiddleware);
 // Abuse guard: cap mutating requests per user (after session so we key by userId).
 app.use(mutationLimiter());
 
-// --- HEALTH ENDPOINT ---
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    app: 'MetaEdge V1',
-    version: '1.0.0',
-    buildCommit: 'a87b32c',
-    dbConnectivity: true,
-    graphProjectionStatus: true,
+// --- HEALTH ENDPOINT (honest: actually probes the DB) ---
+const START_TIME = Date.now();
+app.get('/api/health', (_req, res) => {
+  let dbOk = false;
+  let users = 0;
+  try {
+    const db = readDatabase();
+    users = Object.keys(db.users || {}).length;
+    dbOk = true;
+  } catch { /* dbOk stays false */ }
+  res.status(dbOk ? 200 : 503).json({
+    status: dbOk ? 'ok' : 'degraded',
+    app: 'MetaEdge',
+    commit: process.env.GIT_COMMIT || 'dev',
+    uptimeSec: Math.round((Date.now() - START_TIME) / 1000),
+    dbConnectivity: dbOk,
+    users,
     liveModeGlobalLock: process.env.LIVE_EXECUTION_ENABLED !== 'true'
   });
 });
@@ -108,10 +117,20 @@ async function startServer() {
     if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
+  const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
   });
+
+  // Graceful shutdown: stop accepting connections and exit cleanly on deploy
+  // signals (DB writes are synchronous, so nothing is left half-written).
+  const shutdown = (sig: string) => {
+    console.log(`[MetaEdge] ${sig} received — shutting down gracefully.`);
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 // Keep the process alive on unexpected errors — log, don't crash. A friends

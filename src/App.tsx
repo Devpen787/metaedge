@@ -827,7 +827,13 @@ export default function App() {
                 )}
 
                 {currentUser && activeTab === 'autopilot' && (
-                  <AgenticAutopilot user={currentUser} />
+                  <AgenticAutopilot
+                    user={currentUser}
+                    agents={agents}
+                    trades={trades}
+                    audits={audits}
+                    onAgentAutopilotChanged={handleAgentAutopilotChanged}
+                  />
                 )}
 
                 {currentUser && activeTab === 'intent' && (

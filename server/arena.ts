@@ -318,6 +318,13 @@ arenaRouter.post('/api/arena/leagues', (req: any, res) => {
     return;
   }
 
+  // Per-user cap on user-created leagues (system leagues excluded).
+  const LEAGUE_CAP = 15;
+  if (Object.values(db.arenaLeagues || {}).filter((l) => l.creatorId === userId).length >= LEAGUE_CAP) {
+    res.status(400).json({ error: `You've reached the maximum of ${LEAGUE_CAP} leagues.` });
+    return;
+  }
+
   const name = sanitizeText(req.body?.name || '', 60);
   if (!name) { res.status(400).json({ error: 'League name is required.' }); return; }
   const startBalance = Number(req.body?.startBalance);

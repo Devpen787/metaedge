@@ -15,8 +15,8 @@ predictionsRouter.post('/api/predictions/:id/bet', (req: any, res) => {
   const marketId = req.params.id;
   const { side, amount } = req.body;
 
-  if (!side || !amount || isNaN(amount) || Number(amount) <= 0) {
-    res.status(400).json({ error: 'Valid side (yes/no) and amount are required' });
+  if (!side || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || Number(amount) > 1_000_000) {
+    res.status(400).json({ error: 'Bet amount must be a positive number up to 1,000,000.' });
     return;
   }
 

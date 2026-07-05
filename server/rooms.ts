@@ -16,6 +16,11 @@ roomsRouter.post('/api/rooms', (req: any, res) => {
   }
 
   const db = readDatabase();
+  const ROOM_CAP = 25;
+  if (Object.values(db.rooms).filter((r) => r.ownerId === userId).length >= ROOM_CAP) {
+    res.status(400).json({ error: `You've reached the maximum of ${ROOM_CAP} rooms.` });
+    return;
+  }
   const roomId = 'rm_' + generateId();
   const inviteToken = 'inv_' + generateId();
 

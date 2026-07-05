@@ -17,6 +17,13 @@ agentsRouter.post('/api/agents', (req: any, res) => {
   }
 
   const db = readDatabase();
+  // Per-user cap: prevents unbounded agent creation from bloating the db.
+  const AGENT_CAP = 50;
+  const owned = Object.values(db.agents).filter((a: any) => a.ownerId === userId && a.status !== 'revoked').length;
+  if (owned >= AGENT_CAP) {
+    res.status(400).json({ error: `You already have the maximum of ${AGENT_CAP} agents. Retire some to create more.` });
+    return;
+  }
   const sharedRoomId = sanitizeText(roomId || '', 50);
   if (sharedRoomId) {
     const room = db.rooms[sharedRoomId];

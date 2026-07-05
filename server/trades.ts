@@ -90,6 +90,15 @@ export function placePaperTrade(
   if (!agentId || !assetSymbol || !side || !size || !price || !nonce) {
     return { ok: false, status: 400, error: 'Incomplete fill telemetry or missing idempotency nonce' };
   }
+  // Non-finite numbers (NaN/Infinity) slip past `<= 0` checks and would corrupt
+  // the ledger — reject them and enforce sane bounds up front.
+  const nSize = Number(size), nPrice = Number(price);
+  if (!Number.isFinite(nSize) || nSize <= 0 || nSize > 1e9) {
+    return { ok: false, status: 400, error: 'Size must be a positive, finite number.' };
+  }
+  if (!Number.isFinite(nPrice) || nPrice <= 0 || nPrice > 1e12) {
+    return { ok: false, status: 400, error: 'Price must be a positive, finite number.' };
+  }
 
   const db = readDatabase();
   const agent = db.agents[agentId];

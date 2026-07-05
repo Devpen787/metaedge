@@ -158,9 +158,9 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
             <div className="flex flex-col items-center justify-center text-center h-full text-slate-500 p-6 space-y-3">
               <ShieldAlert className="w-8 h-8 text-indigo-500/40" />
               <div>
-                <p className="text-xs font-mono font-medium text-slate-400">Security Sandbox Verified</p>
+                <p className="text-xs font-mono font-medium text-slate-400">Audit Trail</p>
                 <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                  No active warnings. Every agent strategy listed in MetaEdge V1 corresponds to genuine peer-reviewed code.
+                  Click a node to inspect it. Every agent, room, and trade shown here is reconstructed from your real activity log — nothing synthetic.
                 </p>
               </div>
             </div>

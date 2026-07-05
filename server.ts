@@ -22,6 +22,16 @@ const PORT = Number(process.env.PORT) || 3000;
 
 const app = express();
 app.disable('x-powered-by');
+
+// Baseline security headers on every response.
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');           // no embedding (clickjacking)
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  next();
+});
+
 app.use(express.json({ limit: '256kb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'metaedge-secret-key-cookie'));
 

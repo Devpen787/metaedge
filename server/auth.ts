@@ -80,6 +80,14 @@ function recordLoginEvents(db: DatabaseState, user: User, req: any) {
   db.graphEvents.push(graphEvent);
 }
 
+// Drop expired sessions so the sessions map doesn't grow forever.
+function pruneExpiredSessions(db: DatabaseState, now: number) {
+  if (!db.sessions) return;
+  for (const [hash, s] of Object.entries(db.sessions)) {
+    if (s.expiresAt <= now) delete db.sessions[hash];
+  }
+}
+
 // Middleware to resolve or create anonymous session.
 export const sessionMiddleware = (req: any, res: any, next: any) => {
   const db = readDatabase();
@@ -93,12 +101,19 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
     const session = db.sessions[tokenHash];
     if (session && session.expiresAt > now && db.users[session.userId]) {
       userId = session.userId;
-      session.lastSeenAt = now;
-      session.expiresAt = now + SESSION_TTL_MS;
-      db.users[userId].lastActiveAt = now;
-      res.cookie(SESSION_COOKIE, cookieToken, SESSION_COOKIE_OPTIONS);
-      writeDatabase(db);
       req.userId = userId;
+      // Throttle the session touch: rewriting the whole db on EVERY request just
+      // to bump lastSeenAt is huge write amplification under polling. Renew at
+      // most once per window (TTL is 30 days, so this stays accurate).
+      const RENEW_WINDOW_MS = 5 * 60 * 1000;
+      if (now - (session.lastSeenAt || 0) > RENEW_WINDOW_MS) {
+        session.lastSeenAt = now;
+        session.expiresAt = now + SESSION_TTL_MS;
+        db.users[userId].lastActiveAt = now;
+        res.cookie(SESSION_COOKIE, cookieToken, SESSION_COOKIE_OPTIONS);
+        pruneExpiredSessions(db, now);
+        writeDatabase(db);
+      }
       return next();
     }
   }

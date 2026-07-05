@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, ArrowRight, CheckCircle, Clock, Zap, Shield, ChevronRight, Settings2, Command } from 'lucide-react';
 import { User } from '../types';
 import { setGlobalAgentProcessing } from '../lib/events';
+import { parseTrade, executeTrade } from '../lib/tradeParse';
 
 interface IntentSolverProps {
   user: User;
@@ -24,6 +25,8 @@ export default function IntentSolver({ user }: IntentSolverProps) {
   const [isSolving, setIsSolving] = useState(false);
   const [steps, setSteps] = useState<IntentStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [execResult, setExecResult] = useState<string>('');
+  const tradeAction = parseTrade(prompt);
 
   const predefinedIntents = [
     "Swap 500 USDC to the most undervalued AI token on Base, then stake it.",
@@ -79,11 +82,20 @@ export default function IntentSolver({ user }: IntentSolverProps) {
 
   const handleExecute = async () => {
     setIsExecuting(true);
-    setGlobalAgentProcessing(true, 'Executing Steps');
+    setExecResult('');
+    setGlobalAgentProcessing(true, 'Executing plan');
+    // Walk the visual steps, then place the REAL tradeable action (if the intent
+    // named a known asset). Multi-step DeFi routes stay simulated/advisory.
     for (let i = 0; i < steps.length; i++) {
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'simulating' } : step));
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 700));
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'executed' } : step));
+    }
+    if (tradeAction) {
+      const r = await executeTrade(tradeAction);
+      setExecResult(r.message);
+    } else {
+      setExecResult('Plan simulated. This intent doesn\'t name a paper-tradeable asset (BTC, ETH, SOL…), so nothing was placed — try e.g. "buy $500 of ETH".');
     }
     setIsExecuting(false);
     setGlobalAgentProcessing(false);
@@ -229,13 +241,16 @@ export default function IntentSolver({ user }: IntentSolverProps) {
                   }`}
                 >
                   {allExecuted ? (
-                    <><CheckCircle className="w-4 h-4" /> Intent Executed</>
+                    <><CheckCircle className="w-4 h-4" /> Plan Executed</>
                   ) : isExecuting ? (
-                    <><Zap className="w-4 h-4 animate-spin" /> Executing Batch...</>
+                    <><Zap className="w-4 h-4 animate-spin" /> Executing…</>
+                  ) : tradeAction ? (
+                    <><Zap className="w-4 h-4" /> Execute {tradeAction.side.toUpperCase()} {tradeAction.usd ? `$${tradeAction.usd.toLocaleString()}` : tradeAction.size} {tradeAction.assetSymbol} (paper)</>
                   ) : (
-                    <><Shield className="w-4 h-4" /> Sign & Execute Batch</>
+                    <><Shield className="w-4 h-4" /> Simulate Plan (advisory)</>
                   )}
                 </button>
+                {execResult && <p className="text-[11px] font-mono text-slate-400 leading-relaxed mt-3">{execResult}</p>}
               </div>
             )}
           </div>

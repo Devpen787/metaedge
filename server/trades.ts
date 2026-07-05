@@ -1,10 +1,61 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId } from './storage.js';
-import type { PaperTrade } from '../src/types';
+import type { PaperTrade, TradingAgent } from '../src/types';
 import { createOrderIntent, executeOrderIntent } from '../src/secure-core/trading/intents.js';
 import { evaluateOrderRisk } from '../src/secure-core/trading/risk-engine.js';
+import { getSpotPrice, arenaSymbol } from './prices.js';
 
 export const tradesRouter = Router();
+
+// Find-or-create the user's "Swarm Copilot" execution vehicle — a real agent so
+// AI-suggested trades flow through the normal ledger and score in the Arena.
+function copilotAgent(db: ReturnType<typeof readDatabase>, userId: string): TradingAgent {
+  let agent = Object.values(db.agents).find((a) => a.ownerId === userId && a.name === 'Swarm Copilot' && a.status !== 'revoked');
+  if (!agent) {
+    const id = 'agt_' + generateId();
+    agent = {
+      id, name: 'Swarm Copilot', description: 'Executes your natural-language trades.',
+      ownerId: userId, assetSymbol: 'ETH', tradeType: 'token', strategyType: 'custom_ai',
+      leverage: 1, status: 'active', createdAt: Date.now(),
+    };
+    db.agents[id] = agent;
+  }
+  return agent;
+}
+
+// Execute an AI-suggested (Copilot / Intent Solver) trade as a real paper fill
+// at the live price. This is what makes those tabs actually DO something.
+tradesRouter.post('/api/copilot/execute', (req: any, res) => {
+  const userId = req.userId;
+  const rawSide = String(req.body?.side || '').toLowerCase();
+  const side = rawSide === 'buy' || rawSide === 'long' ? 'buy' : rawSide === 'sell' || rawSide === 'short' ? 'sell' : null;
+  const sym = arenaSymbol(String(req.body?.assetSymbol || ''));
+  if (!side) { res.status(400).json({ error: 'Side must be buy or sell.' }); return; }
+  const price = getSpotPrice(sym);
+  if (!price) { res.status(400).json({ error: `No live price for ${sym}. Try BTC, ETH, SOL, LINK, DOGE, etc.` }); return; }
+
+  // Size can be given directly, or as a USD amount we convert at the live price.
+  let size = Number(req.body?.size);
+  const usd = Number(req.body?.usd);
+  if ((!Number.isFinite(size) || size <= 0) && Number.isFinite(usd) && usd > 0) {
+    size = Number((usd / price).toFixed(6));
+  }
+  if (!Number.isFinite(size) || size <= 0) { res.status(400).json({ error: 'Size must be a positive number.' }); return; }
+
+  // Ensure the vehicle exists before the (fresh-read) trade executes.
+  const db = readDatabase();
+  copilotAgent(db, userId);
+  writeDatabase(db);
+  const agent = copilotAgent(readDatabase(), userId);
+
+  const result = placePaperTrade(
+    userId,
+    { agentId: agent.id, assetSymbol: sym, side, size, price, nonce: `copilot_${Date.now()}_${generateId().slice(0, 6)}` },
+    { action: 'COPILOT_TRADE', detailsPrefix: 'Copilot executed' }
+  );
+  if (!result.ok) { res.status(result.status || 400).json({ error: result.error }); return; }
+  res.json({ success: true, trade: result.trade, balance: result.balance, symbol: sym, price });
+});
 
 // Real cost-basis position from the user's prior fills for this asset+agent.
 // Used to compute honest realized P&L on a close — never a random number.

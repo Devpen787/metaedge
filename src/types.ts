@@ -164,6 +164,7 @@ export interface PredictionMarket {
       yesShares: number;
       noShares: number;
       invested: number;
+      firstBetAt?: number; // for fair season/league flooring in the arena
     }
   };
 }

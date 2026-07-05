@@ -63,7 +63,8 @@ predictionsRouter.post('/api/predictions/:id/bet', (req: any, res) => {
     market.bets[userId] = {
       yesShares: 0,
       noShares: 0,
-      invested: 0
+      invested: 0,
+      firstBetAt: Date.now()
     };
   }
 

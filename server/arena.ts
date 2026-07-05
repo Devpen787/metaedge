@@ -147,6 +147,26 @@ function rankMovement(db: DatabaseState, boardKey: string, current: Record<strin
 // Single pass over agents + trades to build each user's realized P&L, agent count,
 // and lead strategy. `sinceByUser` floors trades at each member's league join time
 // so a competition only counts performance earned inside it. O(agents + trades).
+// A user's prediction-market P&L, marked-to-market on current pool odds (each
+// share pays $1 on resolution; live value = shares × implied probability).
+// Floored at `since` via firstBetAt so it's fair for seasons/leagues.
+function predictionPnl(db: DatabaseState, userId: string, since: number): number {
+  let pnl = 0;
+  for (const m of Object.values(db.predictionMarkets || {})) {
+    const bet = m.bets?.[userId];
+    if (!bet || (bet.firstBetAt ?? 0) < since) continue;
+    const total = m.yesPool + m.noPool || 1;
+    let value: number;
+    if (m.resolved) {
+      value = m.outcome === 'yes' ? bet.yesShares : m.outcome === 'no' ? bet.noShares : bet.invested;
+    } else {
+      value = bet.yesShares * (m.yesPool / total) + bet.noShares * (m.noPool / total);
+    }
+    pnl += value - bet.invested;
+  }
+  return pnl;
+}
+
 function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<string, number>) {
   const include = new Set(userIds);
   const pnl: Record<string, number> = {};
@@ -164,6 +184,20 @@ function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<str
     pnl[trade.userId] = (pnl[trade.userId] || 0) + tradePnl(trade);
     // Label a wallet-only competitor (no agent) so the board reads sensibly.
     if (trade.source === 'wallet' && !strategy[trade.userId]) strategy[trade.userId] = 'Wallet';
+  }
+  // Prediction-market P&L feeds the same score. Label any participant
+  // "Predictions" even at break-even so a pure-predictions player reads right.
+  for (const id of userIds) {
+    const since = sinceByUser[id] ?? 0;
+    let participates = false;
+    for (const m of Object.values(db.predictionMarkets || {})) {
+      const bet = m.bets?.[id];
+      if (bet && (bet.firstBetAt ?? 0) >= since) { participates = true; break; }
+    }
+    if (participates) {
+      pnl[id] = (pnl[id] || 0) + predictionPnl(db, id, since);
+      if (!strategy[id]) strategy[id] = 'Predictions';
+    }
   }
   return { pnl, agentCount, strategy };
 }
@@ -186,6 +220,10 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
     const owners = new Set(Object.values(db.agents).map((a) => a.ownerId));
     for (const t of db.trades) {
       if (t.source === 'wallet') owners.add(t.userId);
+    }
+    // Prediction-market bettors compete too.
+    for (const m of Object.values(db.predictionMarkets || {})) {
+      for (const uid of Object.keys(m.bets || {})) owners.add(uid);
     }
     entries = [...owners]
       .filter((userId) => !!db.users[userId]?.walletAddress)

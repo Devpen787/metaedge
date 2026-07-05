@@ -89,8 +89,10 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
       setLoginUrl(data.loginUrl);
       setConnectPolling(true);
       // Poll in the background while the user completes login in their tab.
-      for (let i = 0; i < 60; i++) {
-        await new Promise((r) => setTimeout(r, 3500));
+      // 6s interval × 50 ≈ 5 min: gentle on the server (each status check spawns
+      // the MetaMask CLI), still snappy enough to feel instant after approval.
+      for (let i = 0; i < 50; i++) {
+        await new Promise((r) => setTimeout(r, 6000));
         if (await checkStatus()) {
           setLoginUrl(undefined);
           await finishConnect();

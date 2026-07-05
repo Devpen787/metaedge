@@ -88,8 +88,41 @@ function cliCommand(args: string[]) {
   return `mm ${args.filter((arg) => arg !== '--json').join(' ')}`;
 }
 
-async function runMmCore(args: string[], timeout: number, home?: string) {
-  const env = home ? { ...process.env, HOME: home } : process.env;
+// The MetaMask CLI is a heavy Node process (~seconds of CPU per call). On a
+// small shared-vCPU box, running many at once thrashes and everything times
+// out. Cap concurrent mm subprocesses so calls queue instead of starving.
+const MM_MAX_CONCURRENT = Number(process.env.MM_MAX_CONCURRENT) || 2;
+let mmActive = 0;
+const mmWaiters: Array<() => void> = [];
+async function acquireMmSlot() {
+  if (mmActive < MM_MAX_CONCURRENT) { mmActive++; return; }
+  await new Promise<void>((resolve) => mmWaiters.push(resolve));
+  mmActive++;
+}
+function releaseMmSlot() {
+  mmActive = Math.max(0, mmActive - 1);
+  mmWaiters.shift()?.();
+}
+
+// Short-TTL cache for READ-ONLY calls (status/readiness/overview) so repeated
+// polling doesn't re-spawn the CLI every few seconds. Never caches quotes,
+// logins, or executions.
+const MM_CACHE_TTL_MS = Number(process.env.MM_CACHE_TTL_MS) || 12_000;
+const mmCache = new Map<string, { at: number; value: any }>();
+const CACHEABLE = ['auth', 'address', 'balance', 'doctor', 'init', 'trading-mode', 'policy'];
+function cacheKeyFor(args: string[], home?: string): string | null {
+  if (!args.some((a) => CACHEABLE.includes(a))) return null;
+  return `${home || 'server'}::${args.join(' ')}`;
+}
+
+async function runMmCore(args: string[], timeout: number, home?: string): Promise<{ ok: boolean; command: string; data: any; summary: string }> {
+  const cacheKey = cacheKeyFor(args, home);
+  if (cacheKey) {
+    const hit = mmCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < MM_CACHE_TTL_MS) return hit.value;
+  }
+
+  await acquireMmSlot();
   try {
     const useLocal = fs.existsSync(MM_LOCAL_BIN);
     const bin = useLocal ? MM_LOCAL_BIN : 'npx';
@@ -98,25 +131,25 @@ async function runMmCore(args: string[], timeout: number, home?: string) {
       timeout,
       maxBuffer: 1024 * 1024,
       shell: false,
-      env
+      env: home ? { ...process.env, HOME: home } : process.env
     });
-    return {
-      ok: true,
-      command: cliCommand(args),
-      data: parseJsonOrText(stdout),
-      summary: 'Ready'
-    };
+    const result = { ok: true, command: cliCommand(args), data: parseJsonOrText(stdout), summary: 'Ready' };
+    if (cacheKey) mmCache.set(cacheKey, { at: Date.now(), value: result });
+    return result;
   } catch (error) {
     // The CLI writes structured errors to stderr on failure — surface those
     // as data so callers can distinguish "not logged in" from "CLI missing".
     const stderr = asString((error as any)?.stderr);
-    return {
-      ok: false,
-      command: cliCommand(args),
-      data: parseJsonOrText(stderr),
-      summary: productSafeError(error)
-    };
+    return { ok: false, command: cliCommand(args), data: parseJsonOrText(stderr), summary: productSafeError(error) };
+  } finally {
+    releaseMmSlot();
   }
+}
+
+// Invalidate a user's cached mm reads (call after a state change like connect).
+function invalidateMmCache(home?: string) {
+  const prefix = `${home || 'server'}::`;
+  for (const k of mmCache.keys()) if (k.startsWith(prefix)) mmCache.delete(k);
 }
 
 // Server-profile run: used only for public market data (quotes-as-data,
@@ -462,6 +495,9 @@ function extractWalletAddress(result: Awaited<ReturnType<typeof runMm>>): string
 
 async function finalizeConnect(req: any, res: any) {
   const userId = req.userId;
+  // While polling for the user to approve in their browser we need a FRESH
+  // auth check each time, so the moment they approve is detected immediately.
+  invalidateMmCache(profileHome(userId));
   const auth = await runMmAs(userId, ['auth', 'status', '--json']);
   const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
   if (!authed) {
@@ -515,6 +551,7 @@ metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
 
 metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
   await runMmAs(req.userId, ['logout', '--json'], 20_000);
+  invalidateMmCache(profileHome(req.userId));
   const db = readDatabase();
   const user = db.users[req.userId];
   if (user) {

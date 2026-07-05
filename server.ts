@@ -15,6 +15,7 @@ import { metamaskRouter } from './server/metamask.js';
 import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
 import { startAutotrader } from './server/autotrader.js';
+import { platformRouter } from './server/platform.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -60,6 +61,7 @@ app.use(graphRouter);
 app.use(metamaskRouter);
 app.use(quantRouter);
 app.use(arenaRouter);
+app.use(platformRouter);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
 import fs from 'fs';

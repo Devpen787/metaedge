@@ -152,6 +152,12 @@ function invalidateMmCache(home?: string) {
   for (const k of mmCache.keys()) if (k.startsWith(prefix)) mmCache.delete(k);
 }
 
+// Forget a user's cached readiness snapshot (after connect/disconnect) so the
+// next panel open reflects the new wallet state immediately.
+function invalidateReadiness(uid: string) {
+  READINESS_SWR.delete(uid);
+}
+
 // Server-profile run: used only for public market data (quotes-as-data,
 // market search) and AI helpers — never for anything that acts as a wallet.
 async function runMm(args: string[], timeout = 12_000) {
@@ -370,9 +376,15 @@ function recordArenaPosition(
   return { entry, symbol };
 }
 
-metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
-  // Readiness reflects the USER's own wallet profile, not a shared one.
-  const uid = req.userId;
+// Building readiness means spawning 7 CLI processes. On a small box that's the
+// heaviest thing the app does, so we cache the whole payload per user and serve
+// it stale-while-revalidate: the panel opens instantly on the last snapshot and
+// silently refreshes in the background when it's getting old.
+const READINESS_SWR = new Map<string, { at: number; payload: any; refreshing?: boolean }>();
+const READINESS_FRESH_MS = 15_000;        // older than this → kick a background refresh
+const READINESS_MAX_AGE_MS = 5 * 60_000;  // older than this → too stale, rebuild synchronously
+
+async function computeReadiness(uid: string) {
   const [doctor, auth, init, address, balance, tradingMode, policy] = await Promise.all([
     runMmAs(uid, ['doctor', '--json']),
     runMmAs(uid, ['auth', 'status', '--json']),
@@ -450,9 +462,7 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
     }
   ];
 
-  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Checked MetaMask Agent Wallet readiness.');
-
-  res.json({
+  return {
     liveModeGlobalLock: !LIVE_EXECUTION_ENABLED,
     loginCommand: 'mm login browser',
     package: MM_PACKAGE,
@@ -480,7 +490,31 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
         placeLocked: !LIVE_EXECUTION_ENABLED
       }
     }
-  });
+  };
+}
+
+metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
+  // Readiness reflects the USER's own wallet profile, not a shared one.
+  const uid = req.userId;
+  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Checked MetaMask Agent Wallet readiness.');
+
+  const snap = READINESS_SWR.get(uid);
+  const age = snap ? Date.now() - snap.at : Infinity;
+  if (snap && age < READINESS_MAX_AGE_MS) {
+    // Serve instantly; refresh in the background if it's getting stale.
+    if (age > READINESS_FRESH_MS && !snap.refreshing) {
+      snap.refreshing = true;
+      computeReadiness(uid)
+        .then((payload) => READINESS_SWR.set(uid, { at: Date.now(), payload }))
+        .catch(() => { const s = READINESS_SWR.get(uid); if (s) s.refreshing = false; });
+    }
+    res.json(snap.payload);
+    return;
+  }
+  // No snapshot (or too stale): build it now.
+  const payload = await computeReadiness(uid);
+  READINESS_SWR.set(uid, { at: Date.now(), payload });
+  res.json(payload);
 });
 
 // ---- Per-user wallet connect. Each user logs in with THEIR OWN MetaMask
@@ -513,6 +547,7 @@ async function finalizeConnect(req: any, res: any) {
     user.walletConnectedAt = user.walletConnectedAt || Date.now();
     writeDatabase(db);
   }
+  invalidateReadiness(userId);
   recordMetaMaskEvent(req, 'METAMASK_WALLET_CONNECTED', `Connected own Agent Wallet${address ? ` (${address.slice(0, 6)}…${address.slice(-4)})` : ''}.`);
   res.json({ connected: true, address });
 }
@@ -552,6 +587,7 @@ metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
 metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
   await runMmAs(req.userId, ['logout', '--json'], 20_000);
   invalidateMmCache(profileHome(req.userId));
+  invalidateReadiness(req.userId);
   const db = readDatabase();
   const user = db.users[req.userId];
   if (user) {

@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, Wallet, RefreshCw, AlertTriangle, KeyRound, ShieldCheck, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Wallet, RefreshCw, AlertTriangle, KeyRound, ShieldCheck, ChevronDown, ChevronUp, Landmark, Bot, Copy, Check, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
+import { connectBank, refreshBalance, fundAgentWallet, hasMetaMask, BASE_CHAIN_ID_HEX, type BankConnection } from '../lib/bankWallet';
 
-// The wallet modal is a CONNECTION card, nothing more. Trading lives in the
-// Trading Desk, markets in Predictions — this modal answers two questions:
-// "am I plugged in?" and "am I ready to go live?"
+// The wallet modal explains and connects TWO different MetaMask things:
+//   • Agent Wallet (the executor) — what your agents trade with; how you compete.
+//   • MetaMask Wallet (the bank)  — your everyday wallet; holds funds, tops up
+//     the executor when you go Live.
+// They serve different purposes and both add value — so we present both clearly.
 
 interface AgentWalletModalProps {
   isOpen: boolean;
@@ -48,8 +51,16 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [connectPolling, setConnectPolling] = useState(false);
   const [loginUrl, setLoginUrl] = useState<string | undefined>(undefined);
   const [tokenInput, setTokenInput] = useState('');
-  const [showTokenField, setShowTokenField] = useState(false);
   const [showChecklist, setShowChecklist] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // --- Bank (everyday MetaMask) state ---
+  const [bank, setBank] = useState<BankConnection | null>(null);
+  const [bankConnecting, setBankConnecting] = useState(false);
+  const [bankError, setBankError] = useState('');
+  const [fundAmount, setFundAmount] = useState('');
+  const [funding, setFunding] = useState(false);
+  const [fundNote, setFundNote] = useState('');
 
   const paperMode = readiness?.liveModeGlobalLock ?? true;
   const readyCount = useMemo(
@@ -80,9 +91,9 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
-  // Connect flow: fetch a MetaMask login link, SHOW it as a button the user
-  // clicks themselves (popup blockers eat window.open calls that happen after
-  // an await), and poll until their per-user profile is authenticated.
+  // Agent Wallet connect: fetch a MetaMask sign-in link, SHOW it as a link the
+  // user clicks themselves (popup blockers eat window.open after an await). The
+  // sign-in page hands them a CLI token; pasting it below completes the login.
   async function startConnect() {
     try {
       setLoading(true);
@@ -92,9 +103,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
       if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login. Try again in a few seconds.');
       setLoginUrl(data.loginUrl);
       setConnectPolling(true);
-      // Poll in the background while the user completes login in their tab.
-      // 6s interval × 50 ≈ 5 min: gentle on the server (each status check spawns
-      // the MetaMask CLI), still snappy enough to feel instant after approval.
+      // Some sign-in methods complete the server session directly; poll quietly
+      // in case they do, but the token paste below is the reliable completion.
       for (let i = 0; i < 50; i++) {
         await new Promise((r) => setTimeout(r, 6000));
         if (await checkStatus()) {
@@ -103,7 +113,6 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
           return;
         }
       }
-      setMessage('Still not connected — click the sign-in link again, or use a CLI token.');
     } catch (error: any) {
       setMessage(error.message || 'Could not start MetaMask login.');
     } finally {
@@ -112,7 +121,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
-  // Pro path: a pre-minted CLI token, used once server-side and never stored.
+  // Complete the sign-in with the CLI token MetaMask showed the user. Used once
+  // server-side and never stored.
   async function connectWithToken() {
     if (!tokenInput.trim()) return;
     try {
@@ -137,7 +147,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   }
 
   async function finishConnect() {
-    setMessage('Connected — you can now compete in the Arena.');
+    setMessage('Agent Wallet connected — you can now compete in the Arena.');
     window.dispatchEvent(new Event('wallet-connected'));
     await loadReadiness();
   }
@@ -156,6 +166,47 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
+  // --- Bank actions (the user's own MetaMask extension) ---
+  async function handleConnectBank() {
+    try {
+      setBankConnecting(true);
+      setBankError('');
+      setBank(await connectBank());
+    } catch (e: any) {
+      setBankError(e?.message || 'Could not connect MetaMask.');
+    } finally {
+      setBankConnecting(false);
+    }
+  }
+
+  async function handleFund() {
+    if (!bank || !connectedAddress) return;
+    try {
+      setFunding(true);
+      setBankError('');
+      setFundNote('');
+      const tx = await fundAgentWallet(bank.address, connectedAddress, fundAmount, bank.chainId);
+      setFundNote(`Funding sent — tx ${String(tx).slice(0, 10)}…`);
+      setFundAmount('');
+      // Balance will drop once it confirms; refresh shortly.
+      setTimeout(async () => {
+        try { setBank((b) => (b ? { ...b, balanceEth: '…' } : b)); const bal = await refreshBalance(bank.address); setBank((b) => (b ? { ...b, balanceEth: bal, chainId: BASE_CHAIN_ID_HEX } : b)); } catch { /* ignore */ }
+      }, 4000);
+    } catch (e: any) {
+      setBankError(e?.message || 'Funding failed.');
+    } finally {
+      setFunding(false);
+    }
+  }
+
+  function copyAgentAddress() {
+    if (!connectedAddress) return;
+    navigator.clipboard?.writeText(connectedAddress).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => { /* clipboard blocked; ignore */ });
+  }
+
   useEffect(() => {
     if (isOpen) {
       setMessage('');
@@ -167,6 +218,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   if (!isOpen) return null;
 
   const shortAddr = connectedAddress ? `${connectedAddress.slice(0, 6)}…${connectedAddress.slice(-4)}` : null;
+  const bankShort = bank ? `${bank.address.slice(0, 6)}…${bank.address.slice(-4)}` : null;
+  const onBase = bank?.chainId === BASE_CHAIN_ID_HEX;
 
   return (
     <AnimatePresence>
@@ -175,14 +228,14 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+          className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[88vh]"
         >
           <div className="flex justify-between items-center p-5 border-b border-slate-800">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-500/20 border border-orange-500/30 flex items-center justify-center">
                 <Wallet className="w-5 h-5 text-orange-500" />
               </div>
-              <h3 className="text-lg font-bold text-white">MetaMask Agent Wallet</h3>
+              <h3 className="text-lg font-bold text-white">Your MetaMask, two ways</h3>
             </div>
             <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors" aria-label="Close">
               <X className="w-5 h-5" />
@@ -190,40 +243,47 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
           </div>
 
           <div className="p-5 overflow-y-auto custom-scrollbar space-y-4">
-            {!connected ? (
-              <>
-                <p className="text-sm text-slate-400 leading-relaxed">
-                  Bring your own wallet. Connecting lets you compete in the Agent Arena — and switch to Live trading when you're ready.
-                </p>
-                {!loginUrl ? (
-                  <button
-                    onClick={startConnect}
-                    disabled={loading || connectPolling}
-                    className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-bold px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
-                  >
-                    {loading || connectPolling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
-                    {loading || connectPolling ? 'Getting your sign-in link…' : 'Connect your MetaMask'}
-                  </button>
-                ) : (
-                  <div className="space-y-2">
+            <p className="text-sm text-slate-400 leading-relaxed">
+              MetaEdge uses two MetaMask wallets that work together. Connect your <span className="text-white font-semibold">Agent Wallet</span> to compete, and your everyday <span className="text-white font-semibold">MetaMask Wallet</span> to hold and fund it.
+            </p>
+
+            {/* ============ ZONE 1: AGENT WALLET (the executor) ============ */}
+            <div className="border border-orange-500/25 bg-orange-500/[0.04] rounded-2xl p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-orange-500/15 border border-orange-500/25 flex items-center justify-center shrink-0">
+                  <Bot className="w-5 h-5 text-orange-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">Agent Wallet — your executor</div>
+                  <div className="text-xs text-slate-400">The wallet your agents trade with. Required to compete in the Agent Arena.</div>
+                </div>
+              </div>
+
+              {!connected ? (
+                <>
+                  {!loginUrl ? (
+                    <button
+                      onClick={startConnect}
+                      disabled={loading || connectPolling}
+                      className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-60 text-white font-bold px-5 py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+                    >
+                      {loading || connectPolling ? <RefreshCw className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                      {loading || connectPolling ? 'Getting your sign-in link…' : 'Open MetaMask sign-in'}
+                    </button>
+                  ) : (
                     <a
                       href={loginUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold px-5 py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
+                      className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold px-5 py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-900/40"
                     >
-                      <KeyRound className="w-4 h-4" /> Open MetaMask sign-in ↗
+                      <ExternalLink className="w-4 h-4" /> Open MetaMask sign-in ↗
                     </a>
-                    <p className="text-xs text-slate-500 text-center flex items-center justify-center gap-2">
-                      <RefreshCw className="w-3 h-3 animate-spin" />
-                      Sign in on that page — this screen updates by itself.
-                    </p>
+                  )}
+
+                  <div className="text-xs text-slate-400 leading-relaxed">
+                    <span className="text-slate-300 font-semibold">Then:</span> sign in on that page, copy the <span className="text-slate-200">CLI token</span> it shows you, and paste it here to finish.
                   </div>
-                )}
-                <button onClick={() => setShowTokenField(!showTokenField)} className="w-full text-center text-xs text-slate-500 hover:text-slate-300">
-                  or use a CLI token
-                </button>
-                {showTokenField && (
                   <div className="flex gap-2">
                     <input
                       type="password"
@@ -235,28 +295,107 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                     <button
                       onClick={connectWithToken}
                       disabled={tokenLoading || !tokenInput.trim()}
-                      className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1.5"
+                      className="bg-orange-600 hover:bg-orange-500 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1.5"
                     >
                       {tokenLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
                       {tokenLoading ? 'Connecting…' : 'Connect'}
                     </button>
                   </div>
-                )}
-              </>
-            ) : (
-              <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-2xl p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                  <div>
-                    <div className="text-sm font-bold text-white font-mono">{shortAddr || 'Wallet connected'}</div>
-                    <div className="text-xs text-slate-400">{paperMode ? 'Paper mode — trades simulate, standings are real' : 'LIVE mode — real execution'}</div>
+                </>
+              ) : (
+                <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <div>
+                      <div className="text-sm font-bold text-white font-mono">{shortAddr || 'Connected'}</div>
+                      <div className="text-xs text-slate-400">{paperMode ? 'Paper mode — trades simulate, standings are real' : 'LIVE mode — real execution'}</div>
+                    </div>
                   </div>
+                  <button onClick={disconnectWallet} disabled={loading} className="text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50">
+                    Disconnect
+                  </button>
                 </div>
-                <button onClick={disconnectWallet} disabled={loading} className="text-xs text-slate-500 hover:text-slate-300 disabled:opacity-50">
-                  Disconnect
-                </button>
+              )}
+            </div>
+
+            {/* ============ ZONE 2: METAMASK WALLET (the bank) ============ */}
+            <div className="border border-blue-500/20 bg-blue-500/[0.04] rounded-2xl p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg bg-blue-500/15 border border-blue-500/25 flex items-center justify-center shrink-0">
+                  <Landmark className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-white">MetaMask Wallet — your bank</div>
+                  <div className="text-xs text-slate-400">Your everyday wallet. See your balance and top up your Agent Wallet when you go Live.</div>
+                </div>
               </div>
-            )}
+
+              {!bank ? (
+                <button
+                  onClick={handleConnectBank}
+                  disabled={bankConnecting}
+                  className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white font-bold px-5 py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  {bankConnecting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
+                  {bankConnecting ? 'Check MetaMask…' : hasMetaMask() ? 'Connect MetaMask Wallet' : 'Install MetaMask to connect'}
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-bold text-white font-mono">{bankShort}</div>
+                      <div className="text-xs text-slate-400">Balance: <span className="text-slate-200 font-mono">{bank.balanceEth} ETH</span>{!onBase && <span className="text-amber-400"> · not on Base</span>}</div>
+                    </div>
+                    <ShieldCheck className="w-5 h-5 text-blue-400" />
+                  </div>
+
+                  {/* Funding: real transfer, so it's gated to Live mode. */}
+                  {!connected ? (
+                    <p className="text-xs text-slate-500">Connect your Agent Wallet above to get a fund destination.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Fund destination (your Agent Wallet)</span>
+                        <button onClick={copyAgentAddress} className="flex items-center gap-1 text-slate-400 hover:text-slate-200">
+                          {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                          <span className="font-mono">{shortAddr}</span>
+                        </button>
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.001"
+                          placeholder="Amount in ETH"
+                          value={fundAmount}
+                          onChange={(e) => setFundAmount(e.target.value)}
+                          disabled={paperMode}
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
+                        />
+                        <button
+                          onClick={handleFund}
+                          disabled={paperMode || funding || !fundAmount.trim()}
+                          className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          {funding && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                          {funding ? 'Sending…' : 'Fund'}
+                        </button>
+                      </div>
+                      {paperMode
+                        ? <p className="text-[11px] text-slate-500">Everything's in paper mode right now — real funding unlocks when you switch to Live. No need to move real ETH to play.</p>
+                        : <p className="text-[11px] text-slate-500">This sends real ETH on Base from your MetaMask. You approve it in the MetaMask popup.</p>}
+                      {fundNote && <p className="text-[11px] text-emerald-300">{fundNote}</p>}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {bankError && (
+                <div className="text-[11px] text-amber-300 flex items-start gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" /> {bankError}
+                </div>
+              )}
+            </div>
 
             {message && (
               <div className="bg-amber-950/30 border border-amber-900/50 rounded-xl p-3 flex items-start gap-2 text-amber-200 text-sm">
@@ -296,7 +435,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
             </div>
 
             <p className="text-[11px] text-slate-600 leading-relaxed">
-              Trade in the Trading Desk, bet in Predictions, compete in the Arena — everything runs on your wallet once connected. No keys or secrets ever touch MetaEdge.
+              Trade in the Trading Desk, bet in Predictions, compete in the Arena — everything runs on your Agent Wallet once connected. No keys or secrets ever touch MetaEdge; your MetaMask signs everything itself.
             </p>
           </div>
         </motion.div>

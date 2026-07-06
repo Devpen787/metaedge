@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { Cpu, Zap, Activity, Bot, Play, Pause, ArrowUpRight } from 'lucide-react';
 import { User, TradingAgent, PaperTrade, AuditEvent } from '../types';
 
@@ -8,6 +8,7 @@ interface AgenticAutopilotProps {
   trades: PaperTrade[];
   audits: AuditEvent[];
   onAgentAutopilotChanged: (id: string, enabled: boolean) => Promise<void>;
+  onRefresh?: () => void;
 }
 
 // The REAL Autopilot control center. Not a planner, not a yield fantasy — this
@@ -24,9 +25,22 @@ function timeAgo(ts?: number) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-export default function AgenticAutopilot({ agents, trades, audits, onAgentAutopilotChanged }: AgenticAutopilotProps) {
+export default function AgenticAutopilot({ agents, trades, audits, onAgentAutopilotChanged, onRefresh }: AgenticAutopilotProps) {
   const myAgents = agents.filter((a) => a.status !== 'revoked');
   const autoAgents = myAgents.filter((a) => a.autopilot && a.status === 'active');
+
+  // The autonomous engine writes trades server-side (~every 90s). While any
+  // agent is engaged, poll so those trades appear LIVE — not only after the user
+  // clicks something. A ref holds the latest callback so a changing onRefresh
+  // reference doesn't keep resetting the interval.
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+  useEffect(() => {
+    if (autoAgents.length === 0) return;
+    refreshRef.current?.();                                   // refresh immediately on engage
+    const id = setInterval(() => refreshRef.current?.(), 15_000);
+    return () => clearInterval(id);
+  }, [autoAgents.length]);
 
   const realizedByAgent = useMemo(() => {
     const m: Record<string, number> = {};

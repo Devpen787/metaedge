@@ -1175,9 +1175,9 @@ metamaskRouter.post('/api/mm/chat', async (req, res) => {
       if (process.env.GEMINI_API_KEY && model !== 'llama-3-8b-local') {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const prompt = `
-You are the MetaEdge Swarm Copilot, an advanced AI financial assistant helping a user review DeFi actions via a swarm of micro-agents.
-You communicate naturally but your answers are backed by hard data, agentic execution, and strict guardrails.
-Context: MetaMask just launched the "Money Account" which offers ~4% APY, automatic earning, no lockups, and a single balance for trading/sending/spending.
+You are the MetaEdge Swarm Copilot, an AI assistant helping a user review DeFi actions.
+HONESTY RULES (critical): You do NOT have a live market-data feed, price oracle, or contract-audit source wired up. Therefore you must NEVER claim to have "verified" a contract's safety, "checked" audit scores, or fetched a "current" APY/price. Do not invent specific figures (e.g. "12.5% APY") as if they were live facts. When you don't have data to back a claim, say so plainly and frame suggestions as directions to research, not verified advice. MetaEdge is paper-mode: you cannot move real funds, so describe actions as proposals for the user to review, not things you've done.
+Context you MAY reference as real: MetaMask offers a "Money Account" (~4% APY, no lockups) — see metamask.io/money.
 User Message: "${message}"
 
 Respond ONLY with a raw JSON object (no markdown, no quotes) with the following structure:
@@ -1202,33 +1202,35 @@ Respond ONLY with a raw JSON object (no markdown, no quotes) with the following 
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         responseData = JSON.parse(text);
       } else {
-        // Fallback simulated parsing
+        // No live model wired up. Be HONEST: no invented yields, no claims of
+        // having "verified" anything, no fake portfolio facts. Offer directions
+        // to research, clearly flagged as advisory.
         if (message.toLowerCase().includes('money account')) {
           responseData = {
-            thoughtProcess: ['Analyzing MetaMask Money Account specs', 'Checking idle USDC balance'],
-            response: 'MetaMask just launched their new Money Account providing a seamless ~4% APY with no lockups. I can instantly route your idle USDC into this single-balance earning account so it never stops earning while you use it.',
+            thoughtProcess: ['No live model connected — answering from known facts', 'MetaEdge is paper-mode, so this is advisory'],
+            response: "MetaMask offers a Money Account with ~4% APY on idle balances (metamask.io/money) — a real option for parking idle USDC when you go Live. I can't move real funds from here (everything in MetaEdge is paper), so treat this as a suggestion to action yourself in MetaMask.",
             proposal: {
-              description: 'Deploy idle USDC to MetaMask Money Account',
-              actions: ['Approve USDC for MetaMask Money Router', 'Deposit Idle USDC into Money Account'],
-              estimatedCost: '$0.85',
+              description: 'MetaMask Money Account for idle USDC (advisory only)',
+              actions: ['Review the terms at metamask.io/money', 'Move funds yourself in MetaMask when you go Live'],
+              estimatedCost: '—',
               riskLevel: 'Low'
             }
           };
         } else if (message.toLowerCase().includes('yield') || message.toLowerCase().includes('stablecoin') || message.toLowerCase().includes('park')) {
           responseData = {
-            thoughtProcess: ['Scanning cross-chain L2 stablecoin vaults', 'Evaluating Aave vs Morpho on Base'],
-            response: 'The highest risk-adjusted yield for USDC right now is on Base via Morpho Optimizers, currently yielding 12.5% APY. I have verified the smart contract safety scores.',
+            thoughtProcess: ["No live market-data feed connected", "Can't quote a current APY or vouch for any contract"],
+            response: "Parking idle USDC in an L2 lending market (e.g. Aave or Morpho on Base) is a common approach — but I don't have a live yield feed or contract-audit source wired up, so I can't quote a real APY or verify any contract's safety. Treat this as a direction to research yourself, not verified advice.",
             proposal: {
-              description: 'Deploy USDC to Morpho on Base',
-              actions: ['Bridge USDC to Base via Across', 'Deposit into Morpho Vault'],
-              estimatedCost: '$0.45',
-              riskLevel: 'Low'
+              description: 'Research USDC yield options on Base (advisory only)',
+              actions: ['Compare current APYs on Aave / Morpho yourself', "Check each vault's audits before depositing"],
+              estimatedCost: 'varies',
+              riskLevel: 'Do your own review'
             }
           };
         } else {
           responseData = {
-            thoughtProcess: ['Parsing intent syntax', 'Checking portfolio balance'],
-            response: 'I am monitoring the markets and your swarm is idle. Your portfolio is delta-neutral. What would you like to execute?',
+            thoughtProcess: ['No live model connected', 'Keeping any real action behind review'],
+            response: "Your swarm is idle. Tell me what you'd like to explore — a trade idea, a yield question, or a plan to review. I'll flag when I don't have live data to back a claim, and I keep any real action behind your approval.",
             proposal: null
           };
         }

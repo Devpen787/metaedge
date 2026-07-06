@@ -859,6 +859,7 @@ export default function App() {
                     trades={trades}
                     audits={audits}
                     onAgentAutopilotChanged={handleAgentAutopilotChanged}
+                    onRefresh={fetchEntities}
                   />
                 )}
 

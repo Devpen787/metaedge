@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Wallet, RefreshCw, AlertTriangle, KeyRound, ShieldCheck, ChevronDown, ChevronUp, Landmark, Bot, Copy, Check, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { apiFetch } from '../lib/api';
 import { connectBank, refreshBalance, fundAgentWallet, hasMetaMask, BASE_CHAIN_ID_HEX, type BankConnection } from '../lib/bankWallet';
+import { spark, originOf } from '../lib/fx';
+import WalletsPanel from './WalletsPanel';
 
 // The wallet modal explains and connects TWO different MetaMask things:
 //   • Agent Wallet (the executor) — what your agents trade with; how you compete.
@@ -61,6 +63,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [fundAmount, setFundAmount] = useState('');
   const [funding, setFunding] = useState(false);
   const [fundNote, setFundNote] = useState('');
+  const fundBtnRef = useRef<HTMLButtonElement>(null);
 
   const paperMode = readiness?.liveModeGlobalLock ?? true;
   const readyCount = useMemo(
@@ -148,6 +151,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
 
   async function finishConnect() {
     setMessage('Agent Wallet connected — you can now compete in the Arena.');
+    // Milestone: your executor is live. A radial indigo pulse marks it.
+    spark({ palette: 'indigo', direction: 'radial', count: 32 });
     window.dispatchEvent(new Event('wallet-connected'));
     await loadReadiness();
   }
@@ -187,6 +192,8 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
       setFundNote('');
       const tx = await fundAgentWallet(bank.address, connectedAddress, fundAmount, bank.chainId);
       setFundNote(`Funding sent — tx ${String(tx).slice(0, 10)}…`);
+      // Real value moved on-chain — a gold puff from the Fund button.
+      spark({ origin: originOf(fundBtnRef.current), palette: 'gold', count: 26 });
       setFundAmount('');
       // Balance will drop once it confirms; refresh shortly.
       setTimeout(async () => {
@@ -382,6 +389,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                           className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100 focus:border-blue-500/50 focus:outline-none disabled:opacity-50"
                         />
                         <button
+                          ref={fundBtnRef}
                           onClick={handleFund}
                           disabled={paperMode || funding || !fundAmount.trim()}
                           className="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1.5"
@@ -411,6 +419,11 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                 <div>{message}</div>
               </div>
+            )}
+
+            {/* Account management: all wallets under this account. */}
+            {connected && (
+              <WalletsPanel onActiveChanged={(addr) => setConnectedAddress(addr)} />
             )}
 
             {/* Go-Live checklist, collapsed by default. */}

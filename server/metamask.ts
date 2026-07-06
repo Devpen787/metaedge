@@ -42,6 +42,10 @@ const PROFILES_DIR = path.join(path.dirname(DB_FILE), 'mm-profiles');
 const SAFE_USER_ID_RE = /^usr_[A-Za-z0-9_-]{4,64}$/;
 
 function profileHome(userId: string): string {
+  // Dev-only escape hatch: point every profile at a real authenticated ~/.metamask
+  // so local dev can exercise the wallet flows against a live account. Never set
+  // in production (would collapse all users onto one wallet).
+  if (process.env.MM_DEV_HOME) return process.env.MM_DEV_HOME;
   if (!SAFE_USER_ID_RE.test(userId)) throw new Error('Invalid session.');
   const dir = path.join(PROFILES_DIR, userId);
   fs.mkdirSync(dir, { recursive: true });
@@ -115,8 +119,8 @@ function cacheKeyFor(args: string[], home?: string): string | null {
   return `${home || 'server'}::${args.join(' ')}`;
 }
 
-async function runMmCore(args: string[], timeout: number, home?: string): Promise<{ ok: boolean; command: string; data: any; summary: string }> {
-  const cacheKey = cacheKeyFor(args, home);
+async function runMmCore(args: string[], timeout: number, home?: string, noCache?: boolean): Promise<{ ok: boolean; command: string; data: any; summary: string }> {
+  const cacheKey = noCache ? null : cacheKeyFor(args, home);
   if (cacheKey) {
     const hit = mmCache.get(cacheKey);
     if (hit && Date.now() - hit.at < MM_CACHE_TTL_MS) return hit.value;
@@ -167,6 +171,32 @@ async function runMm(args: string[], timeout = 12_000) {
 // Per-user run: executes under the USER's own CLI profile, i.e. their wallet.
 async function runMmAs(userId: string, args: string[], timeout = 12_000) {
   return runMmCore(args, timeout, profileHome(userId));
+}
+
+// Like runMmAs but bypasses the read cache. Used when enumerating wallets: the
+// same `wallet balance` command is run per wallet, so a shared cache would
+// return the first wallet's balance for all of them.
+async function runMmAsFresh(userId: string, args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout, profileHome(userId), true);
+}
+
+// Selecting a wallet mutates the profile's shared "active wallet" state, so
+// operations that hop between wallets must not interleave. This chains such
+// operations per profile HOME.
+const walletLocks = new Map<string, Promise<unknown>>();
+function withWalletLock<T>(home: string, fn: () => Promise<T>): Promise<T> {
+  const prev = walletLocks.get(home) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  walletLocks.set(home, run.catch(() => {}));
+  return run;
+}
+
+// SWR cache for the (heavy) full wallet enumeration.
+const WALLETS_SWR = new Map<string, { at: number; payload: any; refreshing?: boolean }>();
+const WALLETS_FRESH_MS = 15_000;
+const WALLETS_MAX_AGE_MS = 5 * 60_000;
+function invalidateWallets(userId: string) {
+  WALLETS_SWR.delete(userId);
 }
 
 // One person = one mm login. Public lookups (quotes, market search) run under
@@ -593,6 +623,7 @@ metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
   await runMmAs(req.userId, ['logout', '--json'], 20_000);
   invalidateMmCache(profileHome(req.userId));
   invalidateReadiness(req.userId);
+  invalidateWallets(req.userId);
   const db = readDatabase();
   const user = db.users[req.userId];
   if (user) {
@@ -601,6 +632,101 @@ metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
     writeDatabase(db);
   }
   res.json({ success: true });
+});
+
+// ---- Multi-wallet account management ----
+// One authenticated account can hold several server wallets. These endpoints
+// make that visible and controllable so funds can never silently hide on a
+// wallet the app isn't acting as (the exact bug we hit with $3.77 on Arbitrum).
+
+// Enumerate every wallet under the account with its balance across all chains,
+// plus the perps balance (which is separate from spot). Selecting each wallet
+// mutates shared active state, so the whole scan runs under a per-profile lock
+// and restores whatever wallet was active before.
+async function computeWallets(userId: string) {
+  const home = profileHome(userId);
+  return withWalletLock(home, async () => {
+    const listRes = await runMmAsFresh(userId, ['wallet', 'list', '--json']);
+    const wallets = (listRes.data as any)?.data?.wallets || [];
+    const activeAddress = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+
+    const enriched: any[] = [];
+    for (const w of wallets) {
+      await runMmAsFresh(userId, ['wallet', 'select', '--address', w.address, '--json']);
+      const bd = (await runMmAsFresh(userId, ['wallet', 'balance', '--json'])).data?.data || {};
+      const chains = (bd.chains || []).map((c: any) => ({
+        name: c.name,
+        totalUsd: Number(c.totalValue || 0),
+        tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0) }))
+      }));
+      enriched.push({ address: w.address, name: w.name || null, totalUsd: Number(bd.totalValue || 0), chains });
+    }
+    if (activeAddress) await runMmAsFresh(userId, ['wallet', 'select', '--address', activeAddress, '--json']);
+
+    const pd = (await runMmAsFresh(userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json'])).data?.data || {};
+    const perps = { venue: 'hyperliquid', totalBalance: Number(pd.totalBalance || 0), spendable: Number(pd.spendableBalance || 0) };
+
+    const db = readDatabase();
+    const canonicalAddress = (db.users[userId] as any)?.canonicalWallet || null;
+    enriched.sort((a, b) => b.totalUsd - a.totalUsd);
+    return { activeAddress, canonicalAddress, perps, wallets: enriched };
+  });
+}
+
+metamaskRouter.get('/api/mm/wallets', requireWallet, async (req: any, res) => {
+  const uid = req.userId;
+  const snap = WALLETS_SWR.get(uid);
+  const age = snap ? Date.now() - snap.at : Infinity;
+  if (snap && age < WALLETS_MAX_AGE_MS) {
+    if (age > WALLETS_FRESH_MS && !snap.refreshing) {
+      snap.refreshing = true;
+      computeWallets(uid)
+        .then((payload) => WALLETS_SWR.set(uid, { at: Date.now(), payload }))
+        .catch(() => { const s = WALLETS_SWR.get(uid); if (s) s.refreshing = false; });
+    }
+    return res.json(snap.payload);
+  }
+  try {
+    const payload = await computeWallets(uid);
+    WALLETS_SWR.set(uid, { at: Date.now(), payload });
+    res.json(payload);
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not read your wallets.', message: e?.message });
+  }
+});
+
+// Switch which wallet the app (and CLI) acts as. Validated against the account's
+// own wallet list so you can only select a wallet you actually own.
+metamaskRouter.post('/api/mm/wallets/select', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.body?.address);
+    const wallets = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const match = wallets.find((w: any) => (w.address || '').toLowerCase() === address.toLowerCase());
+    if (!match) return res.status(400).json({ error: 'That wallet is not under your account.' });
+    await withWalletLock(profileHome(req.userId), () => runMmAsFresh(req.userId, ['wallet', 'select', '--address', match.address, '--json']));
+    invalidateMmCache(profileHome(req.userId));
+    invalidateReadiness(req.userId);
+    invalidateWallets(req.userId);
+    const db = readDatabase();
+    if (db.users[req.userId]) { db.users[req.userId].walletAddress = match.address; writeDatabase(db); }
+    res.json({ ok: true, address: match.address });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not switch wallet.' });
+  }
+});
+
+// Mark one wallet as canonical (the "this is THE one" flag) — stored per user,
+// surfaced in the UI so a mismatch with the active/funded wallet is obvious.
+metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.body?.address);
+    const db = readDatabase();
+    if (db.users[req.userId]) { (db.users[req.userId] as any).canonicalWallet = address; writeDatabase(db); }
+    invalidateWallets(req.userId);
+    res.json({ ok: true, address });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not set canonical wallet.' });
+  }
 });
 
 metamaskRouter.get('/api/mm/status', async (req: any, res) => {

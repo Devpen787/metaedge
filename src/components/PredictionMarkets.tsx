@@ -55,6 +55,14 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
 
   const selectedMarket = markets.find(m => m.id === selectedMarketId) || activeMarkets[0];
 
+  // Share price / est. shares, guarded against empty or one-sided pools so the
+  // preview never renders "Infinity" or "NaN".
+  const poolTotal = selectedMarket ? selectedMarket.yesPool + selectedMarket.noPool : 0;
+  const sharePrice = poolTotal > 0
+    ? (betSide === 'yes' ? selectedMarket.yesPool : selectedMarket.noPool) / poolTotal
+    : 0.5;
+  const estShares = sharePrice > 0 ? (Number(betAmount) || 0) / sharePrice : 0;
+
   const handlePlaceBet = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -176,13 +184,13 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
               <div className="flex justify-between">
                 <span>Est. Shares Purchased:</span>
                 <span className="text-white font-bold">
-                  {(Number(betAmount) / (betSide === 'yes' ? (selectedMarket.yesPool / (selectedMarket.yesPool + selectedMarket.noPool)) : (selectedMarket.noPool / (selectedMarket.yesPool + selectedMarket.noPool))) || 0).toFixed(2)}
+                  {estShares.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Share Price:</span>
                 <span className="text-indigo-400">
-                  ${(betSide === 'yes' ? (selectedMarket.yesPool / (selectedMarket.yesPool + selectedMarket.noPool)) : (selectedMarket.noPool / (selectedMarket.yesPool + selectedMarket.noPool))).toFixed(2)}
+                  ${sharePrice.toFixed(2)}
                 </span>
               </div>
             </div>

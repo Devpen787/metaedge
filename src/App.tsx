@@ -13,6 +13,7 @@ import PredictionMarkets from './components/PredictionMarkets';
 import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
+import CompetitionBanner from './components/CompetitionBanner';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
 import AgenticAutopilot from './components/AgenticAutopilot';
@@ -682,14 +683,26 @@ export default function App() {
                 <Database className="w-3.5 h-3.5" />
                 <span className="text-xs font-mono hidden md:inline">{proModeEnabled ? 'Pro Tools: On' : 'Pro Tools'}</span>
               </button>
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 hover:bg-slate-900 transition-colors cursor-pointer"
-                title="MetaMask Agent Wallet"
-              >
-                <Wallet className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
-              </button>
+              {(() => {
+                const wa = currentUser?.walletAddress;
+                const isConn = !!wa && wa !== 'connected';
+                return (
+                  <button
+                    onClick={() => setShowWalletModal(true)}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 transition-colors cursor-pointer border ${
+                      isConn
+                        ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20'
+                        : 'bg-slate-950 border-slate-900 hover:bg-slate-900'
+                    }`}
+                    title={isConn ? `Agent Wallet: ${wa} — click to view & copy` : 'Connect your MetaMask Agent Wallet'}
+                  >
+                    <Wallet className={`w-3.5 h-3.5 ${isConn ? 'text-emerald-400' : 'text-orange-500'}`} />
+                    <span className={`text-xs font-mono hidden md:inline ${isConn ? 'text-emerald-300' : 'text-slate-300'}`}>
+                      {isConn ? `${wa.slice(0, 6)}…${wa.slice(-4)}` : 'Wallet'}
+                    </span>
+                  </button>
+                );
+              })()}
               <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Mode:</span>
               <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
                 <button
@@ -721,6 +734,13 @@ export default function App() {
         {/* Main Body */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 relative z-10">
           <div className="max-w-7xl mx-auto space-y-8">
+            {currentUser && (
+              <CompetitionBanner
+                walletAddress={currentUser.walletAddress}
+                onConnect={() => setShowWalletModal(true)}
+              />
+            )}
+
             {/* Verification Alert when switching modes */}
             {paperLiveMode === 'live' && (
               <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">

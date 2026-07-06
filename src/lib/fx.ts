@@ -135,6 +135,74 @@ function spawn(ctx: FxCtx, o: SpawnOpts) {
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
+/** Center point of a DOM element in viewport coords, for anchoring a spark. */
+export function originOf(el: Element | null | undefined): { x: number; y: number } | undefined {
+  if (!el) return undefined;
+  const r = el.getBoundingClientRect();
+  if (r.width === 0 && r.height === 0) return undefined;
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+}
+
+const SPARK_PALETTES = {
+  emerald: [0x10b981, 0x34d399, 0x6ee7b7, 0xffffff],
+  rose: [0xf43f5e, 0xfb7185, 0xfda4af, 0xffffff],
+  indigo: [0x6366f1, 0x818cf8, 0xa5b4fc, 0xffffff],
+  gold: [0xfbbf24, 0xfcd34d, 0x34d399, 0xffffff],
+} as const;
+
+export interface SparkOpts {
+  origin?: { x: number; y: number };
+  palette?: keyof typeof SPARK_PALETTES;
+  count?: number;
+  /** 'up' = confirmation puff, 'radial' = milestone ring. */
+  direction?: 'up' | 'radial';
+}
+
+/**
+ * A small, localized spark — the everyday-action reward (a paper fill, a
+ * funding tx, a wallet connect). Deliberately lighter than `burst`: it should
+ * feel like a tactile tap, not a fireworks show. No-ops under reduced motion.
+ */
+export async function spark(opts: SparkOpts = {}) {
+  if (reducedMotion()) return;
+  const ctx = await getCtx();
+  if (!ctx) return;
+  const { app } = ctx;
+  const cx = opts.origin?.x ?? app.screen.width / 2;
+  const cy = opts.origin?.y ?? app.screen.height / 2;
+  const colors = SPARK_PALETTES[opts.palette ?? 'indigo'];
+  const count = opts.count ?? 22;
+  const radial = opts.direction === 'radial';
+
+  for (let i = 0; i < count; i++) {
+    let vx: number, vy: number;
+    if (radial) {
+      const a = (i / count) * Math.PI * 2 + rand(-0.2, 0.2);
+      const speed = rand(3, 7);
+      vx = Math.cos(a) * speed;
+      vy = Math.sin(a) * speed;
+    } else {
+      // Upward cone with a little horizontal scatter.
+      vx = rand(-3.5, 3.5);
+      vy = rand(-11, -5);
+    }
+    spawn(ctx, {
+      x: cx + rand(-6, 6),
+      y: cy + rand(-6, 6),
+      vx,
+      vy,
+      tint: pick(colors as readonly number[] as number[]),
+      gravity: radial ? 0.05 : 0.22,
+      drag: 0.94,
+      maxLife: rand(28, 52),
+      baseScale: rand(0.18, 0.42),
+      additive: true,
+    });
+  }
+
+  app.ticker.start();
+}
+
 /**
  * Fire a fullscreen celebration burst. Safe to call from anywhere; no-ops
  * under prefers-reduced-motion or if WebGL is unavailable.

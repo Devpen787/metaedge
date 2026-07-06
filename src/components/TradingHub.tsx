@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, YAxis, ReferenceDot } from 'recharts';
 import { User, TradingAgent, PaperTrade } from '../types';
 import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2, Wallet, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import { spark, originOf } from '../lib/fx';
 
 interface TradingHubProps {
   currentUser: User;

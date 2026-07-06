@@ -1128,14 +1128,16 @@ metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
       let estimatedCost = 'gas only (est.)';
 
       try {
+        // Enrichment is best-effort and advisory, so keep timeouts tight — the
+        // plan must return in a few seconds, not block for 30s on a live quote.
         if (step.action === 'SWAP') {
-           const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'WETH', '--amount', '10', '--from-chain', '8453', '--json'], 30_000);
+           const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'WETH', '--amount', '10', '--from-chain', '8453', '--json'], 6_000);
            const quote = quoteResult.data as any;
            data = { quote: quote.estimatedOutput ? `10 USDC -> ${quote.estimatedOutput} WETH` : 'Quote ready' };
            const feeUsd = quote?.feeData?.metabridge?.usd ?? quote?.fee?.usd;
            estimatedCost = feeUsd ? `~$${Number(feeUsd).toFixed(2)} fee` : 'swap fee (est.)';
         } else if (step.action === 'PREDICTION') {
-           const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 20_000);
+           const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 6_000);
            const markets = marketsResult.data as any[];
            data = { market: markets[0]?.question || 'Market ready' };
         }

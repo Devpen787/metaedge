@@ -83,6 +83,17 @@ export default function AgentWorkshop({
     }
   }, [simAgentId, agents, realPrices]);
 
+  // Auto-select an active bot for the fill simulator, so "Simulate Fill" isn't
+  // dead-disabled until the user manually picks the only bot they just created.
+  useEffect(() => {
+    const active = agents.filter(a => a.status === 'active');
+    if (active.length === 0) {
+      if (simAgentId) setSimAgentId('');
+    } else if (!simAgentId || !active.some(a => a.id === simAgentId)) {
+      setSimAgentId(active[0].id);
+    }
+  }, [agents, simAgentId]);
+
   const [loading, setLoading] = useState(false);
   const [tradeLoading, setTradeLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' }); // type: 'success' | 'error'

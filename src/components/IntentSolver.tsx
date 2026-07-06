@@ -40,7 +40,8 @@ export default function IntentSolver({ user }: IntentSolverProps) {
     setIsSolving(true);
     setGlobalAgentProcessing(true, 'Solving Intent');
     setSteps([]);
-    
+    setExecResult('');
+
     try {
       const res = await fetch('/api/mm/intent/solve', {
         method: 'POST',
@@ -48,35 +49,25 @@ export default function IntentSolver({ user }: IntentSolverProps) {
         body: JSON.stringify({ intent: prompt })
       });
       const data = await res.json();
-      
-      if (res.ok && data.steps) {
-        setSteps(data.steps.map((s: any, i: number) => ({ ...s, id: `step-${i}`, status: 'pending' })));
-        
-        // Simulate step processing
-        data.steps.forEach((_: any, i: number) => {
-          setTimeout(() => {
-            setSteps(prev => prev.map((step, idx) => 
-              idx === i ? { ...step, status: 'simulating' } : step
-            ));
-          }, (i * 1500) + 500);
-          
-          setTimeout(() => {
-            setSteps(prev => prev.map((step, idx) => 
-              idx === i ? { ...step, status: 'ready' } : step
-            ));
-            if (i === data.steps.length - 1) {
-              setGlobalAgentProcessing(false);
-            }
-          }, (i * 1500) + 1500);
-        });
+
+      if (res.ok && Array.isArray(data.steps) && data.steps.length) {
+        // Show the route "simulating", then deterministically flip every step to
+        // ready together — so the plan reliably becomes executable (no dangling
+        // per-step timers, no button stuck disabled).
+        setSteps(data.steps.map((s: any, i: number) => ({ ...s, id: `step-${i}`, status: 'simulating' })));
+        await new Promise(r => setTimeout(r, 900));
+        setSteps(prev => prev.map(step => ({ ...step, status: 'ready' })));
       } else {
-        setGlobalAgentProcessing(false);
+        setExecResult('Could not map an execution path for that intent. Try stating a clearer goal.');
       }
     } catch (err) {
       console.error(err);
-      setGlobalAgentProcessing(false);
+      setExecResult('The intent solver is unavailable right now — try again in a moment.');
     } finally {
+      // Clear both signals together so the "Solving Intent" banner never lingers
+      // after the plan is on screen.
       setIsSolving(false);
+      setGlobalAgentProcessing(false);
     }
   };
 

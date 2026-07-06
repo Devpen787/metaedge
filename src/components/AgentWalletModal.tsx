@@ -37,6 +37,10 @@ const statusStyles: Record<CheckStatus, string> = {
 export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalProps) {
   const [readiness, setReadiness] = useState<MetaMaskReadiness | null>(null);
   const [loading, setLoading] = useState(false);
+  // The token path gets its OWN loading flag: the browser-connect flow holds
+  // `loading` true for up to 5 min while it polls, which must not disable the
+  // token Connect button — the two paths are alternatives, not a sequence.
+  const [tokenLoading, setTokenLoading] = useState(false);
   const [message, setMessage] = useState('');
 
   const [connected, setConnected] = useState(false);
@@ -112,7 +116,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   async function connectWithToken() {
     if (!tokenInput.trim()) return;
     try {
-      setLoading(true);
+      setTokenLoading(true);
       setMessage('');
       const res = await apiFetch('/api/mm/connect/token', {
         method: 'POST',
@@ -128,7 +132,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     } catch (error: any) {
       setMessage(error.message || 'Token login failed.');
     } finally {
-      setLoading(false);
+      setTokenLoading(false);
     }
   }
 
@@ -230,10 +234,11 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
                     />
                     <button
                       onClick={connectWithToken}
-                      disabled={loading || !tokenInput.trim()}
-                      className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50"
+                      disabled={tokenLoading || !tokenInput.trim()}
+                      className="bg-slate-800 hover:bg-slate-700 text-white font-bold px-4 rounded-lg text-sm disabled:opacity-50 flex items-center gap-1.5"
                     >
-                      Connect
+                      {tokenLoading && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                      {tokenLoading ? 'Connecting…' : 'Connect'}
                     </button>
                   </div>
                 )}

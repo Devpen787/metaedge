@@ -4,6 +4,7 @@ import { ResponsiveContainer, LineChart, Line, YAxis, ReferenceDot } from 'recha
 import { User, TradingAgent, PaperTrade } from '../types';
 import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2, Wallet, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../lib/api';
+import ActingAsChip from './ActingAsChip';
 import { spark, originOf } from '../lib/fx';
 
 interface TradingHubProps {
@@ -32,6 +33,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
 
   // Live-market sanity check via the MetaMask Agent Wallet: one line of real
   // route/venue data for the trade on the ticket. Fetched on demand (the CLI
@@ -170,6 +172,12 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
       setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
+      // Every fill earns a tactile spark from the button — long/buy runs
+      // emerald, short/sell runs rose, matching the order's own semantics.
+      spark({
+        origin: originOf(submitBtnRef.current),
+        palette: side === 'buy' || side === 'long' ? 'emerald' : 'rose',
+      });
       setSize('');
     } catch (err: any) {
       setError(err.message || 'Failed to place trade');
@@ -180,7 +188,10 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 fade-in relative z-10">
-      
+
+      {/* Guardrail: which wallet real actions would run from. */}
+      <ActingAsChip className="lg:col-span-12" />
+
       {/* Interactive Terminal Order Panel */}
       <div className="lg:col-span-4 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:bg-slate-900/80 transition-all">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none group-hover:bg-indigo-500/10 transition-all duration-700" />
@@ -407,6 +418,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {/* Submit button */}
           <button
+            ref={submitBtnRef}
             type="submit"
             disabled={submitting || !selectedAgentId}
             className={`w-full py-3 rounded-xl font-mono text-xs font-bold shadow-lg transition-all cursor-pointer ${

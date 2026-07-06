@@ -14,6 +14,7 @@ import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
 import CompetitionBanner from './components/CompetitionBanner';
+import WalletCenter from './components/WalletCenter';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
 import AgenticAutopilot from './components/AgenticAutopilot';
@@ -501,7 +502,8 @@ export default function App() {
             {
               title: 'Overview',
               items: [
-                { id: 'dashboard', label: 'Dashboard', icon: Info }
+                { id: 'dashboard', label: 'Dashboard', icon: Info },
+                { id: 'wallet', label: 'Wallet & Funds', icon: Wallet }
               ]
             },
             {
@@ -772,6 +774,10 @@ export default function App() {
                     trades={trades}
                     onEditProfile={handleProfileClaimed}
                   />
+                )}
+
+                {currentUser && activeTab === 'wallet' && (
+                  <WalletCenter user={currentUser} onConnect={() => setShowWalletModal(true)} />
                 )}
 
                 {currentUser && activeTab === 'rooms' && (

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { RefreshCw, Star, Check, AlertTriangle, ChevronDown, ChevronUp, Wallet as WalletIcon } from 'lucide-react';
 import { apiFetch } from '../lib/api';
 
@@ -20,8 +20,12 @@ interface WalletsData {
 function short(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
 const eq = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-export default function WalletsPanel({ onActiveChanged }: { onActiveChanged?: (addr: string) => void }) {
-  const [open, setOpen] = useState(false);
+export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = false }: {
+  onActiveChanged?: (addr: string) => void;
+  onData?: (d: WalletsData) => void;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const [data, setData] = useState<WalletsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
@@ -34,12 +38,19 @@ export default function WalletsPanel({ onActiveChanged }: { onActiveChanged?: (a
       const d = await res.json();
       if (!res.ok) throw new Error(d.message || d.error || 'Could not load your wallets.');
       setData(d);
+      onData?.(d);
     } catch (e: any) {
       setError(e.message || 'Could not load your wallets.');
     } finally {
       setLoading(false);
     }
   }
+
+  // Auto-load when opened by default (full-page use), not just on click.
+  useEffect(() => {
+    if (defaultOpen && !data && !loading) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultOpen]);
 
   function toggle() {
     const next = !open;

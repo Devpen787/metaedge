@@ -656,8 +656,9 @@ async function computeWallets(userId: string) {
       const bd = (await runMmAsFresh(userId, ['wallet', 'balance', '--json'])).data?.data || {};
       const chains = (bd.chains || []).map((c: any) => ({
         name: c.name,
+        chainId: c.chainId || c.chain || null,
         totalUsd: Number(c.totalValue || 0),
-        tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0) }))
+        tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0), assetId: t.assetId || null, type: t.type || null }))
       }));
       enriched.push({ address: w.address, name: w.name || null, totalUsd: Number(bd.totalValue || 0), chains });
     }
@@ -729,6 +730,91 @@ metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any,
   }
 });
 
+// ---- Phase 3: guardrails ----
+// Block a REAL action when the active wallet isn't the canonical one. Only bites
+// when a canonical wallet is set AND live execution is on — paper play is never
+// blocked (nothing real moves).
+async function assertCanonicalActive(userId: string): Promise<{ ok: boolean; error?: string }> {
+  const db = readDatabase();
+  const canonical = (db.users[userId] as any)?.canonicalWallet;
+  if (!canonical || !LIVE_EXECUTION_ENABLED) return { ok: true };
+  const active = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address;
+  if (active && active.toLowerCase() !== String(canonical).toLowerCase()) {
+    return { ok: false, error: `Active wallet ${active.slice(0, 6)}…${active.slice(-4)} is not your canonical wallet ${String(canonical).slice(0, 6)}…${String(canonical).slice(-4)}. Switch wallets before a live action.` };
+  }
+  return { ok: true };
+}
+
+// A compact "who am I acting as" snapshot for guardrail banners.
+metamaskRouter.get('/api/mm/acting-as', requireWallet, async (req: any, res) => {
+  try {
+    const active = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+    const list = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const name = list.find((w: any) => (w.address || '').toLowerCase() === (active || '').toLowerCase())?.name || null;
+    const db = readDatabase();
+    const canonical = (db.users[req.userId] as any)?.canonicalWallet || null;
+    const isCanonical = !!canonical && !!active && canonical.toLowerCase() === active.toLowerCase();
+    res.json({ address: active, name, canonicalAddress: canonical, isCanonical, hasCanonical: !!canonical });
+  } catch (e: any) {
+    res.status(503).json({ error: e?.message });
+  }
+});
+
+// ---- Phase 4: consolidation ----
+// Preview which balances would sweep into the canonical wallet. Read-only.
+async function consolidationPlan(userId: string) {
+  const data = await computeWallets(userId);
+  const canonical = data.canonicalAddress;
+  if (!canonical) return { canonical: null, moves: [], note: 'Set a canonical wallet first.' };
+  const moves: any[] = [];
+  for (const w of data.wallets) {
+    if (w.address.toLowerCase() === canonical.toLowerCase()) continue;
+    for (const ch of w.chains) {
+      for (const t of (ch.tokens || [])) {
+        moves.push({ from: w.address, chainId: ch.chainId, chainName: ch.name, token: t.token, type: t.type, amount: t.amount, usd: t.usd });
+      }
+    }
+  }
+  return { canonical, moves, totalUsd: Number(moves.reduce((s, m) => s + (m.usd || 0), 0).toFixed(2)) };
+}
+
+metamaskRouter.get('/api/mm/wallets/consolidate/preview', requireWallet, async (req: any, res) => {
+  try {
+    res.json(await consolidationPlan(req.userId));
+  } catch (e: any) {
+    res.status(503).json({ error: e?.message || 'Could not build consolidation plan.' });
+  }
+});
+
+// Execute the sweep. Real transfers, so it's gated behind live execution — in
+// paper mode we return the plan as "locked" rather than moving anything. Even
+// when live, the workhorse for real consolidation is scripts/consolidate.mjs
+// (dry-run first); this endpoint is the in-product path.
+metamaskRouter.post('/api/mm/wallets/consolidate', requireWallet, async (req: any, res) => {
+  const plan = await consolidationPlan(req.userId);
+  if (!plan.canonical) return res.status(400).json({ error: plan.note || 'Set a canonical wallet first.' });
+  if (!LIVE_EXECUTION_ENABLED) {
+    return res.json({ locked: true, plan, message: 'Consolidation moves real funds — it unlocks in Live mode. Nothing was moved.' });
+  }
+  // Live: sweep each move. Native tokens keep a gas buffer; ERC-20 need native
+  // gas already present on that chain in the source wallet.
+  const results: any[] = [];
+  for (const m of plan.moves) {
+    try {
+      await withWalletLock(profileHome(req.userId), () => runMmAsFresh(req.userId, ['wallet', 'select', '--address', m.from, '--json']));
+      const chainId = String(m.chainId || '').replace(/^eip155:/, '');
+      const amount = m.type === 'native' ? String(Math.max(0, Number(m.amount) - 0.0002)) : String(m.amount);
+      if (Number(amount) <= 0) { results.push({ ...m, skipped: 'dust/gas buffer' }); continue; }
+      const r = await runMmAsFresh(req.userId, ['transfer', '--to', plan.canonical, '--amount', amount, '--token', m.token, '--chain-id', chainId, '--wait', '--json'], 90_000);
+      results.push({ ...m, ok: isCommandOk(r), detail: r.summary });
+    } catch (e: any) {
+      results.push({ ...m, ok: false, detail: e?.message });
+    }
+  }
+  invalidateWallets(req.userId);
+  res.json({ locked: false, results });
+});
+
 metamaskRouter.get('/api/mm/status', async (req: any, res) => {
   const auth = await runMmAs(req.userId, ['auth', 'status', '--json']);
   const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
@@ -771,6 +857,8 @@ metamaskRouter.post('/api/mm/transfer', requireWallet, async (req: any, res) => 
         to, amount, token, chainId, status: 'paper_filled'
       }));
     }
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) return res.status(409).json({ error: guard.error });
     const result = await runMmAs(req.userId, ['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
@@ -822,6 +910,8 @@ metamaskRouter.post('/api/mm/swap/execute', requireWallet, async (req: any, res)
       }));
     }
     const quoteId = validateQuoteId(req.body.quoteId);
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) return res.status(409).json({ error: guard.error });
     const result = await runMmAs(req.userId, ['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
@@ -879,6 +969,8 @@ metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) =
         arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
       }));
     }
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) return res.status(409).json({ error: guard.error });
     const result = await runMmAs(req.userId, ['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {

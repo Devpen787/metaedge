@@ -23,7 +23,7 @@ Agentic era (now): raw signals arbitraged; what remains for small operators is p
 3. **Anything can happen — size so that being wrong is survivable.** ENFORCED for real money (equity floors, ≤$1 risk per shot). TODO for sizing *method* (see Carver, law 12).
 
 ### From Murphy (Technical Analysis) — signals as vocabulary
-4. **Indicators are features, not strategies.** PARTIAL: candles backfilled (2y × 11 tokens); indicator computation (MA/RSI/ATR/volume features) not yet implemented. → next artifact: feature functions over backfill JSONL.
+4. **Indicators are features, not strategies.** ENFORCED (2026-07-07): causal RSI/ATR/SMA200/volume-ratio/rolling-breakout features in `scripts/backtest_sweep.mjs`.
 5. **Confirm across dimensions (trend + momentum + volume), never one signal alone.** TODO: current brains use one signal (24h change) by design as baselines. New cards must combine ≥2 orthogonal features.
 
 ### From Chan (Quantitative/Algorithmic Trading) — strategy archetypes
@@ -31,11 +31,11 @@ Agentic era (now): raw signals arbitraged; what remains for small operators is p
 7. **A strategy is a business: costs, capacity, and operational risk first.** ENFORCED: cost-pessimistic fills (10bps/side), measured real venue costs (5–13bps), ops guardrails.
 
 ### From Bandy (Quantitative Trading Systems) — validation discipline
-8. **In-sample optimization is meaningless without out-of-sample survival.** TODO (the big one): the backtester over backfill must split train/validate by TIME (walk-forward), never optimize on the full series. → next artifact: `scripts/backtest_sweep.mjs` with walk-forward.
-9. **Report many metrics; refuse to act on return alone.** PARTIAL: expectancy/win-rate/avg win-loss exist; missing: max drawdown, profit factor, Sharpe-style ratio per family. → add to edge report + backtester.
+8. **In-sample optimization is meaningless without out-of-sample survival.** ENFORCED (2026-07-07): `scripts/backtest_sweep.mjs` — 6mo train → 48-bar embargo → 2mo unseen test, rolling; params picked on train, judged on test only. First run: 19/20 rejected, 1 candidate.
+9. **Report many metrics; refuse to act on return alone.** ENFORCED in the backtester (PF, max drawdown, t-stat, expectancy, win rate); PARTIAL in the live edge report (drawdown/PF per family still to add).
 
 ### From López de Prado (Advances in Financial ML) — the self-deception defenses
-10. **Multiple testing destroys naive significance: track EVERY hypothesis tried, not just survivors.** PARTIAL: family cap (≤5) + declined accounting exist; missing: a hypothesis registry counting all tested variants so the acceptance bar rises with the number of trials. → registry file + deflated threshold in report.
+10. **Multiple testing destroys naive significance: track EVERY hypothesis tried, not just survivors.** ENFORCED (2026-07-07): `data/edgeops/hypothesis-registry.jsonl` logs every fold-evaluation (1,620 in run one); survivor bar requires OOS PF≥1.1, n≥30, ≥55% positive folds, t≥2.
 11. **Leakage and look-ahead are the default state, not the exception.** PARTIAL: forward paper-testing is leak-proof by construction (data arrives in real time); the backtester must enforce it for historical sweeps (no future bars in features, embargo between train/test windows).
 
 ### From Carver (Systematic Trading) — sizing and portfolio

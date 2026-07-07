@@ -50,7 +50,7 @@ tradesRouter.post('/api/copilot/execute', (req: any, res) => {
 
   const result = placePaperTrade(
     userId,
-    { agentId: agent.id, assetSymbol: sym, side, size, price, nonce: `copilot_${Date.now()}_${generateId().slice(0, 6)}` },
+    { agentId: agent.id, assetSymbol: sym, side, size, price, nonce: `copilot_${Date.now()}_${generateId().slice(0, 6)}`, thesis: req.body?.thesis },
     { action: 'COPILOT_TRADE', detailsPrefix: 'Copilot executed' }
   );
   if (!result.ok) { res.status(result.status || 400).json({ error: result.error }); return; }
@@ -80,9 +80,27 @@ function positionBefore(trades: any[], userId: string, agentId: string, asset: s
 // Core paper-trade execution: validation -> intent -> risk -> fill -> honest
 // cost-basis ledger -> audit. Shared by the HTTP route and the autotrader so
 // there is exactly ONE way a trade can happen.
+// EdgeOps: sanitize an optional client/agent-supplied thesis into a bounded,
+// known-fields-only object, and decide whether the trade counts as complete.
+// Core rule from the operating loop: no invalidation → no confidence.
+const THESIS_STR_FIELDS = ['cardId', 'signalFamily', 'setup', 'trigger', 'invalidation', 'holdingWindow', 'regime', 'benchmark'] as const;
+function sanitizeThesis(raw: unknown): { thesis?: PaperTrade['thesis']; tag: 'complete' | 'thesis_missing' } {
+  if (!raw || typeof raw !== 'object') return { tag: 'thesis_missing' };
+  const t: any = {};
+  for (const f of THESIS_STR_FIELDS) {
+    const v = (raw as any)[f];
+    if (typeof v === 'string' && v.trim()) t[f] = v.trim().slice(0, 400);
+  }
+  const r = Number((raw as any).plannedR);
+  if (Number.isFinite(r) && r > 0 && r <= 100) t.plannedR = r;
+  const complete = !!(t.signalFamily && t.setup && t.trigger && t.invalidation);
+  if (Object.keys(t).length === 0) return { tag: 'thesis_missing' };
+  return { thesis: t, tag: complete ? 'complete' : 'thesis_missing' };
+}
+
 export function placePaperTrade(
   userId: string,
-  input: { agentId: string; assetSymbol: string; side: 'buy' | 'sell' | 'long' | 'short'; size: number; price: number; leverage?: number; roomId?: string; nonce: string },
+  input: { agentId: string; assetSymbol: string; side: 'buy' | 'sell' | 'long' | 'short'; size: number; price: number; leverage?: number; roomId?: string; nonce: string; thesis?: unknown },
   audit: { action: string; detailsPrefix: string } = { action: 'PAPER_TRADE', detailsPrefix: 'Executed simulated' }
 ): { ok: boolean; status?: number; error?: string; trade?: PaperTrade; balance?: number } {
   const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = input;
@@ -155,6 +173,12 @@ export function placePaperTrade(
   } catch (err: any) {
     return { ok: false, status: 400, error: err.message };
   }
+
+  // EdgeOps: attach the (sanitized) thesis and tag the trade. Trades without a
+  // complete thesis still execute — they're just excluded from edge reports.
+  const { thesis, tag } = sanitizeThesis(input.thesis);
+  if (thesis) trade.thesis = thesis;
+  trade.edgeops = tag;
 
   // Honest cost-basis accounting. Opening posts margin; closing returns the
   // posted margin plus the REAL realized P&L (exit vs. average entry).

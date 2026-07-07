@@ -88,6 +88,22 @@ export interface PaperStrategy {
   createdAt: number;
 }
 
+// EdgeOps trade thesis: makes a trade explainable BEFORE it happens, so the
+// weekly report can separate signal failure from execution failure. A trade
+// only counts as edgeops_complete when the core fields (signalFamily, setup,
+// trigger, invalidation) are present — no invalidation, no confidence.
+export interface TradeThesis {
+  cardId?: string;          // research card this trade tests (e.g. 'momentum-24h-v1')
+  signalFamily: string;     // momentum | mean_reversion | grid | custom_ai | manual | ...
+  setup: string;            // the condition that existed
+  trigger: string;          // what fired now
+  invalidation: string;     // what proves the thesis wrong
+  plannedR?: number;        // planned risk unit
+  holdingWindow?: string;   // e.g. 'until opposite signal', '1h', '1d'
+  regime?: string;          // trending | choppy | unknown
+  benchmark?: string;       // benchmark family for the report
+}
+
 export interface PaperTrade {
   id: string;
   agentId: string;
@@ -103,6 +119,8 @@ export interface PaperTrade {
   status?: 'open' | 'closed';
   source?: 'agent' | 'wallet'; // 'wallet' = a MetaMask paper action; marked-to-market live in the arena
   timestamp: number;
+  thesis?: TradeThesis;                      // EdgeOps: why this trade
+  edgeops?: 'complete' | 'thesis_missing';   // EdgeOps: counts toward reports only when complete
 }
 
 export interface VaultClub {

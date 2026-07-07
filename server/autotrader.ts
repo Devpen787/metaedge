@@ -41,6 +41,27 @@ function decide(strategy: string, change24h: number, holding: boolean, tickParit
   }
 }
 
+// EdgeOps: every autopilot trade carries an auto-generated thesis so it counts
+// as edgeops_complete and feeds the weekly edge report. The thesis states what
+// the strategy actually saw and what invalidates it — no invented reasoning.
+function buildThesis(strategy: string, decision: 'buy' | 'sell', change24h: number, holding: boolean): Record<string, unknown> {
+  const regime = Math.abs(change24h) >= 2 ? 'trending' : Math.abs(change24h) < 0.75 ? 'choppy' : 'mixed';
+  const common = { cardId: `${strategy}-24h-v1`, signalFamily: strategy, regime, benchmark: 'buy_hold', holdingWindow: 'until opposite signal' };
+  const c = change24h.toFixed(2);
+  switch (strategy) {
+    case 'momentum':
+      return { ...common, setup: `24h change ${c}% (threshold ±0.75%)`, trigger: decision === 'buy' ? `24h momentum ≥ +0.75% → follow` : `24h momentum ≤ -0.75% while holding → exit`, invalidation: '24h momentum flips through the opposite ±0.75% threshold' };
+    case 'mean_reversion':
+      return { ...common, setup: `24h change ${c}% (threshold ±0.75%)`, trigger: decision === 'buy' ? `24h down ≥ 0.75% → fade the move` : `24h up ≥ 0.75% while holding → take reversion profit`, invalidation: 'move keeps extending instead of reverting; exits at opposite threshold' };
+    case 'grid':
+      return { ...common, setup: `grid tick (24h ${c}%), holding=${holding}`, trigger: decision === 'buy' ? 'grid buy tick (even parity)' : 'grid sell tick (odd parity, inventory held)', invalidation: 'price drifts against inventory between parity ticks' };
+    case 'custom_ai':
+      return { ...common, setup: `24h change ${c}%, holding=${holding}`, trigger: decision === 'buy' ? 'momentum-sign positive or exploration coin-flip' : 'momentum-sign negative or exploration exit', invalidation: 'momentum sign flips; exploration trades carry no directional conviction' };
+    default:
+      return { ...common, setup: `24h change ${c}%`, trigger: `${strategy} ${decision}`, invalidation: 'opposite strategy signal' };
+  }
+}
+
 let tickCount = 0;
 
 async function tick() {
@@ -84,6 +105,7 @@ async function tick() {
           price,
           leverage: agent.tradeType === 'perp' ? agent.leverage || 1 : 1,
           nonce: `auto_${agent.id.slice(0, 8)}_${Date.now()}_${generateId().slice(0, 6)}`,
+          thesis: buildThesis(agent.strategyType, decision, change24h, holding),
         },
         { action: 'AUTOPILOT_TRADE', detailsPrefix: 'Autopilot executed' }
       );

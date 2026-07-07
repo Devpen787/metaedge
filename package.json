@@ -17,7 +17,9 @@
     "smoke:metamask": "node scripts/metamask_readiness_smoke.mjs",
     "smoke:tabs": "node scripts/all_tabs_smoke.mjs",
     "capability:matrix": "node scripts/capability_matrix.mjs",
-    "bots:battle": "node scripts/arena_bots.mjs"
+    "edgeops:check": "node scripts/edgeops_check.mjs",
+    "bots:battle": "node scripts/arena_bots.mjs",
+    "edgeops:report": "node scripts/edgeops_report.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

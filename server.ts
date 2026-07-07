@@ -141,5 +141,3 @@ process.on('uncaughtException', (err) => console.error('Uncaught exception:', er
 startServer().catch(err => {
   console.error('Fatal server startup error:', err);
 });
-
-// auto-deploy pipeline test — 2026-07-07T10:02:15Z

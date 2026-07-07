@@ -20,20 +20,43 @@ export const serverPrices: Record<string, { price: number; change24h: number; hi
   MATIC: { price: 0.20, change24h: -0.5, high24h: 0.21, low24h: 0.19, volume24h: 100000000, marketCap: 2000000000, supply: '9.8B', name: 'Polygon', description: "The first well-structured, easy-to-use platform for Ethereum scaling and infrastructure development." },
 };
 
-// Symbol → CoinGecko id.
+// Symbol → source ids. Two independent feeds so a single one failing or blipping
+// can't break or mislead the whole portal.
 const COINGECKO_IDS: Record<string, string> = {
   BTC: 'bitcoin', ETH: 'ethereum', SOL: 'solana', LINK: 'chainlink', DOGE: 'dogecoin',
   BNB: 'binancecoin', XRP: 'ripple', ADA: 'cardano', AVAX: 'avalanche-2', DOT: 'polkadot', MATIC: 'matic-network'
 };
+const COINBASE_PRODUCTS: Record<string, string> = {
+  BTC: 'BTC-USD', ETH: 'ETH-USD', SOL: 'SOL-USD', LINK: 'LINK-USD', DOGE: 'DOGE-USD',
+  XRP: 'XRP-USD', ADA: 'ADA-USD', AVAX: 'AVAX-USD', DOT: 'DOT-USD', MATIC: 'MATIC-USD' // Coinbase has no BNB-USD
+};
 
 let lastGoodFetch = 0;
+let lastSource = 'seed';
+
+// Apply a price update behind an OUTLIER GUARD: after we have a real baseline,
+// reject any single update that jumps >25% from the last-known value. Real
+// prices don't move that fast in ~12s, so such a jump is a feed blip/bad datum,
+// not a real move — we hold the last good value instead of trusting it.
+function applyPrice(sym: string, price: unknown, extras?: Partial<typeof serverPrices[string]>): boolean {
+  const p = serverPrices[sym];
+  if (!p || typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return false;
+  if (lastGoodFetch > 0 && Math.abs(price - p.price) / p.price > 0.25) return false; // blip → skip
+  p.price = price;
+  if (extras) {
+    if (typeof extras.change24h === 'number') p.change24h = Number(extras.change24h.toFixed(2));
+    if (typeof extras.high24h === 'number') p.high24h = extras.high24h;
+    if (typeof extras.low24h === 'number') p.low24h = extras.low24h;
+    if (typeof extras.volume24h === 'number') p.volume24h = extras.volume24h;
+    if (typeof extras.marketCap === 'number') p.marketCap = extras.marketCap;
+  }
+  return true;
+}
 
 async function refreshFromCoinGecko(): Promise<boolean> {
   try {
     const ids = Object.values(COINGECKO_IDS).join(',');
-    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h`, {
-      headers: { accept: 'application/json' }
-    });
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids=${ids}&price_change_percentage=24h`, { headers: { accept: 'application/json' } });
     if (!res.ok) return false;
     const data = await res.json();
     if (!Array.isArray(data)) return false;
@@ -42,32 +65,41 @@ async function refreshFromCoinGecko(): Promise<boolean> {
     let updated = 0;
     for (const c of data) {
       const sym = byId[c.id];
-      if (!sym || !serverPrices[sym] || typeof c.current_price !== 'number') continue; // skip nulls/unknowns
-      const p = serverPrices[sym];
-      p.price = c.current_price;
-      if (typeof c.price_change_percentage_24h === 'number') p.change24h = Number(c.price_change_percentage_24h.toFixed(2));
-      if (typeof c.high_24h === 'number') p.high24h = c.high_24h;
-      if (typeof c.low_24h === 'number') p.low24h = c.low_24h;
-      if (typeof c.total_volume === 'number') p.volume24h = c.total_volume;
-      if (typeof c.market_cap === 'number') p.marketCap = c.market_cap;
-      updated++;
+      if (!sym) continue;
+      if (applyPrice(sym, c.current_price, { change24h: c.price_change_percentage_24h, high24h: c.high_24h, low24h: c.low_24h, volume24h: c.total_volume, marketCap: c.market_cap })) updated++;
     }
-    if (updated > 0) { lastGoodFetch = Date.now(); return true; }
+    if (updated > 0) { lastGoodFetch = Date.now(); lastSource = 'coingecko'; return true; }
     return false;
-  } catch (e) {
-    return false;
-  }
+  } catch { return false; }
 }
 
-// Fetch real prices ~every 12s. Between fetches, apply a small CENTERED jitter
-// (mean 0 — no drift) for a live feel; every real fetch re-anchors to truth, so
+// Fallback feed (price only) — used when CoinGecko is unreachable, so we're never
+// blind. One batched-ish set of light spot calls.
+async function refreshFromCoinbase(): Promise<boolean> {
+  try {
+    let updated = 0;
+    await Promise.all(Object.entries(COINBASE_PRODUCTS).map(async ([sym, product]) => {
+      try {
+        const r = await fetch(`https://api.coinbase.com/v2/prices/${product}/spot`, { headers: { accept: 'application/json' } });
+        if (!r.ok) return;
+        const j = await r.json();
+        if (applyPrice(sym, Number(j?.data?.amount))) updated++;
+      } catch { /* skip this symbol */ }
+    }));
+    if (updated > 0) { lastGoodFetch = Date.now(); lastSource = 'coinbase'; return true; }
+    return false;
+  } catch { return false; }
+}
+
+// Real prices ~every 12s: CoinGecko primary, Coinbase fallback. Between fetches,
+// a tiny CENTERED (mean-0) jitter for a live feel — re-anchored every fetch, so
 // prices can never wander far from reality the way the old biased walk did.
-refreshFromCoinGecko();
+(async () => { if (!(await refreshFromCoinGecko())) await refreshFromCoinbase(); })();
 setInterval(async () => {
   const now = Date.now();
   if (now - lastGoodFetch > 12000) {
-    const ok = await refreshFromCoinGecko();
-    if (ok) return; // just re-anchored; skip jitter this tick
+    if (await refreshFromCoinGecko()) return;    // primary
+    if (await refreshFromCoinbase()) return;     // fallback
   }
   for (const symbol of Object.keys(serverPrices)) {
     const jitter = (Math.random() - 0.5) * 0.0006; // ±0.03%, unbiased
@@ -100,5 +132,10 @@ export function getSpotPrice(sym: string): number | null {
 
 // --- PRICES ENDPOINT ---
 pricesRouter.get('/api/prices', (req, res) => {
-  res.json({ success: true, prices: serverPrices });
+  const ageSec = lastGoodFetch ? Math.round((Date.now() - lastGoodFetch) / 1000) : null;
+  res.json({
+    success: true,
+    prices: serverPrices,
+    feed: { source: lastSource, ageSec, stale: ageSec == null || ageSec > 120 }
+  });
 });

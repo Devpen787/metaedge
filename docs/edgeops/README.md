@@ -63,3 +63,5 @@ show freshness.
 
 - [FLEET_CONTROL_CONTRARIAN_REVIEW_2026_07_07.md](FLEET_CONTROL_CONTRARIAN_REVIEW_2026_07_07.md): red-team pressure test — how this system could manufacture false confidence; drove the paper-fill cost-realism change.
 - [FLEET_CONTROL_SOURCE_LEDGER.md](FLEET_CONTROL_SOURCE_LEDGER.md): negative-evidence sources (Barber-Odean, day-trader studies, false-discovery stats, CFTC advisory).
+
+- [TRADING_CANON.md](TRADING_CANON.md): the trading literature distilled into enforceable laws, each mapped to where it lives in the pipeline (enforced / partial / TODO with named next artifact).

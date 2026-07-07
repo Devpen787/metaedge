@@ -86,7 +86,7 @@ p();
 p(`## Honest limits`);
 p(`- Paper evidence only. Nothing here is a profitability or live-readiness claim.`);
 p(`- Families with n < ${WEAK_N} are statistically weak — do not act on them.`);
-p(`- Expectancy is per-trade mean realized P&L; it ignores costs a live venue would add.`);
+p(`- Fills include a conservative cost adjustment (PAPER_COST_BPS/side, default 10bps — stricter than our measured real-venue costs), so expectancy is cost-pessimistic, not flattered.`);
 p();
 p(`## Recommended next step (exactly one)`);
 if (!complete.length) {

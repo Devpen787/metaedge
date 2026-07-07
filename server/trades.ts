@@ -134,8 +134,18 @@ export function placePaperTrade(
   // hand-crafted to game the Arena). Unpriced symbols fall back to the client
   // value, which was already validated above. This keeps the entry consistent
   // with how the Arena marks the position (also getSpotPrice).
+  //
+  // COST REALISM (EdgeOps contrarian review): real venues charge spread + fees
+  // (~5-15bps/side; our measured Hyperliquid round trips ran 5-13bps). Free
+  // paper fills systematically flatter expectancy and train false confidence,
+  // so paper fills execute WORSE than spot by PAPER_COST_BPS per side (buys
+  // higher, sells lower) — deliberately conservative vs. the real venue.
+  const PAPER_COST_BPS = Number(process.env.PAPER_COST_BPS) || 10;
+  const buySide = side === 'buy' || side === 'long';
   const serverPx = getSpotPrice(assetSymbol);
-  const executionPrice = serverPx != null ? serverPx : Number(price);
+  const executionPrice = serverPx != null
+    ? Number((serverPx * (1 + (buySide ? 1 : -1) * PAPER_COST_BPS / 10_000)).toPrecision(8))
+    : Number(price);
   const tradeSize = Number(size);
   const tradeLeverage = Number(leverage) || 1;
 

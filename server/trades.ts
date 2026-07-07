@@ -111,7 +111,13 @@ export function placePaperTrade(
     return { ok: false, status: 400, error: 'Agent is not running and cannot trade.' };
   }
 
-  const executionPrice = Number(price);
+  // Stamp the fill from the SERVER's live price whenever we price this symbol —
+  // never trust the client-sent price for a scored trade (it can be stale or
+  // hand-crafted to game the Arena). Unpriced symbols fall back to the client
+  // value, which was already validated above. This keeps the entry consistent
+  // with how the Arena marks the position (also getSpotPrice).
+  const serverPx = getSpotPrice(assetSymbol);
+  const executionPrice = serverPx != null ? serverPx : Number(price);
   const tradeSize = Number(size);
   const tradeLeverage = Number(leverage) || 1;
 

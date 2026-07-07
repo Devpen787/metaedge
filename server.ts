@@ -16,6 +16,7 @@ import { metamaskRouter } from './server/metamask.js';
 import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
 import { startAutotrader } from './server/autotrader.js';
+import { startRecorder } from './server/recorder.js';
 import { platformRouter } from './server/platform.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
@@ -120,6 +121,7 @@ async function startServer() {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
+    startRecorder();
 
     // EdgeOps report automation: regenerate the edge report daily so fresh
     // evidence is always sitting in data/edgeops/ — no cron, no SSH needed.

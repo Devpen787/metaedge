@@ -1,0 +1,97 @@
+import fs from 'fs';
+import path from 'path';
+import { serverPrices } from './prices.js';
+
+// Market-data recorder — the evidence foundation. Strategies and research
+// cards can only test hypotheses against data we actually captured, so this
+// persists a longitudinal record of the SAME feed the fleet trades on:
+//   - every minute: price / 24h change / volume / range for every symbol
+//   - every hour: Hyperliquid funding for ETH/BTC/SOL
+//
+// Storage: one JSONL file per day under data/market/, ~2MB/day, 30-day
+// retention. Recording must never break trading — all failures are swallowed.
+
+const DIR = path.join(process.cwd(), 'data', 'market');
+const KEEP_DAYS = 30;
+const TICK_MS = 60_000;
+
+function dayFile(prefix: string) {
+  return path.join(DIR, `${prefix}-${new Date().toISOString().slice(0, 10)}.jsonl`);
+}
+
+function appendLines(file: string, lines: string[]) {
+  try {
+    fs.mkdirSync(DIR, { recursive: true });
+    fs.appendFileSync(file, lines.join('\n') + '\n');
+  } catch { /* recording never breaks trading */ }
+}
+
+function recordPrices() {
+  const t = Date.now();
+  const lines = Object.entries(serverPrices).map(([sym, p]) =>
+    JSON.stringify({ t, sym, px: p.price, chg24h: p.change24h, vol24h: p.volume24h, hi24h: p.high24h, lo24h: p.low24h })
+  );
+  appendLines(dayFile('ticks'), lines);
+}
+
+async function recordFunding() {
+  try {
+    const res = await fetch('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'metaAndAssetCtxs' })
+    });
+    const [meta, ctxs] = await res.json() as any[];
+    const t = Date.now();
+    const lines: string[] = [];
+    meta.universe.forEach((u: any, i: number) => {
+      if (['ETH', 'BTC', 'SOL'].includes(u.name) && ctxs[i]) {
+        lines.push(JSON.stringify({ t, sym: u.name, fundingHourly: Number(ctxs[i].funding), openInterest: Number(ctxs[i].openInterest || 0), markPx: Number(ctxs[i].markPx || 0) }));
+      }
+    });
+    if (lines.length) appendLines(dayFile('funding'), lines);
+  } catch { /* funding capture is best-effort */ }
+}
+
+function rotate() {
+  try {
+    const cutoff = new Date(Date.now() - KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
+    for (const f of fs.readdirSync(DIR)) {
+      const m = f.match(/(\d{4}-\d{2}-\d{2})\.jsonl$/);
+      if (m && m[1] < cutoff) fs.unlinkSync(path.join(DIR, f));
+    }
+  } catch { /* rotation is best-effort */ }
+}
+
+// In-memory ring of recent ticks so strategy brains can use SHORT-window
+// signals (e.g. 1h change) without touching disk on the hot path.
+const ring: Record<string, { t: number; px: number }[]> = {};
+const RING_MAX = 24 * 60; // 24h of minutes
+
+function updateRing() {
+  const t = Date.now();
+  for (const [sym, p] of Object.entries(serverPrices)) {
+    (ring[sym] ||= []).push({ t, px: p.price });
+    if (ring[sym].length > RING_MAX) ring[sym].splice(0, ring[sym].length - RING_MAX);
+  }
+}
+
+// Change over the last `windowMs`, in percent — null until enough history has
+// been recorded (honest: no fabricated lookbacks before the recorder started).
+export function shortChangePct(sym: string, windowMs: number): number | null {
+  const r = ring[sym];
+  if (!r || r.length < 2) return null;
+  const cutoff = Date.now() - windowMs;
+  const past = r.find((x) => x.t >= cutoff);
+  if (!past || past.t > Date.now() - windowMs * 0.5) return null; // need ≥ half the window
+  const now = r[r.length - 1].px;
+  return ((now - past.px) / past.px) * 100;
+}
+
+export function startRecorder() {
+  setInterval(() => { recordPrices(); updateRing(); }, TICK_MS).unref();
+  setInterval(recordFunding, 60 * 60 * 1000).unref();
+  setInterval(rotate, 6 * 60 * 60 * 1000).unref();
+  recordFunding();
+  rotate();
+  console.log(`[recorder] capturing ${Object.keys(serverPrices).length} symbols every ${TICK_MS / 1000}s + hourly funding → data/market/ (${KEEP_DAYS}d retention)`);
+}

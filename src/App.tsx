@@ -13,7 +13,6 @@ import PredictionMarkets from './components/PredictionMarkets';
 import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
-import CompetitionBanner from './components/CompetitionBanner';
 import WalletCenter from './components/WalletCenter';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
@@ -736,13 +735,6 @@ export default function App() {
         {/* Main Body */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 relative z-10">
           <div className="max-w-7xl mx-auto space-y-8">
-            {currentUser && (
-              <CompetitionBanner
-                walletAddress={currentUser.walletAddress}
-                onConnect={() => setShowWalletModal(true)}
-              />
-            )}
-
             {/* Verification Alert when switching modes */}
             {paperLiveMode === 'live' && (
               <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">

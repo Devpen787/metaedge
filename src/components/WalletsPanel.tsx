@@ -31,14 +31,46 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
 
+  // Progressive load: wallet LIST first (fast — renders immediately), then each
+  // wallet's balance one at a time, then perps. On a slow box the panel fills
+  // in live instead of looking dead for minutes.
   async function load() {
     try {
       setLoading(true); setError('');
-      const res = await apiFetch('/api/mm/wallets');
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || d.error || 'Could not load your wallets.');
-      setData(d);
-      onData?.(d);
+      const listRes = await apiFetch('/api/mm/wallets/list');
+      const list = await listRes.json();
+      if (!listRes.ok) throw new Error(list.message || list.error || 'Could not load your wallets.');
+
+      let snapshot: WalletsData = {
+        activeAddress: list.activeAddress,
+        canonicalAddress: list.canonicalAddress,
+        perps: { venue: 'hyperliquid', totalBalance: 0, spendable: 0 },
+        wallets: (list.wallets || []).map((w: any) => ({ address: w.address, name: w.name, totalUsd: -1, chains: [] })) // -1 = still loading
+      };
+      setData(snapshot);
+
+      for (const w of list.wallets || []) {
+        try {
+          const bRes = await apiFetch(`/api/mm/wallets/balance?address=${w.address}`);
+          const b = await bRes.json();
+          if (bRes.ok) {
+            snapshot = { ...snapshot, wallets: snapshot.wallets.map((x) => eq(x.address, w.address) ? { ...x, totalUsd: b.totalUsd, chains: b.chains } : x) };
+            setData(snapshot);
+          }
+        } catch { /* leave this wallet marked loading */ }
+      }
+
+      try {
+        const pRes = await apiFetch('/api/mm/perps/balance');
+        const p = await pRes.json();
+        const bal = p?.balance?.data || p?.balance || {};
+        snapshot = { ...snapshot, perps: { venue: 'hyperliquid', totalBalance: Number(bal.totalBalance || 0), spendable: Number(bal.spendableBalance || 0) } };
+        setData(snapshot);
+      } catch { /* perps stays 0 */ }
+
+      snapshot = { ...snapshot, wallets: snapshot.wallets.map((x) => ({ ...x, totalUsd: x.totalUsd < 0 ? 0 : x.totalUsd })) };
+      setData(snapshot);
+      onData?.(snapshot);
     } catch (e: any) {
       setError(e.message || 'Could not load your wallets.');
     } finally {
@@ -95,7 +127,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
   const funded = (data?.wallets || []).filter((w) => w.totalUsd > 0);
   const activeEmptyButFunded = data && active && active.totalUsd === 0 && funded.length > 0;
   const canonicalNotActive = data?.canonicalAddress && !eq(data.canonicalAddress, data.activeAddress);
-  const spotTotal = (data?.wallets || []).reduce((s, w) => s + w.totalUsd, 0);
+  const spotTotal = (data?.wallets || []).reduce((s, w) => s + Math.max(0, w.totalUsd), 0);
   const grandTotal = spotTotal + (data?.perps.totalBalance || 0);
 
   return (
@@ -159,7 +191,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
                     <div className="text-[11px] text-slate-500 font-mono break-all">{w.address}</div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="text-sm font-bold text-white font-mono">${w.totalUsd.toFixed(2)}</div>
+                    <div className="text-sm font-bold text-white font-mono">{w.totalUsd < 0 ? '…' : `$${w.totalUsd.toFixed(2)}`}</div>
                   </div>
                 </div>
 
@@ -173,7 +205,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
                     )))}
                   </div>
                 )}
-                {w.chains.length === 0 && <div className="mt-1 text-[11px] text-slate-600">empty</div>}
+                {w.chains.length === 0 && <div className="mt-1 text-[11px] text-slate-600">{w.totalUsd < 0 ? 'reading balance…' : 'empty'}</div>}
 
                 <div className="mt-2 flex gap-2">
                   {!isActive && (

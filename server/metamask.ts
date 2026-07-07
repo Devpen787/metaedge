@@ -664,7 +664,9 @@ async function computeWallets(userId: string) {
     }
     if (activeAddress) await runMmAsFresh(userId, ['wallet', 'select', '--address', activeAddress, '--json']);
 
-    const pd = (await runMmAsFresh(userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json'])).data?.data || {};
+    // 30s: the default 12s intermittently times out on the small VM, which
+    // silently hid Devin's $5 perps balance from the panel.
+    const pd = (await runMmAsFresh(userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json'], 30_000)).data?.data || {};
     const perps = { venue: 'hyperliquid', totalBalance: Number(pd.totalBalance || 0), spendable: Number(pd.spendableBalance || 0) };
 
     const db = readDatabase();
@@ -673,6 +675,47 @@ async function computeWallets(userId: string) {
     return { activeAddress, canonicalAddress, perps, wallets: enriched };
   });
 }
+
+// Progressive loading (the full enumeration takes minutes on a small box):
+// the panel fetches the fast wallet LIST first, renders immediately, then pulls
+// each wallet's balance one at a time so the UI fills in live.
+metamaskRouter.get('/api/mm/wallets/list', requireWallet, async (req: any, res) => {
+  try {
+    const wallets = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const activeAddress = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+    const db = readDatabase();
+    const canonicalAddress = (db.users[req.userId] as any)?.canonicalWallet || null;
+    res.json({ activeAddress, canonicalAddress, wallets: wallets.map((w: any) => ({ address: w.address, name: w.name || null })) });
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not list wallets.', message: e?.message });
+  }
+});
+
+metamaskRouter.get('/api/mm/wallets/balance', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.query?.address);
+    const home = profileHome(req.userId);
+    const payload = await withWalletLock(home, async () => {
+      const active = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address;
+      await runMmAsFresh(req.userId, ['wallet', 'select', '--address', address, '--json']);
+      const bd = (await runMmAsFresh(req.userId, ['wallet', 'balance', '--json'], 30_000)).data?.data || {};
+      if (active && active.toLowerCase() !== address.toLowerCase()) {
+        await runMmAsFresh(req.userId, ['wallet', 'select', '--address', active, '--json']);
+      }
+      return {
+        address,
+        totalUsd: Number(bd.totalValue || 0),
+        chains: (bd.chains || []).map((c: any) => ({
+          name: c.name, chainId: c.chainId || c.chain || null, totalUsd: Number(c.totalValue || 0),
+          tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0), type: t.type || null }))
+        }))
+      };
+    });
+    res.json(payload);
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not read wallet balance.', message: e?.message });
+  }
+});
 
 metamaskRouter.get('/api/mm/wallets', requireWallet, async (req: any, res) => {
   const uid = req.userId;

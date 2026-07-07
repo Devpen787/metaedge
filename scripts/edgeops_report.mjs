@@ -74,6 +74,16 @@ for (const [fam, f] of famRows) {
 }
 if (!famRows.length) p(`| _no realized thesis-complete trades yet_ | | | | | | | |`);
 p();
+p(`## Post-trade reviews (Loop 5)`);
+const reviewed = realized.filter((t) => t.review);
+p(`- Realized trades reviewed: **${reviewed.length}/${realized.length}**`);
+const decisions = {};
+for (const t of reviewed) decisions[t.review.nextDecision] = (decisions[t.review.nextDecision] || 0) + 1;
+for (const [d, n] of Object.entries(decisions)) p(`- ${d}: ${n}`);
+const drivers = {};
+for (const t of reviewed) drivers[t.review.outcomeDriver] = (drivers[t.review.outcomeDriver] || 0) + 1;
+if (Object.keys(drivers).length) p(`- outcome drivers: ${Object.entries(drivers).map(([k, v]) => `${k}(${v})`).join(', ')}`);
+p();
 p(`## Regime distribution (thesis-complete trades)`);
 for (const [r, n] of Object.entries(regimes)) p(`- ${r}: ${n}`);
 if (!Object.keys(regimes).length) p(`- none yet`);

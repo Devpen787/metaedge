@@ -33,6 +33,14 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // EdgeOps trade notes: optional thesis attached to the fill. When setup,
+  // trigger AND invalidation are given, the trade counts as edgeops_complete
+  // and feeds the weekly edge report; otherwise it's tagged thesis_missing.
+  const [showThesis, setShowThesis] = useState(false);
+  const [thesisSetup, setThesisSetup] = useState('');
+  const [thesisTrigger, setThesisTrigger] = useState('');
+  const [thesisInvalidation, setThesisInvalidation] = useState('');
   const submitBtnRef = useRef<HTMLButtonElement>(null);
 
   // Live-market sanity check via the MetaMask Agent Wallet: one line of real
@@ -162,6 +170,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
     setSubmitting(true);
     try {
+      const hasNotes = thesisSetup.trim() || thesisTrigger.trim() || thesisInvalidation.trim();
       await onPlaceSimulatedTrade({
         agentId: selectedAgentId,
         assetSymbol,
@@ -169,7 +178,8 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         size: positionSize,
         price: currentPrice,
         leverage: tradeType === 'perp' ? leverage : 1,
-        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        ...(hasNotes ? { thesis: { signalFamily: 'manual', setup: thesisSetup.trim(), trigger: thesisTrigger.trim(), invalidation: thesisInvalidation.trim() } } : {})
       });
       setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
       // Every fill earns a tactile spark from the button — long/buy runs
@@ -415,6 +425,29 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
               </div>
             </div>
           )}
+
+          {/* EdgeOps trade notes: why this trade — feeds the weekly edge report. */}
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowThesis(!showThesis)}
+              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-mono text-slate-400 hover:text-slate-200"
+            >
+              <span>📝 Trade notes {thesisSetup && thesisTrigger && thesisInvalidation ? '· thesis complete ✓' : '(optional — why this trade?)'}</span>
+              <span>{showThesis ? '−' : '+'}</span>
+            </button>
+            {showThesis && (
+              <div className="px-3 pb-3 space-y-2">
+                <input value={thesisSetup} onChange={(e) => setThesisSetup(e.target.value)} placeholder="Setup — what condition exists (e.g. ETH near 24h high)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <input value={thesisTrigger} onChange={(e) => setThesisTrigger(e.target.value)} placeholder="Trigger — what fired now (e.g. breakout + rising volume)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <input value={thesisInvalidation} onChange={(e) => setThesisInvalidation(e.target.value)} placeholder="Invalidation — what proves you wrong (e.g. closes back below)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <p className="text-[10px] text-slate-600">All three filled = counts in your edge report. Notes ride with the trade — special events, reasons, anything worth remembering.</p>
+              </div>
+            )}
+          </div>
 
           {/* Submit button */}
           <button

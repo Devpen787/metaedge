@@ -251,6 +251,32 @@ tradesRouter.post('/api/trades', (req: any, res) => {
 });
 
 // List trades
+// EdgeOps Loop 5: post-trade review. Separates signal failure from execution
+// failure / regime / behavior. Owner-only, closed (realized) trades only.
+tradesRouter.post('/api/trades/:id/review', (req: any, res) => {
+  const db = readDatabase();
+  const trade = db.trades.find((t: any) => t.id === req.params.id);
+  if (!trade || trade.userId !== req.userId) { res.status(404).json({ error: 'Trade not found.' }); return; }
+  if (typeof trade.pnl !== 'number') { res.status(400).json({ error: 'Only closed trades (realized P&L) can be reviewed.' }); return; }
+  const b = req.body || {};
+  const DRIVERS = ['signal', 'execution', 'regime', 'liquidity', 'behavior'];
+  const DECISIONS = ['keep_testing', 'modify', 'kill', 'promote_paper_only'];
+  if (!DRIVERS.includes(b.outcomeDriver) || !DECISIONS.includes(b.nextDecision)) {
+    res.status(400).json({ error: `outcomeDriver must be one of ${DRIVERS.join('/')}; nextDecision one of ${DECISIONS.join('/')}.` });
+    return;
+  }
+  (trade as any).review = {
+    thesisFollowed: !!b.thesisFollowed,
+    invalidationHit: !!b.invalidationHit,
+    outcomeDriver: b.outcomeDriver,
+    lesson: String(b.lesson || '').slice(0, 500),
+    nextDecision: b.nextDecision,
+    reviewedAt: Date.now()
+  };
+  writeDatabase(db);
+  res.json({ success: true, review: (trade as any).review });
+});
+
 tradesRouter.get('/api/trades', (req: any, res) => {
   const userId = req.userId;
   const db = readDatabase();

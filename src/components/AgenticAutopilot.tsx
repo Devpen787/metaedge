@@ -97,8 +97,15 @@ export default function AgenticAutopilot({ agents, trades, audits, onAgentAutopi
         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
           <h3 className="text-sm font-bold text-white mb-4 flex items-center gap-2"><Bot className="w-4 h-4 text-indigo-400" /> Your Agents</h3>
           {myAgents.length === 0 ? (
-            <div className="text-center py-10 text-sm text-slate-500">
-              No agents yet. Deploy one in <b className="text-slate-300">Trading Agents</b> or the <b className="text-slate-300">Agent Arena</b>, then engage autopilot here.
+            <div className="text-center py-10 space-y-4">
+              <p className="text-sm text-slate-500">Autopilot drives agents you've built — and you don't have any yet.</p>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'agents' }))}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5 rounded-xl inline-flex items-center gap-2"
+              >
+                <Bot className="w-4 h-4" /> Create your first agent
+              </button>
+              <p className="text-xs text-slate-600">Takes ~20 seconds in Trading Agents, then engage it here.</p>
             </div>
           ) : (
             <div className="space-y-3">

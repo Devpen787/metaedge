@@ -121,6 +121,18 @@ export interface PaperTrade {
   timestamp: number;
   thesis?: TradeThesis;                      // EdgeOps: why this trade
   edgeops?: 'complete' | 'thesis_missing';   // EdgeOps: counts toward reports only when complete
+  review?: TradeReview;                      // EdgeOps Loop 5: post-trade review (closed trades)
+}
+
+// EdgeOps post-trade review — separates signal failure from execution failure,
+// regime shift, or plan violation. Only closed trades can be reviewed.
+export interface TradeReview {
+  thesisFollowed: boolean;
+  invalidationHit: boolean;
+  outcomeDriver: 'signal' | 'execution' | 'regime' | 'liquidity' | 'behavior';
+  lesson: string;
+  nextDecision: 'keep_testing' | 'modify' | 'kill' | 'promote_paper_only';
+  reviewedAt: number;
 }
 
 export interface VaultClub {

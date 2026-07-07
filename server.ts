@@ -120,6 +120,17 @@ async function startServer() {
   const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
+
+    // EdgeOps report automation: regenerate the edge report daily so fresh
+    // evidence is always sitting in data/edgeops/ — no cron, no SSH needed.
+    const runReport = () => {
+      import('node:child_process').then(({ execFile }) =>
+        execFile('node', ['scripts/edgeops_report.mjs'], { timeout: 60_000 }, (err) =>
+          console.log(err ? `[edgeops] report failed: ${err.message}` : '[edgeops] daily edge report written'))
+      ).catch((e) => console.warn('[edgeops] report scheduling failed:', e?.message));
+    };
+    setTimeout(runReport, 60_000);                       // once shortly after boot
+    setInterval(runReport, 24 * 60 * 60 * 1000).unref(); // then daily
   });
 
   // Graceful shutdown: stop accepting connections and exit cleanly on deploy

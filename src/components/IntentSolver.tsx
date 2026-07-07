@@ -83,7 +83,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'executed' } : step));
     }
     if (tradeAction) {
-      const r = await executeTrade(tradeAction);
+      const r = await executeTrade(tradeAction, 'intent', prompt);
       setExecResult(r.message);
     } else {
       setExecResult('Plan simulated. This intent doesn\'t name a paper-tradeable asset (BTC, ETH, SOL…), so nothing was placed — try e.g. "buy $500 of ETH".');

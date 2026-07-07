@@ -54,7 +54,9 @@ tradesRouter.post('/api/copilot/execute', (req: any, res) => {
     { action: 'COPILOT_TRADE', detailsPrefix: 'Copilot executed' }
   );
   if (!result.ok) { res.status(result.status || 400).json({ error: result.error }); return; }
-  res.json({ success: true, trade: result.trade, balance: result.balance, symbol: sym, price });
+  // Report the LEDGER fill price (cost-adjusted), not pre-cost spot — the UI
+  // must never look better than the books.
+  res.json({ success: true, trade: result.trade, balance: result.balance, symbol: sym, price: result.trade?.price ?? price });
 });
 
 // Real cost-basis position from the user's prior fills for this asset+agent.
@@ -140,7 +142,10 @@ export function placePaperTrade(
   // paper fills systematically flatter expectancy and train false confidence,
   // so paper fills execute WORSE than spot by PAPER_COST_BPS per side (buys
   // higher, sells lower) — deliberately conservative vs. the real venue.
-  const PAPER_COST_BPS = Number(process.env.PAPER_COST_BPS) || 10;
+  // Clamped [0,100]: 0 is a legitimate "no cost" setting, and a NEGATIVE value
+  // (fills better than spot) must be impossible.
+  const rawBps = Number(process.env.PAPER_COST_BPS);
+  const PAPER_COST_BPS = Number.isFinite(rawBps) ? Math.min(100, Math.max(0, rawBps)) : 10;
   const buySide = side === 'buy' || side === 'long';
   const serverPx = getSpotPrice(assetSymbol);
   const executionPrice = serverPx != null

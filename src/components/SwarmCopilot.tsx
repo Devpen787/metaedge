@@ -94,7 +94,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
   const handleExecuteTrade = async (msgId: string, action: TradeAction) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'executing' } : m));
     setGlobalAgentProcessing(true, 'Executing paper trade');
-    const result = await executeTrade(action);
+    const result = await executeTrade(action, 'copilot', messages.filter(m => m.role === 'user').slice(-1)[0]?.content);
     setMessages(prev => prev.map(m => m.id === msgId
       ? { ...m, status: result.ok ? 'executed' : 'done', fillResult: result.message }
       : m));

@@ -76,27 +76,26 @@ try {
   const session = await request('/api/session');
   assert(session.response.ok && session.cookie, 'Session was not established.');
 
-  const tokenLogin = await request('/api/mm/login', {
+  // Current connect flow (the old /api/mm/login* routes are gone): a bogus
+  // token must be rejected (400 malformed / 401 login failed) and NEVER echoed.
+  const tokenLogin = await request('/api/mm/connect/token', {
     cookie: session.cookie,
     method: 'POST',
     body: { token: 'secret_that_must_not_be_accepted' }
   });
-  assert(tokenLogin.response.status === 410, 'Deprecated token login endpoint accepted a token.');
-  assert(!JSON.stringify(tokenLogin.body).includes('secret_that_must_not_be_accepted'), 'Deprecated token login echoed a secret.');
+  assert([400, 401].includes(tokenLogin.response.status), 'connect/token accepted a bogus token.');
+  assert(!JSON.stringify(tokenLogin.body).includes('secret_that_must_not_be_accepted'), 'connect/token echoed a secret.');
 
-  const browserLogin = await request('/api/mm/login-browser', {
-    cookie: session.cookie,
-    method: 'POST'
-  });
-  assert([200, 409, 503].includes(browserLogin.response.status), 'Browser login guidance returned an unexpected status.');
-  assert(!JSON.stringify(browserLogin.body).toLowerCase().includes('token'), 'Browser login guidance should not ask for tokens.');
+  // A fresh session must report not-connected as JSON.
+  const connStatus = await request('/api/mm/connect/status', { cookie: session.cookie });
+  assert(connStatus.response.ok && connStatus.body && connStatus.body.connected === false, 'connect/status should report connected:false for a fresh session.');
 
   const readiness = await request('/api/mm/readiness', { cookie: session.cookie });
   assert(readiness.response.ok, 'Readiness endpoint failed.');
   assert(readiness.body.loginCommand === 'mm login browser', 'Readiness should point to browser login.');
   assert(readiness.body.liveModeGlobalLock === true, 'Live execution should remain locked by default.');
   assert(Array.isArray(readiness.body.checks), 'Readiness checks missing.');
-  for (const id of ['cli_v3', 'browser_login', 'trading_mode', 'policy', 'outflow_24h', 'two_factor', 'live_lock']) {
+  for (const id of ['cli_v3', 'wallet_connected', 'trading_mode', 'policy', 'outflow_24h', 'two_factor', 'live_lock']) {
     assert(readiness.body.checks.some((check) => check.id === id), `Missing readiness check: ${id}`);
   }
   assert(!JSON.stringify(readiness.body).toLowerCase().includes('yaml:'), 'Readiness leaked raw policy internals.');
@@ -121,7 +120,7 @@ try {
     loginCommand: readiness.body.loginCommand,
     checkCount: readiness.body.checks.length,
     tokenLoginStatus: tokenLogin.response.status,
-    browserLoginStatus: browserLogin.response.status,
+    connectStatusOk: connStatus.response.ok,
     lockedTransferStatus: lockedTransfer.response.status,
     badSwapStatus: badSwap.response.status
   }, null, 2));

@@ -60,21 +60,6 @@ p(`- With complete thesis (edgeops_complete): **${complete.length}**`);
 p(`- Missing thesis (excluded from edge stats): **${missing.length}**`);
 p(`- Realized (closed) thesis-complete trades: **${realized.length}**`);
 p();
-p(`## Expectancy by signal family (realized, thesis-complete only)`);
-p();
-p(`| Family | n | Win rate | Avg win | Avg loss | Expectancy/trade | Total P&L | Sample |`);
-p(`|---|---|---|---|---|---|---|---|`);
-const famRows = Object.entries(families).sort((a, b) => b[1].n - a[1].n);
-for (const [fam, f] of famRows) {
-  const wr = f.n ? (f.wins / f.n * 100).toFixed(0) + '%' : '—';
-  const aw = f.wins ? '$' + (f.winSum / f.wins).toFixed(2) : '—';
-  const al = f.losses ? '$' + (f.lossSum / f.losses).toFixed(2) : '—';
-  const ex = '$' + (f.pnl / f.n).toFixed(2);
-  p(`| ${fam} | ${f.n} | ${wr} | ${aw} | ${al} | ${ex} | $${f.pnl.toFixed(2)} | ${f.n < WEAK_N ? '⚠ weak (<30)' : 'ok'} |`);
-}
-if (!famRows.length) p(`| _no realized thesis-complete trades yet_ | | | | | | | |`);
-p();
-p(`## Declined opportunities (restraint)`);
 const declined = {}; // "source|family|reason" -> count, within window
 try {
   const daily = JSON.parse(fs.readFileSync('data/edgeops/declined-daily.json', 'utf8'));
@@ -90,6 +75,23 @@ try {
     if (new Date(e.t).getTime() >= since) { const k = `${e.source}|${e.family}|${e.reason}`; declined[k] = (declined[k] || 0) + 1; }
   }
 } catch { /* no local decline log */ }
+
+p(`## Expectancy by signal family (realized, thesis-complete only)`);
+p();
+p(`| Family | n | Win rate | Avg win | Avg loss | Expectancy/trade | Total P&L | Declined | Sample |`);
+p(`|---|---|---|---|---|---|---|---|---|`);
+const famRows = Object.entries(families).sort((a, b) => b[1].n - a[1].n);
+for (const [fam, f] of famRows) {
+  const wr = f.n ? (f.wins / f.n * 100).toFixed(0) + '%' : '—';
+  const aw = f.wins ? '$' + (f.winSum / f.wins).toFixed(2) : '—';
+  const al = f.losses ? '$' + (f.lossSum / f.losses).toFixed(2) : '—';
+  const ex = '$' + (f.pnl / f.n).toFixed(2);
+  const famDeclined = Object.entries(declined).filter(([k]) => k.split('|')[1] === fam).reduce((s2, [, n2]) => s2 + n2, 0);
+  p(`| ${fam} | ${f.n} | ${wr} | ${aw} | ${al} | ${ex} | $${f.pnl.toFixed(2)} | ${famDeclined} | ${f.n < WEAK_N ? '⚠ weak (<30)' : 'ok'} |`);
+}
+if (!famRows.length) p(`| _no realized thesis-complete trades yet_ | | | | | | | |`);
+p();
+p(`## Declined opportunities (restraint)`);
 const declinedTotal = Object.values(declined).reduce((s, n) => s + n, 0);
 if (declinedTotal) {
   p(`| Source | Family | Reason | Count |`);
@@ -120,6 +122,9 @@ p(`## Cards with live data`);
 const cardsSeen = new Set(complete.map((t) => t.thesis?.cardId).filter(Boolean));
 for (const c of cardsSeen) p(`- ${c}`);
 if (!cardsSeen.size) p(`- none yet — no card has produced a tagged trade`);
+p();
+const activeFamilies = new Set([...Object.keys(families), ...Object.keys(declined).map((k) => k.split('|')[1])]);
+if (activeFamilies.size > 5) p(`⚠ **FAMILY CONCENTRATION: ${activeFamilies.size} active families exceeds the cap of 5** — stop adding variants (false-discovery risk compounds). Kill or consolidate before adding more.`);
 p();
 p(`## Honest limits`);
 p(`- Paper evidence only. Nothing here is a profitability or live-readiness claim.`);

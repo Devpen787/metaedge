@@ -26,17 +26,34 @@ export function parseTrade(text: string): TradeAction | null {
 }
 
 // Execute a parsed trade as a real paper fill (scores in the Arena).
-export async function executeTrade(action: TradeAction): Promise<{ ok: boolean; message: string }> {
+// `source`/`rawText` build an EdgeOps thesis carrying the user's own words.
+// Honesty note: we do NOT fabricate an invalidation — user-directed trades
+// without a stated exit condition are correctly tagged thesis_missing and
+// excluded from edge stats. Context is preserved; confidence is not invented.
+export async function executeTrade(
+  action: TradeAction,
+  source: 'copilot' | 'intent' = 'copilot',
+  rawText?: string
+): Promise<{ ok: boolean; message: string }> {
   try {
     const res = await fetch('/api/copilot/execute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(action),
+      body: JSON.stringify({
+        ...action,
+        thesis: {
+          signalFamily: source,
+          setup: rawText ? `user request: ${rawText.slice(0, 300)}` : `user-directed ${source} trade`,
+          trigger: `parsed intent: ${action.side} ${action.usd ? `$${action.usd}` : action.size} ${action.assetSymbol}`,
+        },
+      }),
     });
     const data = await res.json();
     if (!res.ok) return { ok: false, message: data.error || 'Trade failed.' };
+    // Display the LEDGER fill price (cost-adjusted), never pre-cost spot.
+    const fillPx = Number(data.trade?.price ?? data.price);
     const pnl = typeof data.trade?.pnl === 'number' ? ` · realized ${data.trade.pnl >= 0 ? '+' : ''}$${data.trade.pnl.toFixed(2)}` : '';
-    return { ok: true, message: `Filled: ${action.side.toUpperCase()} ${data.trade.size} ${data.symbol} @ $${Number(data.price).toLocaleString()}${pnl}. Counts toward your Agent Arena standing.` };
+    return { ok: true, message: `Filled: ${action.side.toUpperCase()} ${data.trade.size} ${data.symbol} @ $${fillPx.toLocaleString()}${pnl} (incl. paper costs). Counts toward your Agent Arena standing.` };
   } catch (err: any) {
     return { ok: false, message: err.message || 'Network error.' };
   }

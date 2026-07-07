@@ -28,7 +28,11 @@ async function req(pathname, { method = 'GET', cookie, body, timeoutMs = 8_000 }
       },
       body: body ? JSON.stringify(body) : undefined,
     });
-    return { status: res.status, cookie: parseCookie(res.headers.get('set-cookie')) };
+    // Content-type matters: an HTML response on an /api path is the SPA
+    // catch-all answering for a route that doesn't exist — a false green if we
+    // only looked at the status code.
+    const isJson = (res.headers.get('content-type') || '').includes('application/json');
+    return { status: res.status, isJson, cookie: parseCookie(res.headers.get('set-cookie')) };
   } catch (err) {
     return { status: err.name === 'AbortError' ? 'timeout' : 0, cookie: null };
   } finally {
@@ -56,7 +60,7 @@ const checks = [
   { tab: 'Rooms', method: 'GET', path: '/api/rooms' },
   { tab: 'Vaults', method: 'GET', path: '/api/vaults' },
   { tab: 'Evidence Map (graph)', method: 'GET', path: '/api/graph' },
-  { tab: 'Profile', method: 'GET', path: '/api/profile' },
+  { tab: 'Profile (session)', method: 'GET', path: '/api/session' },
   { tab: 'Quant Engine', method: 'POST', path: '/api/quant/backtest', body: { symbol: 'BTC', indicators: { sma: true } } },
   // These run real `npx mm` enrichment (slow), so verify the route is registered +
   // validating with an empty body (fast 4xx) rather than triggering the CLI.
@@ -90,14 +94,15 @@ try {
 
   const results = [];
   for (const c of checks) {
-    let status = 0;
+    let status = 0, isJson = false;
     try {
-      ({ status } = await req(c.path, { method: c.method, cookie, body: c.body }));
+      ({ status, isJson } = await req(c.path, { method: c.method, cookie, body: c.body }));
     } catch {
       status = 0;
     }
     let verdict;
     if (status === 'timeout') verdict = 'SLOW (>8s)';
+    else if (typeof status === 'number' && status > 0 && !isJson) verdict = 'FALLTHROUGH (HTML — route missing)';
     else if (c.registered) verdict = status === 404 ? 'MISSING (404)' : (status === 0 || status >= 500 ? 'BROKEN' : 'OK (registered)');
     else if (c.wallet) {
       // Wallet-capability endpoints return 503 (graceful) when the mm capability is
@@ -121,6 +126,8 @@ try {
     console.log(`  ${mark} ${r.tab.padEnd(28)} ${String(r.status).padStart(3)}  ${r.path}${r.verdict === 'OK' ? '' : `  (${r.verdict})`}`);
   }
   const ok = results.filter((r) => r.verdict === 'OK' || r.verdict === 'OK (registered)' || r.verdict === 'OK (wallet gate)').length;
+  const fallthroughs = results.filter((r) => String(r.verdict).startsWith('FALLTHROUGH')).length;
+  if (fallthroughs) process.exitCode = 1;
   const broken = results.filter((r) => r.verdict === 'BROKEN');
   console.log(`\n${ok}/${results.length} OK · ${broken.length} broken · ${results.length - ok - broken.length} needs attention\n`);
   if (broken.length) {

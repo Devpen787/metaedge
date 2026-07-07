@@ -13,7 +13,11 @@ node scripts/capability_matrix.mjs --strict   # exit 1 if a safe capability lose
 
 ## Snapshot
 
-**Present: 18/18 · Surfaced in UI: 17/18 · Removed by design: 1 · Unreachable gaps: 0**
+**Present: 20/20 · Surfaced in UI: 11/20 · Planned homes: 8 · Unreachable: 1** _(refreshed 2026-07-07 — run `node scripts/capability_matrix.mjs --strict` for the live truth; this snapshot goes stale, the script doesn't)_
+
+> Known unreachable: `/api/mm/autopilot/execute` — the legacy fake-autopilot planner route, superseded by the real server-side autotrader. Kept only until its removal is deliberately decided; not linked from any UI.
+
+> Note: the "Token login returns 410" row below is stale — token connect now lives at `/api/mm/connect/token` (used once, never stored). The connect flow rows predate the two-wallet redesign.
 
 | Capability | Kind | Status | UI entry |
 |---|---|---|---|

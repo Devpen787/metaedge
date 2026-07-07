@@ -30,4 +30,9 @@ if (longTrig || shortTrig) {
   process.exit(10);
 } else {
   console.log(`\n  NO-GO — conditions not met. Do not trade. Re-run later.\n`);
+  // Declined-opportunity evidence: restraint counts, same as executed trades do.
+  const fs = await import('node:fs');
+  fs.mkdirSync('data/edgeops', { recursive: true });
+  fs.appendFileSync('data/edgeops/declined-local.jsonl',
+    JSON.stringify({ t: new Date().toISOString(), source: 'best_trade_check', family: 'momentum', reason: 'TRIGGER_NOT_MET' }) + '\n');
 }

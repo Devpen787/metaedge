@@ -74,6 +74,34 @@ for (const [fam, f] of famRows) {
 }
 if (!famRows.length) p(`| _no realized thesis-complete trades yet_ | | | | | | | |`);
 p();
+p(`## Declined opportunities (restraint)`);
+const declined = {}; // "source|family|reason" -> count, within window
+try {
+  const daily = JSON.parse(fs.readFileSync('data/edgeops/declined-daily.json', 'utf8'));
+  const cutoff = new Date(since).toISOString().slice(0, 10);
+  for (const [k, n] of Object.entries(daily)) {
+    const [date, ...rest] = k.split('|');
+    if (date >= cutoff) declined[rest.join('|')] = (declined[rest.join('|')] || 0) + n;
+  }
+} catch { /* no server-side counters yet */ }
+try {
+  for (const line of fs.readFileSync('data/edgeops/declined-local.jsonl', 'utf8').trim().split('\n')) {
+    const e = JSON.parse(line);
+    if (new Date(e.t).getTime() >= since) { const k = `${e.source}|${e.family}|${e.reason}`; declined[k] = (declined[k] || 0) + 1; }
+  }
+} catch { /* no local decline log */ }
+const declinedTotal = Object.values(declined).reduce((s, n) => s + n, 0);
+if (declinedTotal) {
+  p(`| Source | Family | Reason | Count |`);
+  p(`|---|---|---|---|`);
+  for (const [k, n] of Object.entries(declined).sort((a, b) => b[1] - a[1])) { const [s2, f2, r2] = k.split('|'); p(`| ${s2} | ${f2} | ${r2} | ${n} |`); }
+  p();
+  p(`- **Restraint ratio:** ${declinedTotal} declined : ${complete.length} executed (thesis-complete)`);
+} else {
+  p(`- No declined-opportunity counters in window yet.`);
+}
+p(`- Declines are evidence of process discipline — the system refusing when conditions aren't met. They are NOT evidence of edge.`);
+p();
 p(`## Post-trade reviews (Loop 5)`);
 const reviewed = realized.filter((t) => t.review);
 p(`- Realized trades reviewed: **${reviewed.length}/${realized.length}**`);

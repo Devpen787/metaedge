@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
+import { recordDeclined } from './declined.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
@@ -783,6 +784,7 @@ async function assertCanonicalActive(userId: string): Promise<{ ok: boolean; err
   if (!canonical || !LIVE_EXECUTION_ENABLED) return { ok: true };
   const active = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address;
   if (active && active.toLowerCase() !== String(canonical).toLowerCase()) {
+    recordDeclined('guard', 'live_action', 'CANONICAL_MISMATCH');
     return { ok: false, error: `Active wallet ${active.slice(0, 6)}…${active.slice(-4)} is not your canonical wallet ${String(canonical).slice(0, 6)}…${String(canonical).slice(-4)}. Switch wallets before a live action.` };
   }
   return { ok: true };

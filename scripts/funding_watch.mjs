@@ -34,4 +34,11 @@ for (const sym of ['ETH', 'BTC', 'SOL']) {
 console.log(fired
   ? `\n  Tripwire FIRED — verify it's sustained (re-check in 1h) before proposing the delta-neutral harvest to the operator.\n`
   : `\n  No harvest regime. Do nothing. Re-run anytime (free, read-only).\n`);
+if (!fired) {
+  // Declined-opportunity evidence: restraint counts, same as executed trades do.
+  const fs = await import('node:fs');
+  fs.mkdirSync('data/edgeops', { recursive: true });
+  fs.appendFileSync('data/edgeops/declined-local.jsonl',
+    JSON.stringify({ t: new Date().toISOString(), source: 'funding_watch', family: 'funding_harvest', reason: 'TRIGGER_NOT_MET' }) + '\n');
+}
 process.exit(fired ? 10 : 0);

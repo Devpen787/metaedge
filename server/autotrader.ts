@@ -1,6 +1,7 @@
 import { readDatabase, writeDatabase, generateId } from './storage.js';
 import { placePaperTrade, agentPosition } from './trades.js';
 import { getSpotPrice, serverPrices, arenaSymbol } from './prices.js';
+import { recordDeclined } from './declined.js';
 
 // The REAL Autopilot: agents with autopilot enabled trade BY THEMSELVES on a
 // server-side tick, using their actual strategy against live prices, through
@@ -80,15 +81,15 @@ async function tick() {
 
       const symbol = arenaSymbol(agent.assetSymbol);
       const price = getSpotPrice(symbol);
-      if (!price) continue;
+      if (!price) { recordDeclined('autotrader', agent.strategyType, 'NO_PRICE'); continue; }
 
       const change24h = serverPrices[symbol]?.change24h ?? 0;
       const pos = agentPosition(agent.ownerId, agent.id, symbol);
       const holding = pos.size > 0.000001;
 
       const decision = decide(agent.strategyType, change24h, holding, tickCount % 2);
-      if (!decision) continue;
-      if (decision === 'buy' && owner.paperBalance < MIN_BALANCE_FLOOR + CLIP_NOTIONAL_USD) continue;
+      if (!decision) { recordDeclined('autotrader', agent.strategyType, 'NO_SIGNAL'); continue; }
+      if (decision === 'buy' && owner.paperBalance < MIN_BALANCE_FLOOR + CLIP_NOTIONAL_USD) { recordDeclined('autotrader', agent.strategyType, 'BALANCE_FLOOR'); continue; }
 
       const size = decision === 'sell'
         ? Number(pos.size.toFixed(6))
@@ -110,6 +111,7 @@ async function tick() {
         { action: 'AUTOPILOT_TRADE', detailsPrefix: 'Autopilot executed' }
       );
 
+      if (!result.ok) recordDeclined('autotrader', agent.strategyType, 'EXECUTION_REJECTED');
       if (result.ok) {
         // Stamp the agent so the UI can show "last auto-trade".
         const fresh = readDatabase();

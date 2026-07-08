@@ -53,6 +53,10 @@ function decideRsiMeanrev(symbol: string, price: number, holding: boolean, avgEn
 
 const TICK_MS = Number(process.env.AUTOTRADER_TICK_MS) || 90_000;
 const CLIP_NOTIONAL_USD = 250;
+// Baselines used to pyramid every tick until the paper balance ran dry (one
+// agent accumulated ~$73k of DOGE) — meaningless as benchmarks and a db-growth
+// leak. An agent's open position may not exceed this notional.
+const MAX_OPEN_NOTIONAL_USD = 2_500;
 const MIN_BALANCE_FLOOR = 100;
 const DISABLED = process.env.AUTOTRADER_DISABLED === 'true';
 
@@ -147,6 +151,7 @@ async function tick() {
         thesis = buildThesis(agent.strategyType, decision, change24h, holding);
       }
       if (decision === 'buy' && owner.paperBalance < MIN_BALANCE_FLOOR + CLIP_NOTIONAL_USD) { recordDeclined('autotrader', agent.strategyType, 'BALANCE_FLOOR'); continue; }
+      if (decision === 'buy' && pos.size * price >= MAX_OPEN_NOTIONAL_USD) { recordDeclined('autotrader', agent.strategyType, 'POSITION_CAP'); continue; }
 
       const size = decision === 'sell'
         ? Number(pos.size.toFixed(6))

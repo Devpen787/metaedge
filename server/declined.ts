@@ -21,7 +21,8 @@ export type DeclineReason =
   | 'EXECUTION_REJECTED' // placePaperTrade refused (validation/risk)
   | 'CANONICAL_MISMATCH' // live-action guard blocked a wrong-wallet action
   | 'TRIGGER_NOT_MET'    // a card's trigger check returned NO-GO
-  | 'INSUFFICIENT_HISTORY'; // strategy needs more recorded history than exists (never fake a lookback)
+  | 'INSUFFICIENT_HISTORY' // strategy needs more recorded history than exists (never fake a lookback)
+  | 'POSITION_CAP';        // open position already at max notional — no pyramiding past the cap
 
 export function recordDeclined(source: string, family: string, reason: DeclineReason) {
   try {

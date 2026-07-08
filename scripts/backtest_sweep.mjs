@@ -54,7 +54,17 @@ function computeFeatures(bars) {
   // rolling max of the PRIOR N closes (excludes current bar → causal breakout)
   const rollMax = (N) => { const out = new Array(n).fill(null); for (let i = N; i < n; i++) { let m = -Infinity; for (let j = i - N; j < i; j++) m = Math.max(m, bars[j].c); out[i] = m; } return out; };
   const sma = (N) => { const out = new Array(n).fill(null); let s2 = 0; for (let i = 0; i < n; i++) { s2 += bars[i].c; if (i >= N) s2 -= bars[i - N].c; if (i >= N - 1) out[i] = s2 / N; } return out; };
-  return { rsi, atr, volR, sma200, sma72: sma(72), sma168: sma(168), rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
+  // ATR% percentile rank over the trailing 240 bars — low rank = volatility
+  // compression (the coiled spring); causal by construction.
+  const atrPct = atr.map((a, i) => (a != null ? a / bars[i].c : null));
+  const atrRank = new Array(n).fill(null);
+  for (let i = 254; i < n; i++) {
+    if (atrPct[i] == null) continue;
+    let below = 0, cnt = 0;
+    for (let j = i - 240; j < i; j++) if (atrPct[j] != null) { cnt++; if (atrPct[j] < atrPct[i]) below++; }
+    if (cnt > 100) atrRank[i] = below / cnt;
+  }
+  return { rsi, atr, volR, sma200, sma72: sma(72), sma168: sma(168), atrRank, rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
 }
 
 // ---------- strategy templates (signal on bar i → entry at OPEN of i+1) ----------
@@ -71,6 +81,16 @@ function signalAt(family, p, bars, F, i) {
     // Carver-style trend entry: close crosses ABOVE the SMA (was below on the prior bar).
     const smaArr = p.smaN === 72 ? F.sma72 : F.sma168;
     return i > 0 && smaArr[i] != null && smaArr[i - 1] != null && bars[i - 1].c <= smaArr[i - 1] && bars[i].c > smaArr[i];
+  }
+  if (family === 'vol_squeeze') {
+    // Devin's energy principle: compression precedes expansion. Enter when
+    // volatility is in its bottom quintile AND price breaks the recent range up.
+    const rm = p.breakN === 24 ? F.rollMax24[i] : F.rollMax72[i];
+    return F.atrRank[i] != null && F.atrRank[i] <= p.rankMax && rm != null && bars[i].c > rm;
+  }
+  if (family === 'volume_surge') {
+    // Participation spike + upward bar: someone showed up. Follow briefly.
+    return F.volR[i] >= p.minVolR && bars[i].c > bars[i - 1].c && bars[i].c > (F.sma200[i] ?? 0);
   }
   if (family === 'meanrev_stab') {
     // Stabilization-wait dip buy: big drop over 24 bars, but ONLY enter once a
@@ -91,6 +111,10 @@ function runStrategy(family, p, bars, F, from, to) {
     let stopPx, targetPx;
     if (family === 'trend_atr') {
       stopPx = entry - p.atrMult * (F.atr[i] ?? entry * 0.02); targetPx = Infinity; // trailing stop only
+    } else if (family === 'vol_squeeze') {
+      let lo = Infinity; for (let k = Math.max(0, i - 24); k <= i; k++) lo = Math.min(lo, bars[k].l);
+      stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);
+      if (stopPx >= entry) { i++; continue; }
     } else if (family === 'meanrev_stab') {
       let lo = Infinity; for (let k = Math.max(0, i - 6); k <= i; k++) lo = Math.min(lo, bars[k].l);
       stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);                 // structural stop, 2R target
@@ -145,6 +169,10 @@ for (const smaN of [72, 168]) for (const atrMult of [2, 3])
   GRID.push({ family: 'trend_atr', p: { smaN, atrMult, maxHold: 500 } });   // Carver: trend + ATR trail
 for (const dropPct of [0.05, 0.08])
   GRID.push({ family: 'meanrev_stab', p: { dropPct, maxHold: 72 } });       // scalarfield: wait for stabilization
+for (const rankMax of [0.15, 0.25]) for (const breakN of [24, 72])
+  GRID.push({ family: 'vol_squeeze', p: { rankMax, breakN, maxHold: 72 } }); // Devin: compression → expansion
+for (const minVolR of [2.5, 3.5]) for (const stop of [0.015, 0.03])
+  GRID.push({ family: 'volume_surge', p: { minVolR, stop, maxHold: 48 } });  // Devin: participation spike
 
 // ---------- walk-forward per symbol ----------
 fs.mkdirSync('data/edgeops', { recursive: true });
@@ -168,7 +196,7 @@ for (const sym of SYMBOLS) {
   if (bars.length < TRAIN + TEST + 200) { console.log(`  ${sym}: too little history (${bars.length}), skipping`); continue; }
   const F = computeFeatures(bars);
 
-  for (const family of ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab']) {
+  for (const family of ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab', 'vol_squeeze', 'volume_surge']) {
     const oosTrades = [];
     const chosen = [];
     let posFolds = 0, folds = 0;

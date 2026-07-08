@@ -42,6 +42,10 @@ Agentic era (now): raw signals arbitraged; what remains for small operators is p
 12. **Size by volatility target, capped fractional Kelly; never fixed notional across assets.** TODO: autotrader uses fixed $250 clips. → volatility-scaled sizing as a card once ATR features exist (law 4).
 13. **Diversification across uncorrelated families beats optimizing one.** PARTIAL: 4 families run; correlation between their returns not yet measured. → correlation block in edge report when n allows.
 
+### From Devin (2026-07-08) — the energy principle
+15. **No energy, no trade: opportunity = movement (volatility) × participation (volume) − cost.** A dead market has nothing to give regardless of strategy. PARTIAL: vol_squeeze + volume_surge families tested (rejected as standalone entries — energy is necessary, not sufficient: everyone sees the same spike, and the crowding cost eats the follow-through). Volume_surge was the least-bad family tested (positive on XRP/DOT/AVAX). → next use: energy as a UNIVERSE SELECTOR/overlay (rank assets by ATR%×volume, apply surviving entries only there), not as an entry itself.
+16. **Options flow & expirations move the spot/perp markets we trade** (OI, put/call, max-pain around monthly expiries). UNTESTED — data gap: no options feed wired; expiry-calendar effects are testable from price alone. Previously mis-graded as "not applicable" because our venue lacks options execution — execution ≠ signal.
+
 ### From Schwager (Market Wizards) — the meta-lesson
 14. **Every wizard's edge was different; all shared risk control and process fidelity.** ENFORCED as culture: guardrails, decision logs, restraint accounting, honest reports.
 

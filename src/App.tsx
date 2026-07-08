@@ -770,6 +770,7 @@ export default function App() {
                     onRefreshAudits={fetchEntities}
                     trades={trades}
                     onEditProfile={handleProfileClaimed}
+                    liveArmed={liveArmed && paperLiveMode === 'live'}
                   />
                 )}
 

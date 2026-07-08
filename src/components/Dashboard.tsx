@@ -11,6 +11,7 @@ interface DashboardProps {
   onRefreshAudits: () => void;
   trades: PaperTrade[];
   onEditProfile?: (displayName: string, bio: string, avatarUrl: string) => Promise<void>;
+  liveArmed?: boolean; // allowlisted account currently in Live mode
 }
 
 const NumberTicker = ({ value, prefix = '', suffix = '', decimals = 0 }: { value: number, prefix?: string, suffix?: string, decimals?: number }) => {
@@ -68,7 +69,7 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
-export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades, onEditProfile }: DashboardProps) {
+export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits, trades, onEditProfile, liveArmed }: DashboardProps) {
   const [faucetLoading, setFaucetLoading] = useState(false);
   const [faucetError, setFaucetError] = useState('');
   
@@ -295,7 +296,9 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
                   <Shield className="w-4 h-4" />
                   Safety Rails
                 </span>
-                <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] text-amber-400">LIVE LOCKED</span>
+                {liveArmed
+                  ? <span className="bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded text-[9px] text-emerald-400">LIVE ARMED</span>
+                  : <span className="bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded text-[9px] text-amber-400">LIVE LOCKED</span>}
               </div>
               <div className="flex items-baseline gap-2 mt-1">
                 <h2 className="text-2xl font-bold text-slate-200 font-mono group-hover:text-amber-400 transition-colors">
@@ -309,7 +312,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               <span className="text-amber-400 font-bold">{audits.filter((a) => a.action === 'METAMASK_BLOCKED_ACTION').length}</span>
             </div>
             <p className="text-[9px] text-slate-500 mt-2 font-mono leading-relaxed">
-              Every action you take is recorded in your audit trail (Evidence Map). Real execution stays locked until you go Live.
+              Every action you take is recorded in your audit trail (Evidence Map). {liveArmed ? 'Live execution is ENABLED for your account — real MetaMask actions move real funds.' : 'Real execution stays locked until you go Live.'}
             </p>
           </div>
 

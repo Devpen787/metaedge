@@ -53,7 +53,8 @@ function computeFeatures(bars) {
   }
   // rolling max of the PRIOR N closes (excludes current bar → causal breakout)
   const rollMax = (N) => { const out = new Array(n).fill(null); for (let i = N; i < n; i++) { let m = -Infinity; for (let j = i - N; j < i; j++) m = Math.max(m, bars[j].c); out[i] = m; } return out; };
-  return { rsi, atr, volR, sma200, rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
+  const sma = (N) => { const out = new Array(n).fill(null); let s2 = 0; for (let i = 0; i < n; i++) { s2 += bars[i].c; if (i >= N) s2 -= bars[i - N].c; if (i >= N - 1) out[i] = s2 / N; } return out; };
+  return { rsi, atr, volR, sma200, sma72: sma(72), sma168: sma(168), rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
 }
 
 // ---------- strategy templates (signal on bar i → entry at OPEN of i+1) ----------
@@ -66,6 +67,18 @@ function signalAt(family, p, bars, F, i) {
   if (family === 'rsi_meanrev') {
     return F.rsi[i] <= p.rsiBuy && bars[i].c > F.sma200[i]; // Chan filter: fade dips only in uptrends
   }
+  if (family === 'trend_atr') {
+    // Carver-style trend entry: close crosses ABOVE the SMA (was below on the prior bar).
+    const smaArr = p.smaN === 72 ? F.sma72 : F.sma168;
+    return i > 0 && smaArr[i] != null && smaArr[i - 1] != null && bars[i - 1].c <= smaArr[i - 1] && bars[i].c > smaArr[i];
+  }
+  if (family === 'meanrev_stab') {
+    // Stabilization-wait dip buy: big drop over 24 bars, but ONLY enter once a
+    // bar closes above the prior bar's high (the knife has stopped falling).
+    if (i < 25) return false;
+    const drop = (bars[i].c - bars[i - 24].c) / bars[i - 24].c;
+    return drop <= -p.dropPct && bars[i].c > bars[i - 1].h; // deliberately no trend filter: sharp dips mostly happen in downtrends
+  }
   return false;
 }
 
@@ -75,10 +88,24 @@ function runStrategy(family, p, bars, F, from, to) {
   while (i < to - 1) {
     if (!signalAt(family, p, bars, F, i)) { i++; continue; }
     const entry = bars[i + 1].o * (1 + COST);
-    const stopPx = entry * (1 - p.stop), targetPx = entry * (1 + p.stop * 2); // 2R target
+    let stopPx, targetPx;
+    if (family === 'trend_atr') {
+      stopPx = entry - p.atrMult * (F.atr[i] ?? entry * 0.02); targetPx = Infinity; // trailing stop only
+    } else if (family === 'meanrev_stab') {
+      let lo = Infinity; for (let k = Math.max(0, i - 6); k <= i; k++) lo = Math.min(lo, bars[k].l);
+      stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);                 // structural stop, 2R target
+      if (stopPx >= entry) { i++; continue; }                                        // degenerate stop → skip
+    } else {
+      stopPx = entry * (1 - p.stop); targetPx = entry * (1 + p.stop * 2);            // 2R target
+    }
     let exitPx = null, bars_held = 0;
+    let trailHigh = entry;
     for (let j = i + 1; j < Math.min(i + 1 + p.maxHold, to); j++) {
       bars_held = j - i;
+      if (family === 'trend_atr') {
+        trailHigh = Math.max(trailHigh, bars[j].c);
+        stopPx = Math.max(stopPx, trailHigh - p.atrMult * (F.atr[j] ?? 0));          // ratchet up only
+      }
       if (bars[j].l <= stopPx) { exitPx = stopPx; break; }          // conservative: stop checked first
       if (bars[j].h >= targetPx) { exitPx = targetPx; break; }
       if (family === 'rsi_meanrev' && F.rsi[j] != null && F.rsi[j] >= 50) { exitPx = bars[j].c; break; }
@@ -114,6 +141,10 @@ for (const lookback of [24, 72, 168]) for (const minVolR of [1.0, 1.5]) for (con
   GRID.push({ family: 'momentum_breakout', p: { lookback, minVolR, stop, maxHold: 48 } });
 for (const rsiBuy of [25, 30, 35]) for (const stop of [0.015, 0.03])
   GRID.push({ family: 'rsi_meanrev', p: { rsiBuy, stop, maxHold: 48 } });
+for (const smaN of [72, 168]) for (const atrMult of [2, 3])
+  GRID.push({ family: 'trend_atr', p: { smaN, atrMult, maxHold: 500 } });   // Carver: trend + ATR trail
+for (const dropPct of [0.05, 0.08])
+  GRID.push({ family: 'meanrev_stab', p: { dropPct, maxHold: 72 } });       // scalarfield: wait for stabilization
 
 // ---------- walk-forward per symbol ----------
 fs.mkdirSync('data/edgeops', { recursive: true });
@@ -137,7 +168,7 @@ for (const sym of SYMBOLS) {
   if (bars.length < TRAIN + TEST + 200) { console.log(`  ${sym}: too little history (${bars.length}), skipping`); continue; }
   const F = computeFeatures(bars);
 
-  for (const family of ['momentum_breakout', 'rsi_meanrev']) {
+  for (const family of ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab']) {
     const oosTrades = [];
     const chosen = [];
     let posFolds = 0, folds = 0;
@@ -168,6 +199,60 @@ for (const sym of SYMBOLS) {
     p(`| ${sym} | ${family} | \`${paramSummary}\` | ${agg.n || 0} | ${agg.n ? (agg.winRate * 100).toFixed(0) + '%' : '—'} | ${agg.n ? agg.expectancyPct.toFixed(3) + '%' : '—'} | ${agg.n ? agg.profitFactor.toFixed(2) : '—'} | ${agg.n ? agg.maxDrawdownPct.toFixed(1) + '%' : '—'} | ${posFolds}/${folds} | ${pass ? '🟡 CANDIDATE' : 'rejected'} |`);
   }
   console.log(`  ${sym}: done`);
+}
+
+// ---------- relative-strength rotation (Chan) — portfolio harness ----------
+// Weekly: rank the universe by trailing return, hold top-K equal-weight.
+// Each held-asset-week is one sample; costs charged on position changes.
+{
+  const barsBySym = {};
+  for (const sym of SYMBOLS) {
+    const f = `data/market/backfill-${sym}-${INTERVAL}.jsonl`;
+    if (fs.existsSync(f)) {
+      const b = fs.readFileSync(f, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+      if (b.length >= TRAIN + TEST + 200) barsBySym[sym] = new Map(b.map((x) => [x.t, x.c]));
+    }
+  }
+  const syms = Object.keys(barsBySym);
+  const common = [...(barsBySym[syms[0]] || new Map()).keys()].filter((t) => syms.every((s2) => barsBySym[s2].has(t))).sort((a, b) => a - b);
+  const closes = {}; for (const s2 of syms) closes[s2] = common.map((t) => barsBySym[s2].get(t));
+  const W = 168; // weekly rebalance
+  const runRS = (lookback, K, from, to) => {
+    const samples = [];
+    let held = [];
+    for (let i = from + lookback; i + W <= to; i += W) {
+      const ranked = syms.map((s2) => ({ s2, r: closes[s2][i] / closes[s2][i - lookback] - 1 })).sort((a, b) => b.r - a.r).slice(0, K).map((x) => x.s2);
+      for (const s2 of ranked) {
+        const gross = closes[s2][i + W] / closes[s2][i] - 1;
+        const cost = held.includes(s2) ? 0 : 2 * COST;   // enter+eventual exit charged on turnover
+        samples.push({ ret: gross - cost, bars: W });
+      }
+      held = ranked;
+    }
+    return samples;
+  };
+  const oos = []; const chosen = []; let posFolds = 0, folds = 0;
+  for (let start = 0; start + TRAIN + EMBARGO + TEST <= common.length; start += TEST) {
+    folds++;
+    let best = null;
+    for (const lookback of [336, 720]) for (const K of [2, 3]) {
+      totalHypotheses++;
+      const m = metrics(runRS(lookback, K, start, start + TRAIN));
+      registry.write(JSON.stringify({ t: Date.now(), sym: 'PORTFOLIO', family: 'relstrength', params: { lookback, K }, phase: 'train', foldStart: start, ...m }) + '\n');
+      if (m.n >= 10 && (best == null || m.profitFactor > best.m.profitFactor)) best = { p: { lookback, K }, m };
+    }
+    if (!best) continue;
+    const tm0 = runRS(best.p.lookback, best.p.K, start + TRAIN + EMBARGO, start + TRAIN + EMBARGO + TEST);
+    const tm = metrics(tm0);
+    registry.write(JSON.stringify({ t: Date.now(), sym: 'PORTFOLIO', family: 'relstrength', params: best.p, phase: 'test', foldStart: start, ...tm }) + '\n');
+    oos.push(...tm0); chosen.push(best.p);
+    if ((tm.expectancyPct || 0) > 0) posFolds++;
+  }
+  const agg = metrics(oos);
+  const pass = agg.n >= 30 && agg.profitFactor >= 1.1 && folds > 0 && posFolds / folds >= 0.55 && (agg.tstat || 0) >= 2;
+  if (pass) survivors.push({ sym: 'PORTFOLIO', family: 'relstrength', params: chosen[chosen.length - 1], agg });
+  p(`| PORTFOLIO (${syms.length} syms) | relstrength | ${chosen.length ? JSON.stringify(chosen[chosen.length - 1]) : '—'} | ${agg.n || 0} | ${agg.n ? (agg.winRate * 100).toFixed(0) + '%' : '—'} | ${agg.n ? agg.expectancyPct.toFixed(3) + '%' : '—'} | ${agg.n ? agg.profitFactor.toFixed(2) : '—'} | ${agg.n ? agg.maxDrawdownPct.toFixed(1) + '%' : '—'} | ${posFolds}/${folds} | ${pass ? '🟡 CANDIDATE' : 'rejected'} |`);
+  console.log('  PORTFOLIO relstrength: done');
 }
 
 p();

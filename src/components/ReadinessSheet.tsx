@@ -8,6 +8,7 @@ import { apiFetch } from '../lib/api';
 // detection, no decorative controls — real checks, real lock, one next step.
 
 interface ReadinessSheetProps {
+  onGoLive?: () => void;
   onClose: () => void;
   onStayPaper: () => void;
 }
@@ -19,7 +20,7 @@ interface ReadinessCheck {
   summary: string;
 }
 
-export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetProps) {
+export default function ReadinessSheet({ onClose, onStayPaper, onGoLive }: ReadinessSheetProps) {
   const [checks, setChecks] = useState<ReadinessCheck[] | null>(null);
   const [liveLocked, setLiveLocked] = useState(true);
   const [error, setError] = useState('');
@@ -122,18 +123,20 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
           </div>
         </div>
 
-        {/* Step 3: the lock (real, this build) */}
-        <div className="flex items-center justify-between bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/80">
+        {/* Step 3: the lock — per-account truth, not a hardcoded assumption */}
+        <div className={`flex items-center justify-between bg-slate-950/40 p-3.5 rounded-xl border ${liveLocked ? 'border-slate-800/80' : 'border-emerald-800/60'}`}>
           <div className="flex items-center gap-3">
-            <div className="p-1.5 rounded-lg bg-rose-500/10">
-              <Ban className="w-4 h-4 text-rose-400" />
+            <div className={`p-1.5 rounded-lg ${liveLocked ? 'bg-rose-500/10' : 'bg-emerald-500/10'}`}>
+              <Ban className={`w-4 h-4 ${liveLocked ? 'text-rose-400' : 'text-emerald-400'}`} />
             </div>
             <div>
               <p className="text-xs font-mono font-medium text-slate-200">Live execution</p>
-              <p className="text-[10px] text-slate-500 font-mono">Disabled on this hosted build — no real funds can move.</p>
+              <p className="text-[10px] text-slate-500 font-mono">{liveLocked ? 'Locked for this account — no real funds can move.' : 'ENABLED for your account — live actions move real funds from your Agent Wallet.'}</p>
             </div>
           </div>
-          <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">Locked</span>
+          {liveLocked
+            ? <span className="text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-full border border-rose-500/20">Locked</span>
+            : <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">Enabled</span>}
         </div>
 
         <p className="text-[10px] text-slate-600 font-mono leading-relaxed flex items-start gap-2">
@@ -141,6 +144,14 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
           Paper trading uses simulated fills only. Vault clubs are read-only coordination spaces — no pooling, no custody, no implied yields.
         </p>
 
+        {!liveLocked && onGoLive && (
+          <button
+            onClick={onGoLive}
+            className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-mono font-bold transition-all"
+          >
+            ENTER LIVE MODE — real funds, your approval on every action
+          </button>
+        )}
         <button
           onClick={onStayPaper}
           className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-mono font-bold transition-all"

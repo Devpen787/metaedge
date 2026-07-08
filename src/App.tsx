@@ -49,6 +49,7 @@ export default function App() {
   // Mode Selection
   const [paperLiveMode, setPaperLiveMode] = useState<'paper' | 'live'>('paper');
   const [showReadiness, setShowReadiness] = useState(false);
+  const [liveArmed, setLiveArmed] = useState(false); // set only via the readiness sheet's Enter Live (allowlisted accounts)
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isAgentProcessing, setIsAgentProcessing] = useState(false);
   const [agentProcessingAction, setAgentProcessingAction] = useState<string | null>(null);
@@ -739,12 +740,14 @@ export default function App() {
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Verification Alert when switching modes */}
             {paperLiveMode === 'live' && (
-              <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className={`p-4 rounded-xl flex items-start gap-3 border ${liveArmed ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
+                <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${liveArmed ? 'text-emerald-400' : 'text-rose-400'}`} />
                 <div>
-                  <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">Live locked</h4>
+                  <h4 className={`text-xs font-mono font-bold uppercase tracking-wider ${liveArmed ? 'text-emerald-400' : 'text-rose-400'}`}>{liveArmed ? 'LIVE — real funds armed' : 'Live locked'}</h4>
                   <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
-                    Real execution needs MetaMask browser login, policy limits, quote preview, and human approval. Return to Paper mode to keep playing with paper money.
+                    {liveArmed
+                      ? 'Live execution is enabled for your account. MetaMask actions (transfer, swap execute, perps open, predictions) move real funds from your Agent Wallet — quotes first, your policy limits and phone approvals apply. Paper trading stays simulated.'
+                      : 'Real execution needs MetaMask browser login, policy limits, quote preview, and human approval. Return to Paper mode to keep playing with paper money.'}
                   </p>
                 </div>
               </div>
@@ -909,6 +912,12 @@ export default function App() {
           onClose={() => setShowReadiness(false)}
           onStayPaper={() => {
             setPaperLiveMode('paper');
+            setLiveArmed(false);
+            setShowReadiness(false);
+          }}
+          onGoLive={() => {
+            setPaperLiveMode('live');
+            setLiveArmed(true);
             setShowReadiness(false);
           }}
         />

@@ -14,6 +14,7 @@ import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
 import WalletCenter from './components/WalletCenter';
+import ResearchFleet from './components/ResearchFleet';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
 import AgenticAutopilot from './components/AgenticAutopilot';
@@ -539,6 +540,7 @@ export default function App() {
               title: 'Analytics & Evidence',
               items: [
                 { id: 'analytics', label: 'Platform Data', icon: BarChart2 },
+                { id: 'research', label: 'Research Fleet', icon: Database },
                 { id: 'graph', label: 'Evidence Map', icon: Network },
                 { id: 'specs', label: 'Specs Hub', icon: Award },
                 ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
@@ -770,6 +772,10 @@ export default function App() {
 
                 {currentUser && activeTab === 'wallet' && (
                   <WalletCenter user={currentUser} onConnect={() => setShowWalletModal(true)} />
+                )}
+
+                {currentUser && activeTab === 'research' && (
+                  <ResearchFleet />
                 )}
 
                 {currentUser && activeTab === 'rooms' && (

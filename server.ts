@@ -18,6 +18,7 @@ import { arenaRouter } from './server/arena.js';
 import { startAutotrader } from './server/autotrader.js';
 import { startRecorder } from './server/recorder.js';
 import { platformRouter } from './server/platform.js';
+import { researchRouter } from './server/research.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -87,6 +88,7 @@ app.use(metamaskRouter);
 app.use(quantRouter);
 app.use(arenaRouter);
 app.use(platformRouter);
+app.use(researchRouter);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
 import fs from 'fs';

@@ -20,7 +20,8 @@ export type DeclineReason =
   | 'NO_PRICE'           // no live price for the symbol
   | 'EXECUTION_REJECTED' // placePaperTrade refused (validation/risk)
   | 'CANONICAL_MISMATCH' // live-action guard blocked a wrong-wallet action
-  | 'TRIGGER_NOT_MET';   // a card's trigger check returned NO-GO
+  | 'TRIGGER_NOT_MET'    // a card's trigger check returned NO-GO
+  | 'INSUFFICIENT_HISTORY'; // strategy needs more recorded history than exists (never fake a lookback)
 
 export function recordDeclined(source: string, family: string, reason: DeclineReason) {
   try {

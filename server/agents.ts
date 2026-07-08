@@ -43,7 +43,7 @@ agentsRouter.post('/api/agents', (req: any, res) => {
     roomId: sharedRoomId || undefined,
     assetSymbol: agentAssetSymbol,
     tradeType: tradeType === 'perp' ? 'perp' : 'token',
-    strategyType: ['momentum', 'grid', 'mean_reversion', 'custom_ai'].includes(strategyType) ? strategyType : 'momentum',
+    strategyType: ['momentum', 'grid', 'mean_reversion', 'custom_ai', 'rsi_meanrev'].includes(strategyType) ? strategyType : 'momentum',
     leverage: Number(leverage) || 1,
     status: 'active',
     createdAt: Date.now()

@@ -62,6 +62,44 @@ function rotate() {
   } catch { /* rotation is best-effort */ }
 }
 
+// Hourly closes derived from OUR OWN recorded ticks — the honest source for
+// hour-scale features (RSI14 needs 15 hourly closes; SMA200 needs 200 → ~8.3
+// days of recording). Boot-loads from the tick files, then updates live every
+// minute. Strategies that need more history than exists must DECLINE, never
+// fake a lookback from another feed.
+const HOURLY_MAX = 400;
+const hourly: Record<string, { hour: number; close: number }[]> = {};
+
+function pushHourly(sym: string, t: number, px: number) {
+  const hour = Math.floor(t / 3_600_000);
+  const arr = (hourly[sym] ||= []);
+  const last = arr[arr.length - 1];
+  if (last && last.hour === hour) last.close = px;
+  else {
+    arr.push({ hour, close: px });
+    if (arr.length > HOURLY_MAX) arr.splice(0, arr.length - HOURLY_MAX);
+  }
+}
+
+function loadHourlyFromFiles() {
+  try {
+    const files = fs.readdirSync(DIR).filter((f) => f.startsWith('ticks-')).sort();
+    for (const f of files) {
+      for (const line of fs.readFileSync(path.join(DIR, f), 'utf8').split('\n')) {
+        if (!line) continue;
+        try { const e = JSON.parse(line); pushHourly(e.sym, e.t, e.px); } catch { /* skip bad line */ }
+      }
+    }
+    const eth = hourly['ETH']?.length || 0;
+    console.log(`[recorder] hourly history loaded: ${eth} hourly closes (need 15 for RSI, 201 for SMA200)`);
+  } catch { /* no history yet — strategies will decline until it exists */ }
+}
+
+// Chronological hourly closes for a symbol (empty until recorded history exists).
+export function getHourlyCloses(sym: string): number[] {
+  return (hourly[sym] || []).map((h) => h.close);
+}
+
 // In-memory ring of recent ticks so strategy brains can use SHORT-window
 // signals (e.g. 1h change) without touching disk on the hot path.
 const ring: Record<string, { t: number; px: number }[]> = {};
@@ -72,6 +110,7 @@ function updateRing() {
   for (const [sym, p] of Object.entries(serverPrices)) {
     (ring[sym] ||= []).push({ t, px: p.price });
     if (ring[sym].length > RING_MAX) ring[sym].splice(0, ring[sym].length - RING_MAX);
+    pushHourly(sym, t, p.price);
   }
 }
 
@@ -88,6 +127,7 @@ export function shortChangePct(sym: string, windowMs: number): number | null {
 }
 
 export function startRecorder() {
+  loadHourlyFromFiles();
   setInterval(() => { recordPrices(); updateRing(); }, TICK_MS).unref();
   setInterval(recordFunding, 60 * 60 * 1000).unref();
   setInterval(rotate, 6 * 60 * 60 * 1000).unref();

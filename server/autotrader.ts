@@ -2,6 +2,46 @@ import { readDatabase, writeDatabase, generateId } from './storage.js';
 import { placePaperTrade, agentPosition } from './trades.js';
 import { getSpotPrice, serverPrices, arenaSymbol } from './prices.js';
 import { recordDeclined } from './declined.js';
+import { getHourlyCloses } from './recorder.js';
+
+// Wilder-smoothed RSI over hourly closes (needs period+1 closes minimum).
+function rsiFromCloses(closes: number[], period = 14): number | null {
+  if (closes.length < period + 1) return null;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) {
+    const ch = closes[i] - closes[i - 1];
+    gain += Math.max(ch, 0); loss += Math.max(-ch, 0);
+  }
+  gain /= period; loss /= period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const ch = closes[i] - closes[i - 1];
+    gain = (gain * (period - 1) + Math.max(ch, 0)) / period;
+    loss = (loss * (period - 1) + Math.max(-ch, 0)) / period;
+  }
+  return 100 - 100 / (1 + gain / (loss || 1e-9));
+}
+
+// Card rsi-meanrev-dot-v1 (screened OOS: n=40, PF 2.08 — a CANDIDATE, now on
+// forward trial against our live feed). Entry: RSI14(1h) ≤ 35 while above
+// SMA200(1h). Exit: RSI ≥ 50, -3% stop, +6% target, or 48h time stop.
+// Uses ONLY our recorded hourly closes — declines until real history exists.
+function decideRsiMeanrev(symbol: string, price: number, holding: boolean, avgEntry: number, lastTradeAt: number | undefined):
+  { decision: Decision; reason?: 'INSUFFICIENT_HISTORY' | 'NO_SIGNAL'; rsi?: number; sma200?: number } {
+  const closes = getHourlyCloses(symbol);
+  if (closes.length < 201) return { decision: null, reason: 'INSUFFICIENT_HISTORY' };
+  const rsi = rsiFromCloses(closes.slice(-100));
+  const sma200 = closes.slice(-200).reduce((s, c) => s + c, 0) / 200;
+  if (rsi == null) return { decision: null, reason: 'INSUFFICIENT_HISTORY' };
+  if (!holding) {
+    if (rsi <= 35 && price > sma200) return { decision: 'buy', rsi, sma200 };
+    return { decision: null, reason: 'NO_SIGNAL', rsi, sma200 };
+  }
+  const heldMs = lastTradeAt ? Date.now() - lastTradeAt : 0;
+  const stopHit = avgEntry > 0 && price <= avgEntry * 0.97;
+  const targetHit = avgEntry > 0 && price >= avgEntry * 1.06;
+  if (rsi >= 50 || stopHit || targetHit || heldMs > 48 * 3_600_000) return { decision: 'sell', rsi, sma200 };
+  return { decision: null, reason: 'NO_SIGNAL', rsi, sma200 };
+}
 
 // The REAL Autopilot: agents with autopilot enabled trade BY THEMSELVES on a
 // server-side tick, using their actual strategy against live prices, through
@@ -87,8 +127,25 @@ async function tick() {
       const pos = agentPosition(agent.ownerId, agent.id, symbol);
       const holding = pos.size > 0.000001;
 
-      const decision = decide(agent.strategyType, change24h, holding, tickCount % 2);
-      if (!decision) { recordDeclined('autotrader', agent.strategyType, 'NO_SIGNAL'); continue; }
+      let decision: Decision;
+      let thesis: Record<string, unknown>;
+      if (agent.strategyType === 'rsi_meanrev') {
+        // Card rsi-meanrev-dot-v1 on forward trial — real hourly features only.
+        const r = decideRsiMeanrev(symbol, price, holding, pos.avgEntry, agent.lastAutoTradeAt || agent.lastTradeAt);
+        if (!r.decision) { recordDeclined('autotrader', 'rsi_meanrev', r.reason || 'NO_SIGNAL'); continue; }
+        decision = r.decision;
+        thesis = {
+          cardId: 'rsi-meanrev-dot-v1', signalFamily: 'rsi_meanrev',
+          regime: 'uptrend-filtered', benchmark: 'buy_hold', holdingWindow: '≤48h',
+          setup: `RSI14(1h)=${r.rsi!.toFixed(1)}, price ${price > r.sma200! ? 'above' : 'below'} SMA200(1h)=${r.sma200!.toFixed(3)}`,
+          trigger: decision === 'buy' ? 'RSI14 ≤ 35 while above SMA200 → fade the dip' : 'exit: RSI ≥ 50 / -3% stop / +6% target / 48h time stop',
+          invalidation: 'stop -3% from entry; card dies if forward expectancy ≤ 0 over n≥30'
+        };
+      } else {
+        decision = decide(agent.strategyType, change24h, holding, tickCount % 2);
+        if (!decision) { recordDeclined('autotrader', agent.strategyType, 'NO_SIGNAL'); continue; }
+        thesis = buildThesis(agent.strategyType, decision, change24h, holding);
+      }
       if (decision === 'buy' && owner.paperBalance < MIN_BALANCE_FLOOR + CLIP_NOTIONAL_USD) { recordDeclined('autotrader', agent.strategyType, 'BALANCE_FLOOR'); continue; }
 
       const size = decision === 'sell'
@@ -106,7 +163,7 @@ async function tick() {
           price,
           leverage: agent.tradeType === 'perp' ? agent.leverage || 1 : 1,
           nonce: `auto_${agent.id.slice(0, 8)}_${Date.now()}_${generateId().slice(0, 6)}`,
-          thesis: buildThesis(agent.strategyType, decision, change24h, holding),
+          thesis,
         },
         { action: 'AUTOPILOT_TRADE', detailsPrefix: 'Autopilot executed' }
       );

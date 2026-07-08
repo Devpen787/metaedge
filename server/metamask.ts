@@ -36,6 +36,21 @@ const MM_PACKAGE = '@metamask/agentic-cli@3';
 const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
 const LIVE_EXECUTION_ENABLED = process.env.LIVE_EXECUTION_ENABLED === 'true';
 
+// Allowlist live mode (Operator tier, docs/DATA_MODEL.md): when the global
+// flag is OFF, live execution can still be enabled for specific WALLET
+// addresses via LIVE_ALLOWLIST (comma-separated). The wallet address on a user
+// record is authentic — finalizeConnect/wallets-select read it from the user's
+// OWN authenticated mm session, so it can't be spoofed by request data.
+const LIVE_ALLOWLIST = (process.env.LIVE_ALLOWLIST || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
+function liveEnabledFor(userId: string | undefined): boolean {
+  if (LIVE_EXECUTION_ENABLED) return true;
+  if (!userId || LIVE_ALLOWLIST.length === 0) return false;
+  try {
+    const w = (readDatabase().users[userId]?.walletAddress || '').toLowerCase();
+    return !!w && LIVE_ALLOWLIST.includes(w);
+  } catch { return false; }
+}
+
 // Each user gets their OWN MetaMask CLI profile (an isolated HOME) on the
 // server, so wallet capabilities run as THEIR wallet — never a shared one.
 // A profile holds only the CLI's own session state; MetaEdge never sees keys.
@@ -341,7 +356,7 @@ function recordMetaMaskEvent(req: any, action: string, details: string) {
 }
 
 function requireLiveExecution(req: any, res: any, next: any) {
-  if (!LIVE_EXECUTION_ENABLED) {
+  if (!liveEnabledFor(req.userId)) {
     recordMetaMaskEvent(req, 'METAMASK_BLOCKED_ACTION', 'Live locked: real execution remains disabled.');
     return res.status(403).json({
       error: 'Live locked',
@@ -486,15 +501,15 @@ async function computeReadiness(uid: string) {
     {
       id: 'live_lock',
       label: 'Live locked',
-      status: LIVE_EXECUTION_ENABLED ? 'ready' : 'blocked',
-      summary: LIVE_EXECUTION_ENABLED
+      status: liveEnabledFor(uid) ? 'ready' : 'blocked',
+      summary: liveEnabledFor(uid)
         ? 'Live execution flag is enabled for this environment.'
         : 'Live execution is globally locked in this environment.'
     }
   ];
 
   return {
-    liveModeGlobalLock: !LIVE_EXECUTION_ENABLED,
+    liveModeGlobalLock: !liveEnabledFor(uid),
     loginCommand: 'mm login browser',
     package: MM_PACKAGE,
     recommendedMode: 'Guard Mode',
@@ -507,18 +522,18 @@ async function computeReadiness(uid: string) {
       swaps: {
         quoteBeforeExecute: true,
         refuelSupported: true,
-        executeLocked: !LIVE_EXECUTION_ENABLED
+        executeLocked: !liveEnabledFor(uid)
       },
       perps: {
         venuesCommand: 'mm perps list-venues',
         depositRequired: true,
         quoteBeforeOpen: true,
-        openLocked: !LIVE_EXECUTION_ENABLED
+        openLocked: !liveEnabledFor(uid)
       },
       predictionMarkets: {
         setupRequired: true,
         quoteBeforePlace: true,
-        placeLocked: !LIVE_EXECUTION_ENABLED
+        placeLocked: !liveEnabledFor(uid)
       }
     }
   };
@@ -781,7 +796,7 @@ metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any,
 async function assertCanonicalActive(userId: string): Promise<{ ok: boolean; error?: string }> {
   const db = readDatabase();
   const canonical = (db.users[userId] as any)?.canonicalWallet;
-  if (!canonical || !LIVE_EXECUTION_ENABLED) return { ok: true };
+  if (!canonical || !liveEnabledFor(userId)) return { ok: true };
   const active = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address;
   if (active && active.toLowerCase() !== String(canonical).toLowerCase()) {
     recordDeclined('guard', 'live_action', 'CANONICAL_MISMATCH');
@@ -838,7 +853,7 @@ metamaskRouter.get('/api/mm/wallets/consolidate/preview', requireWallet, async (
 metamaskRouter.post('/api/mm/wallets/consolidate', requireWallet, async (req: any, res) => {
   const plan = await consolidationPlan(req.userId);
   if (!plan.canonical) return res.status(400).json({ error: plan.note || 'Set a canonical wallet first.' });
-  if (!LIVE_EXECUTION_ENABLED) {
+  if (!liveEnabledFor(req.userId)) {
     return res.json({ locked: true, plan, message: 'Consolidation moves real funds — it unlocks in Live mode. Nothing was moved.' });
   }
   // Live: sweep each move. Native tokens keep a gas buffer; ERC-20 need native
@@ -897,7 +912,7 @@ metamaskRouter.post('/api/mm/transfer', requireWallet, async (req: any, res) => 
     const amount = validatePositiveAmount(req.body.amount, 'Amount');
     const token = req.body.token ? validateSymbol(req.body.token, 'Token') : 'native';
     const chainId = validateChain(req.body.chainId, '8453');
-    if (!LIVE_EXECUTION_ENABLED) {
+    if (!liveEnabledFor(req.userId)) {
       return res.json(paperFill(req, 'transfer', `${amount} ${token} -> ${to.slice(0, 6)}…${to.slice(-4)}`, {
         to, amount, token, chainId, status: 'paper_filled'
       }));
@@ -924,7 +939,7 @@ metamaskRouter.post('/api/mm/swap/quote', async (req: any, res) => {
     const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      executeLocked: !LIVE_EXECUTION_ENABLED,
+      executeLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Swap preview ready.' : result.summary
     });
   } catch (error: any) {
@@ -934,7 +949,7 @@ metamaskRouter.post('/api/mm/swap/quote', async (req: any, res) => {
 
 metamaskRouter.post('/api/mm/swap/execute', requireWallet, async (req: any, res) => {
   try {
-    if (!LIVE_EXECUTION_ENABLED) {
+    if (!liveEnabledFor(req.userId)) {
       // Build the paper fill from a real quote so the numbers are honest.
       const from = validateSymbol(req.body.from, 'Source token');
       const to = validateSymbol(req.body.to, 'Destination token');
@@ -985,7 +1000,7 @@ metamaskRouter.post('/api/mm/perps/quote', async (req: any, res) => {
     const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      openLocked: !LIVE_EXECUTION_ENABLED,
+      openLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Perps preview ready.' : result.summary
     });
   } catch (error: any) {
@@ -1000,7 +1015,7 @@ metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) =
     if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
     const size = validatePositiveAmount(req.body.size, 'Size');
     const leverage = validatePositiveAmount(req.body.leverage || 1, 'Leverage');
-    if (!LIVE_EXECUTION_ENABLED) {
+    if (!liveEnabledFor(req.userId)) {
       const q = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
       const quote = unwrap(q) || {};
       const arena = recordArenaPosition(req.userId, { assetSymbol: symbol, side, size: Number(size), tradeType: 'perp', leverage: Number(leverage) });
@@ -1083,7 +1098,7 @@ metamaskRouter.post('/api/mm/predict/quote', async (req: any, res) => {
     const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      placeLocked: !LIVE_EXECUTION_ENABLED,
+      placeLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Prediction market preview ready.' : result.summary
     });
   } catch (error: any) {
@@ -1097,7 +1112,7 @@ metamaskRouter.post('/api/mm/predict/place', requireWallet, async (req: any, res
     const side = asString(req.body.side).trim().toLowerCase();
     if (side !== 'buy' && side !== 'sell') throw new Error('Side must be buy or sell.');
     const size = validatePositiveAmount(req.body.size, 'Size');
-    if (!LIVE_EXECUTION_ENABLED) {
+    if (!liveEnabledFor(req.userId)) {
       const q = await runMmFor(req, ['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'], 30_000);
       const quote = unwrap(q) || {};
       const price = quote.price ?? quote.avgPrice ?? quote.limitPrice ?? null;
@@ -1348,7 +1363,7 @@ metamaskRouter.post('/api/mm/autopilot/execute', async (req, res) => {
       { time: time(), message: `[Swap] Live hedge quote (read-only): 10 USDC → ${quoteAmount} ETH.`, type: 'info' },
       { time: time(), message: `[Plan] Would open a delta-hedge ETH-PERP short to balance exposure (simulated).`, type: 'trade' },
       { time: time(), message: `[Plan] Would lock the yield leg and monitor for rebalance (simulated).`, type: 'yield' },
-      { time: time(), message: `[Safety] Live execution ${LIVE_EXECUTION_ENABLED ? 'is unlocked globally, but autopilot stays simulation-only' : 'is locked'}. Real autopilot requires per-run caps + your approval.`, type: 'info' },
+      { time: time(), message: `[Safety] Live execution ${liveEnabledFor(req.userId) ? 'is unlocked globally, but autopilot stays simulation-only' : 'is locked'}. Real autopilot requires per-run caps + your approval.`, type: 'info' },
     ];
 
     res.json({

@@ -21,6 +21,7 @@ interface ReadinessCheck {
 
 export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetProps) {
   const [checks, setChecks] = useState<ReadinessCheck[] | null>(null);
+  const [liveLocked, setLiveLocked] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'Could not check readiness.');
         setChecks(data.checks || []);
+        setLiveLocked(data.liveModeGlobalLock !== false);
       } catch (err: any) {
         setError(err.message || 'Readiness is not available right now.');
         setChecks([]);
@@ -60,7 +62,9 @@ export default function ReadinessSheet({ onClose, onStayPaper }: ReadinessSheetP
           <div>
             <h4 className="text-sm font-bold text-amber-400 font-mono">Going Live</h4>
             <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-              Live mode executes real transactions from your own MetaMask Agent Wallet, with policy limits and approvals on your phone. It is <b>disabled on this build</b> — paper mode has everything else: real prices, real quotes, real competition.
+              Live mode executes real transactions from your own MetaMask Agent Wallet, with policy limits and approvals on your phone. {liveLocked
+                ? <>It is <b>locked for this account</b> — paper mode has everything else: real prices, real quotes, real competition.</>
+                : <>It is <b>ENABLED for your account</b> — actions below will move real funds from your Agent Wallet. Your MetaMask policy limits and phone approvals still apply.</>}
             </p>
           </div>
         </div>

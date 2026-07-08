@@ -36,7 +36,7 @@ export default function MetaedgeAnalytics() {
 
   const m = data?.metrics;
   const cards = [
-    { label: 'Players', value: m ? m.users.toLocaleString() : '…', sub: m ? `${m.walletConnected} wallet-connected` : '', icon: Users },
+    { label: 'Players', value: m ? (m.players ?? m.users).toLocaleString() : '…', sub: m ? `${m.visitors ?? 0} visitors · ${m.walletConnected} wallet-connected` : '', icon: Users },
     { label: 'Agents Deployed', value: m ? m.agents.toLocaleString() : '…', sub: m ? `${m.autopilotAgents} on autopilot` : '', icon: Bot },
     { label: 'Trades Executed', value: m ? m.trades.toLocaleString() : '…', sub: m ? `$${m.volume.toLocaleString()} volume` : '', icon: ArrowRightLeft },
     { label: 'Net Realized P&L', value: m ? `${m.realizedPnl >= 0 ? '+' : ''}$${m.realizedPnl.toLocaleString()}` : '…', sub: 'across all players', icon: Zap },

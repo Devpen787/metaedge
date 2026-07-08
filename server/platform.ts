@@ -17,6 +17,11 @@ platformRouter.get('/api/platform-stats', (_req, res) => {
   const realizedPnl = trades.reduce((s, t) => s + (typeof t.pnl === 'number' ? t.pnl : 0), 0);
   const autopilotAgents = agents.filter((a) => a.autopilot && a.status === 'active').length;
   const walletConnected = users.filter((u) => u.walletAddress).length;
+  // Identity tiers (docs/DATA_MODEL.md): players = acted (claimed a profile or
+  // connected); visitors = touched the site only. Public counts must not pass
+  // scanner noise off as adoption.
+  const players = users.filter((u: any) => u.profile?.claimedAt || u.walletAddress).length;
+  const visitors = users.length - players;
 
   // Strategy distribution from real agents.
   const stratCounts: Record<string, number> = {};
@@ -50,6 +55,8 @@ platformRouter.get('/api/platform-stats', (_req, res) => {
   res.json({
     metrics: {
       users: users.length,
+      players,
+      visitors,
       walletConnected,
       agents: agents.length,
       autopilotAgents,

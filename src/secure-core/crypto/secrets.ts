@@ -2,7 +2,23 @@
  * Secrets Management and Key Lifecycle
  */
 
-import { createHmac, randomBytes } from 'crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
+
+// No fallback pepper. A hardcoded fallback means every API key in the system is
+// signed with a string that is publicly visible in source, so anyone can forge one.
+// Fail loudly at the point of use instead of silently signing with a known secret.
+function systemPepper(): string {
+  const pepper = process.env.SYSTEM_PEPPER;
+  if (!pepper) throw new Error('SYSTEM_PEPPER environment variable is required');
+  return pepper;
+}
+
+// Constant-time compare. `===` on hex digests leaks, via timing, how many leading
+// characters matched — enough to recover a hash byte by byte.
+function hashesEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 export interface APIKeyRecord {
   keyId: string;
@@ -21,7 +37,7 @@ export function generateApiKey(userId: string, roles: string[] = ['TRADER']): { 
   const plainSecret = randomBytes(32).toString('hex');
   
   // Hash the secret for storage
-  const hashedSecret = createHmac('sha256', process.env.SYSTEM_PEPPER || 'fallback_pepper')
+  const hashedSecret = createHmac('sha256', systemPepper())
                         .update(plainSecret)
                         .digest('hex');
 
@@ -44,11 +60,11 @@ export function verifyApiKey(keyId: string, plainSecret: string): APIKeyRecord |
   if (!record || record.isRevoked) return null;
   if (record.expiresAt && Date.now() > record.expiresAt) return null;
 
-  const expectedHash = createHmac('sha256', process.env.SYSTEM_PEPPER || 'fallback_pepper')
+  const expectedHash = createHmac('sha256', systemPepper())
                         .update(plainSecret)
                         .digest('hex');
 
-  if (record.hashedSecret === expectedHash) {
+  if (hashesEqual(record.hashedSecret, expectedHash)) {
     return record;
   }
   return null;

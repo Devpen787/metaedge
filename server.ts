@@ -38,7 +38,14 @@ app.use((_req, res, next) => {
 });
 
 app.use(express.json({ limit: '256kb' }));
-app.use(cookieParser(process.env.COOKIE_SECRET || 'metaedge-secret-key-cookie'));
+
+// No fallback cookie secret. A hardcoded default means every session cookie is
+// signed with a string visible in source, so sessions can be forged. Fail at
+// startup rather than serve forgeable sessions. gcp_setup.sh generates this into
+// .env.production, which systemd loads via EnvironmentFile.
+const COOKIE_SECRET = process.env.COOKIE_SECRET;
+if (!COOKIE_SECRET) throw new Error('COOKIE_SECRET environment variable is required');
+app.use(cookieParser(COOKIE_SECRET));
 
 app.use(sessionMiddleware);
 
@@ -152,11 +159,22 @@ async function startServer() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-// Keep the process alive on unexpected errors — log, don't crash. A friends
-// beta shouldn't go down because one request hit an edge case.
+// A rejected promise is usually one request's problem — log it and keep serving.
 process.on('unhandledRejection', (reason) => console.error('Unhandled rejection:', reason));
-process.on('uncaughtException', (err) => console.error('Uncaught exception:', err));
 
-startServer().catch(err => {
+// An uncaught exception is different: the process is now in an undefined state.
+// Continuing means serving requests from corrupt memory, and — because the flat
+// db is read-modify-written in place — potentially persisting that corruption.
+// Log, then exit non-zero. systemd (Restart=always, RestartSec=3) brings us back
+// on clean state. Staying up is the more dangerous option, not the safer one.
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception — exiting so systemd can restart cleanly:', err);
+  process.exit(1);
+});
+
+startServer().catch((err) => {
+  // A fatal startup error (e.g. a required secret is missing) must not leave a
+  // zombie process listening on nothing.
   console.error('Fatal server startup error:', err);
+  process.exit(1);
 });

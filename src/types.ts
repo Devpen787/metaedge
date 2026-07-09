@@ -22,6 +22,11 @@ export interface User {
   // profile on the server). Connecting is required to compete in the Arena.
   walletAddress?: string;
   walletConnectedAt?: number;
+  // The wallet all live actions are pinned to. server/metamask.ts reads and writes
+  // this in three places via `(user as any).canonicalWallet` because the field was
+  // never declared — so the canonical-wallet guard, a live-money safety check, was
+  // entirely untyped.
+  canonicalWallet?: string;
 }
 
 export interface SessionRecord {

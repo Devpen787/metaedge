@@ -171,7 +171,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(activeLeagueId)}`),
       ]);
       if (lgRes.ok) {
-        const data = await lgRes.json();
+        const data = await safeJson(lgRes);
         const mapped = (data.leagues || []).map((l: any) => ({
           id: l.id, name: l.name, creator: l.creatorName,
           participants: l.participants, prize: l.prize,
@@ -181,7 +181,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         setJoinedLeagues(['global', ...mapped.filter((l: any) => l.joined).map((l: any) => l.id)]);
       }
       if (lbRes.ok) {
-        const data = await lbRes.json();
+        const data = await safeJson(lbRes);
         const rows = data.leaderboard || [];
         setLeaderboard(rows);
         if (data.board) setBoardMeta(data.board);
@@ -266,7 +266,12 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
 
   const handleShare = () => {
     const link = `${window.location.origin}/arena?league=${activeLeagueId}`;
-    navigator.clipboard.writeText(link);
+    // writeText() rejects when the page lacks clipboard permission or focus. The
+    // unhandled rejection used to surface nowhere while the UI still said "Copied!".
+    navigator.clipboard.writeText(link).catch((e) => {
+      console.warn('[arena] clipboard write failed', e);
+      window.prompt('Copy this invite link:', link);
+    });
     setShareCopied(true);
     setTimeout(() => setShareCopied(false), 2000);
   };

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Users, Bot, ArrowRightLeft, Activity, BarChart2, Zap, Wallet } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 // Real platform analytics — every figure comes from /api/platform-stats, which
 // aggregates the live database. On a fresh instance these read low/zero, and
@@ -25,10 +25,31 @@ function timeAgo(ts: number) {
 
 export default function MetaedgeAnalytics() {
   const [data, setData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    const load = () => apiFetch('/api/platform-stats').then((r) => r.json()).then((d) => { if (alive) setData(d); }).catch(() => {});
+    // M1: this used a `.then(r => r.json())` promise chain, not `await res.json()`,
+    // so the 1.1 codemod never matched it and the `res.ok` bug survived here.
+    // M2: the `.catch(() => {})` swallowed everything — a dead analytics tab looked
+    // identical to a healthy one with no data.
+    const load = async () => {
+      try {
+        const res = await apiFetch('/api/platform-stats');
+        const d = await safeJson(res);
+        if (!alive) return;
+        if (!res.ok) {
+          setError(d?.error || `Could not load platform stats (HTTP ${res.status}).`);
+          return;
+        }
+        setData(d);
+        setError(null);
+      } catch (err: any) {
+        if (!alive) return;
+        console.warn('[analytics] platform-stats failed', err);
+        setError(err?.message || 'Could not reach the analytics service.');
+      }
+    };
     load();
     const t = setInterval(load, 15000);
     return () => { alive = false; clearInterval(t); };
@@ -44,6 +65,12 @@ export default function MetaedgeAnalytics() {
 
   return (
     <div className="space-y-8 pb-12">
+      {error && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          {error}
+          {data && <span className="text-rose-400/70"> — figures below are from the last successful poll.</span>}
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <BarChart2 className="w-6 h-6 text-indigo-400" />
         <div>

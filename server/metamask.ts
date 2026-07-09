@@ -684,7 +684,7 @@ async function computeWallets(userId: string) {
     const perps = { venue: 'hyperliquid', totalBalance: Number(pd.totalBalance || 0), spendable: Number(pd.spendableBalance || 0) };
 
     const db = readDatabase();
-    const canonicalAddress = (db.users[userId] as any)?.canonicalWallet || null;
+    const canonicalAddress = db.users[userId]?.canonicalWallet || null;
     enriched.sort((a, b) => b.totalUsd - a.totalUsd);
     return { activeAddress, canonicalAddress, perps, wallets: enriched };
   });
@@ -698,7 +698,7 @@ metamaskRouter.get('/api/mm/wallets/list', requireWallet, async (req: any, res) 
     const wallets = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
     const activeAddress = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
     const db = readDatabase();
-    const canonicalAddress = (db.users[req.userId] as any)?.canonicalWallet || null;
+    const canonicalAddress = db.users[req.userId]?.canonicalWallet || null;
     res.json({ activeAddress, canonicalAddress, wallets: wallets.map((w: any) => ({ address: w.address, name: w.name || null })) });
   } catch (e: any) {
     res.status(503).json({ error: 'Could not list wallets.', message: e?.message });
@@ -779,7 +779,7 @@ metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any,
   try {
     const address = validateAddress(req.body?.address);
     const db = readDatabase();
-    if (db.users[req.userId]) { (db.users[req.userId] as any).canonicalWallet = address; writeDatabase(db); }
+    if (db.users[req.userId]) { db.users[req.userId].canonicalWallet = address; writeDatabase(db); }
     invalidateWallets(req.userId);
     res.json({ ok: true, address });
   } catch (e: any) {
@@ -793,7 +793,7 @@ metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any,
 // blocked (nothing real moves).
 async function assertCanonicalActive(userId: string): Promise<{ ok: boolean; error?: string }> {
   const db = readDatabase();
-  const canonical = (db.users[userId] as any)?.canonicalWallet;
+  const canonical = db.users[userId]?.canonicalWallet;
   if (!canonical || !liveEnabledFor(userId)) return { ok: true };
   const active = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address;
   if (active && active.toLowerCase() !== String(canonical).toLowerCase()) {
@@ -810,7 +810,7 @@ metamaskRouter.get('/api/mm/acting-as', requireWallet, async (req: any, res) => 
     const list = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
     const name = list.find((w: any) => (w.address || '').toLowerCase() === (active || '').toLowerCase())?.name || null;
     const db = readDatabase();
-    const canonical = (db.users[req.userId] as any)?.canonicalWallet || null;
+    const canonical = db.users[req.userId]?.canonicalWallet || null;
     const isCanonical = !!canonical && !!active && canonical.toLowerCase() === active.toLowerCase();
     res.json({ address: active, name, canonicalAddress: canonical, isCanonical, hasCanonical: !!canonical });
   } catch (e: any) {

@@ -52,7 +52,13 @@ export async function executeTrade(
     const data = await safeJson(res);
     if (!res.ok) return { ok: false, message: data.error || 'Trade failed.' };
     // Display the LEDGER fill price (cost-adjusted), never pre-cost spot.
-    const fillPx = Number(data.trade?.price ?? data.price);
+    // If the server sends neither field, Number(undefined) is NaN and the user is
+    // told they filled at "$NaN". Report the gap rather than render nonsense.
+    const rawFillPx = data.trade?.price ?? data.price;
+    if (rawFillPx == null || !Number.isFinite(Number(rawFillPx))) {
+      return { ok: false, message: 'Trade executed, but the server returned no fill price. Check your positions before retrying.' };
+    }
+    const fillPx = Number(rawFillPx);
     const pnl = typeof data.trade?.pnl === 'number' ? ` · realized ${data.trade.pnl >= 0 ? '+' : ''}$${data.trade.pnl.toFixed(2)}` : '';
     return { ok: true, message: `Filled: ${action.side.toUpperCase()} ${data.trade.size} ${data.symbol} @ $${fillPx.toLocaleString()}${pnl} (incl. paper costs). Counts toward your Agent Arena standing.` };
   } catch (err: any) {

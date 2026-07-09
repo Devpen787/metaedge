@@ -42,7 +42,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
     try {
       setLoading(true); setError('');
       const listRes = await apiFetch('/api/mm/wallets/list');
-      const list = await listRes.json();
+      const list = await safeJson<any>(listRes);
       if (!listRes.ok) throw new Error(list.message || list.error || 'Could not load your wallets.');
 
       let snapshot: WalletsData = {
@@ -56,7 +56,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
       for (const w of list.wallets || []) {
         try {
           const bRes = await apiFetch(`/api/mm/wallets/balance?address=${w.address}`);
-          const b = await bRes.json();
+          const b = await safeJson<any>(bRes);
           if (bRes.ok) {
             snapshot = { ...snapshot, wallets: snapshot.wallets.map((x) => eq(x.address, w.address) ? { ...x, totalUsd: b.totalUsd, chains: b.chains } : x) };
             setData(snapshot);
@@ -66,7 +66,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
 
       try {
         const pRes = await apiFetch('/api/mm/perps/balance');
-        const p = await pRes.json();
+        const p = await safeJson<any>(pRes);
         const bal = p?.balance?.data || p?.balance || {};
         snapshot = { ...snapshot, perps: { venue: 'hyperliquid', totalBalance: Number(bal.totalBalance || 0), spendable: Number(bal.spendableBalance || 0) } };
         setData(snapshot);

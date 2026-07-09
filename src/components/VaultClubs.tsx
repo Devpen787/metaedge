@@ -46,7 +46,7 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
     setContribLoading(true);
     setMsg({ text: '', type: '' });
     try {
-      await onContributeToVault(activeRoomId(), Number(contribAmount));
+      await onContributeToVault(activeVaultIdOrFirst(), Number(contribAmount));
       setMsg({ text: 'Simulated contribution credited!', type: 'success' });
       setContribAmount('1000');
     } catch (err: any) {
@@ -57,7 +57,9 @@ export default function VaultClubs({ currentUser, vaults, onVaultCreated, onCont
   };
 
   // Safe fallback to resolve selected vault ID
-  const activeRoomId = () => activeVaultId || (vaults[0]?.id || '');
+  // Named `activeRoomId` by copy-paste from TradingRoom. It always returned the
+  // VAULT id, so the behaviour was correct and the name lied. Renamed, not repaired.
+  const activeVaultIdOrFirst = () => activeVaultId || (vaults[0]?.id || '');
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 fade-in">

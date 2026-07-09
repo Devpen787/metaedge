@@ -302,7 +302,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
               </div>
               <div className="flex items-baseline gap-2 mt-1">
                 <h2 className="text-2xl font-bold text-slate-200 font-mono group-hover:text-amber-400 transition-colors">
-                  {audits.length}
+                  {myAudits.length}
                 </h2>
                 <span className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">Actions audit-logged</span>
               </div>

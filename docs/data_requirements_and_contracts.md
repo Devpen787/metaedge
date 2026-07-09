@@ -59,8 +59,25 @@ contract's FIELDS/UNITS section forces the check before code runs.
 - CANNOT conclude: anything before 2026-07-07 (recorder birth); order-book
   microstructure; true spreads.
 
-## Data inventory & classifications
+## Data inventory & classifications (Foundation Task B, 2026-07-08)
 
-Populated by Foundation Task B (see decision record 2026-07-08). Classes:
-`available` · `missing-required-now` · `useful-later` · `irrelevant-to-venue` ·
-`dangerous-to-fake`.
+| Data item | Class | Detail |
+|---|---|---|
+| OHLCV (1h, 2y, 10 tokens) | **available** | binance-klines-1h contract; MATIC truncated |
+| OHLCV (4h/1d) | **missing-required-now** | derivable by aggregation from 1h — needed to escape the 1h-default anti-pattern |
+| Live feed ticks (1m) + 24h vol | **available** | metaedge-recorder-live contract; born 2026-07-07, 30d rotation |
+| Volume (bar volume, quote volume, trade count) | **available** | in klines fields v/qv/trades |
+| Realized volatility | **available (derived)** | ATR/σ computable from klines; contract covers units |
+| Spread / slippage (historical) | **missing — useful-later** | only our own 15 live fills measured (4.5–13bps); no historical book data |
+| Order book / depth | **missing — useful-later** | no free historical source; live snapshots possible via HL API if a card needs them |
+| Funding rates (hourly, 2y, 7 coins) | **available** | hyperliquid-funding-history contract |
+| Spot-perp basis (premium) | **available** | same contract, premium field |
+| Open interest | **partial** | live OI captured hourly by recorder (since 2026-07-07); historical OI missing — useful-later |
+| Liquidation data | **missing-required-now** for the dislocation pool | HL has no free historical liquidation feed; blocks dislocation cards — investigate alternatives before that pool opens |
+| Options volume/OI/skew/expiry | **missing — required for law-16 cards** | Deribit public API has CURRENT data; historical is paid. Expiry CALENDAR is free (deterministic dates) → expiry-effect cards testable from price alone |
+| Event / macro / earnings calendar | **missing — useful-later** | no source wired; blocks event-driven pool |
+| Session / timezone data | **available (derived)** | timestamps carry it; session-effect cards testable now |
+| Venue fees | **available** | HL taker 4.5bps measured; paper model 10bps/side documented |
+| Wallet / execution constraints | **available** | policy limits, allowlist, canonical guard — in safety policy |
+| Live feed coverage | **available** | 11 tokens; expansion = deliberate universe decision, not convenience |
+| **Dangerous to fake** | — | intrabar path (stop/target sequencing), spreads, book depth, liquidation prices, pre-recorder live history, borrow availability. NEVER simulated with assumptions — strategies decline instead |

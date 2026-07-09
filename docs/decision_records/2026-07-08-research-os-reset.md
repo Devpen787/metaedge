@@ -45,18 +45,20 @@ The full review text is NOT retained as a standing prompt.
    retroactive contracts for datasets already used); strategy_taxonomy.md;
    backtest_validation_rules.md; agent_and_user_safety_policy.md; charter
    marked superseded.
-2. Foundation task A: instrument/opportunity inventory (spot, perps,
-   options-as-signal-only, paper synthetics, competition instruments; stocks
-   marked N/A) → docs/instrument_opportunity_inventory.md.
-3. Foundation task B: data inventory with classifications (available /
-   missing-required-now / useful-later / irrelevant / dangerous-to-fake) →
-   appended to data_requirements_and_contracts.md.
-4. Foundation task C: funding/basis research card v2 on the new template,
-   separating unhedged funding exposure / hedged spot-perp carry / directional
-   with funding overlay (upgrades funding-carry-alwayson-v1).
-5. Retro-card the uncarded tested families as KILLED cards (registry
-   completeness): vol_squeeze, volume_surge, trend_atr, meanrev_stab,
-   relstrength, momentum_breakout.
+2. Foundation task A: instrument/opportunity inventory — SATISFIED BY
+   strategy_taxonomy.md (instrument classes + pools + who-pays-us + status);
+   a separate duplicate doc would be the sprawl this reset forbids. [DONE]
+3. Foundation task B: data inventory with classifications — DONE 2026-07-08,
+   in data_requirements_and_contracts.md. Key blockers surfaced: liquidation
+   data (blocks dislocation pool), historical options data (expiry calendar
+   free → expiry cards testable from price alone), 4h/1d bars (derivable).
+4. Foundation task C: funding/basis card v2 — DONE 2026-07-08
+   (cards/funding-basis-v2.md): variant A killed by risk model without test,
+   variant B (hedged carry) → forward paper (60d, 5% APR floor), variant C
+   pre-declared and blocked on a directional survivor.
+5. Retro-cards — DONE 2026-07-08, consolidated in
+   cards/KILLED-FAMILIES-2026-07.md (one record for nine corpses; full
+   template files reserved for living hypotheses).
 6. Only then: choose the next implementation task per the model's priorities.
 
 ## Mandatory from this date

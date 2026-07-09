@@ -1,4 +1,8 @@
-# Research Charter — governing document for trading research
+# Research Charter — SUPERSEDED (historical record)
+
+> **Superseded 2026-07-08 by `docs/trading_research_operating_model.md`** (the
+> research-OS reset — see decision record of the same date). Kept verbatim
+> below as the issued document; do not operate from this file.
 
 Issued by Devin, 2026-07-08. Supersedes ad-hoc ordering; TRADING_CANON laws
 remain as evidence rules under this charter.

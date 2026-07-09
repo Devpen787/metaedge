@@ -102,6 +102,10 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
     if (session && session.expiresAt > now && db.users[session.userId]) {
       userId = session.userId;
       req.userId = userId;
+      // This request PRESENTED a session that resolved. The anonymous branch below
+      // mints a brand-new userId instead, which is why rate limiters must not read
+      // `req.userId` as an identity the caller had to earn. See rateLimitKey().
+      req.sessionAuthenticated = true;
       // Throttle the session touch: rewriting the whole db on EVERY request just
       // to bump lastSeenAt is huge write amplification under polling. Renew at
       // most once per window (TTL is 30 days, so this stays accurate).

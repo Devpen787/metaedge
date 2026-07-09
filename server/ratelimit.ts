@@ -1,7 +1,27 @@
 import type { Request, Response, NextFunction } from 'express';
 
-// Reusable per-key sliding-window rate limiter. Keyed by userId (falls back to
-// IP) so one abusive client can't spam mutations and starve everyone else.
+// The bucket key for a request.
+//
+// `req.userId || req.ip` looked like "userId, with an IP fallback for anonymous
+// callers". It is not: sessionMiddleware MINTS a fresh `usr_...` for every
+// request that arrives without a valid session cookie, so `req.userId` is always
+// set and the IP branch was unreachable. Each cookieless request therefore got
+// its own private bucket of one, and no limiter in this app could ever throttle
+// the one caller that matters — the one who simply omits the cookie.
+//
+// Measured before the fix: 20 consecutive `GET /api/mm/status` with no cookie
+// returned 20x 200 and created 20 users.
+//
+// So: trust `req.userId` only when the request actually PRESENTED a session that
+// resolved (`req.sessionAuthenticated`, set in sessionMiddleware). Otherwise fall
+// back to the network peer, which an attacker cannot mint on demand.
+export function rateLimitKey(req: any): string {
+  if (req.sessionAuthenticated && req.userId) return `usr:${req.userId}`;
+  return `ip:${req.ip || 'unknown'}`;
+}
+
+// Reusable per-key sliding-window rate limiter, so one abusive client can't spam
+// mutations and starve everyone else.
 export function rateLimit(opts: { windowMs: number; max: number; name?: string }) {
   const buckets = new Map<string, number[]>();
   // Periodically drop stale buckets so memory doesn't grow unbounded.
@@ -14,7 +34,7 @@ export function rateLimit(opts: { windowMs: number; max: number; name?: string }
   }, opts.windowMs).unref?.();
 
   return (req: any, res: Response, next: NextFunction) => {
-    const key = req.userId || req.ip || 'anon';
+    const key = rateLimitKey(req);
     const now = Date.now();
     const bucket = (buckets.get(key) || []).filter((t) => now - t < opts.windowMs);
     if (bucket.length >= opts.max) {

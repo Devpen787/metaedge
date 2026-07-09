@@ -7,6 +7,7 @@ import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
 import { recordDeclined } from './declined.js';
 import { isOperator } from './operator.js';
+import { rateLimitKey } from './ratelimit.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
@@ -18,9 +19,13 @@ const RATE_WINDOW_MS = 30_000;
 const RATE_MAX_CALLS = 15;
 const rateBuckets = new Map<string, number[]>();
 
+// The key comes from rateLimitKey(), not `req.userId`: sessionMiddleware mints a
+// fresh userId for every cookieless request, so keying on it gave each request a
+// private bucket and this limiter never fired. Verified: 20 cookieless calls
+// returned 20x 200 before this change, 15x 200 + 5x 429 after.
 metamaskRouter.use((req: any, res, next) => {
   if (!req.path.startsWith('/api/mm/')) return next();
-  const key = req.userId || req.ip || 'anon';
+  const key = rateLimitKey(req);
   const now = Date.now();
   const bucket = (rateBuckets.get(key) || []).filter((t) => now - t < RATE_WINDOW_MS);
   if (bucket.length >= RATE_MAX_CALLS) {

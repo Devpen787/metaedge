@@ -124,8 +124,10 @@ export default function ResearchFleet() {
       <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3"><Activity className="w-4 h-4 text-indigo-400" /> Recent trades — with their reasoning</h3>
         <div className="space-y-2">
-          {(data?.recent || []).map((r, i) => (
-            <div key={i} className="flex items-start justify-between gap-3 border-b border-slate-800/50 pb-2 last:border-0">
+          {/* Keyed by trade id: newest-first, so index names a different trade
+              each time a fill lands. */}
+          {(data?.recent || []).map((r: any, i: number) => (
+            <div key={r.id ?? `${r.t}-${r.symbol}-${i}`} className="flex items-start justify-between gap-3 border-b border-slate-800/50 pb-2 last:border-0">
               <div className="min-w-0">
                 <div className="text-[12px] font-mono text-slate-200">
                   <span className={r.side === 'buy' || r.side === 'long' ? 'text-emerald-400' : 'text-rose-400'}>{r.side.toUpperCase()}</span>

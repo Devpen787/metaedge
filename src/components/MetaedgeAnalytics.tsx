@@ -144,8 +144,11 @@ export default function MetaedgeAnalytics() {
           <div className="text-xs text-slate-500 font-mono py-6 text-center">No activity yet — be the first to trade.</div>
         ) : (
           <div className="space-y-1.5">
+            {/* Keyed by event id, not index: this list is re-polled every 15s and
+                new events arrive at the FRONT, so index 0 names a different event
+                on every refresh. */}
             {data.recentEvents.map((e: any, i: number) => (
-              <div key={i} className="flex items-center justify-between gap-3 text-xs font-mono bg-slate-950/40 rounded-lg px-3 py-2">
+              <div key={e.id ?? `${e.timestamp}-${e.username}-${i}`} className="flex items-center justify-between gap-3 text-xs font-mono bg-slate-950/40 rounded-lg px-3 py-2">
                 <span className="text-slate-300 truncate"><span className="text-indigo-400">{e.username}</span> · {e.details}</span>
                 <span className="text-slate-600 shrink-0">{timeAgo(e.timestamp)}</span>
               </div>

@@ -174,8 +174,12 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
                 ? <p className="text-xs text-slate-500">Nothing to consolidate — all funds are already on your canonical wallet.</p>
                 : (
                   <div className="space-y-1 bg-slate-950/50 rounded-lg p-3">
-                    {plan.moves.map((m, i) => (
-                      <div key={i} className="flex justify-between text-[11px] font-mono text-slate-400">
+                    {/* A consolidation plan is recomputed as balances change and
+                        its moves reorder. Key on what identifies a move, not its
+                        position in this render — these rows describe real fund
+                        transfers. */}
+                    {plan.moves.map((m: any, i: number) => (
+                      <div key={`${m.from}-${m.token}-${m.chainName}`} className="flex justify-between text-[11px] font-mono text-slate-400">
                         <span>{Number(m.amount).toFixed(4)} {m.token} · {m.chainName} · from {short(m.from)}</span>
                         <span>${m.usd.toFixed(2)}</span>
                       </div>

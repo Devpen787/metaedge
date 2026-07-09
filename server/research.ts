@@ -35,6 +35,9 @@ researchRouter.get('/api/research-fleet', (_req, res) => {
   } catch { /* no counters yet */ }
 
   const recent = tagged.slice(-20).reverse().map((t: any) => ({
+    // Every trade carries an id; projecting it away forced the client to key
+    // this newest-first list by array index.
+    id: t.id,
     t: t.timestamp, family: t.thesis.signalFamily, side: t.side, size: t.size,
     symbol: t.assetSymbol, price: t.price, pnl: typeof t.pnl === 'number' ? t.pnl : null,
     trigger: t.thesis.trigger || '', setup: t.thesis.setup || ''

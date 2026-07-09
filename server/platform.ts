@@ -50,7 +50,9 @@ platformRouter.get('/api/platform-stats', (_req, res) => {
   const recentEvents = [...db.auditEvents]
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, 8)
-    .map((e) => ({ action: e.action, details: e.details, username: e.username, timestamp: e.timestamp }));
+    // `id` is on every audit event and was dropped here, which left the client
+    // keying a polled, newest-first list by array index.
+    .map((e) => ({ id: e.id, action: e.action, details: e.details, username: e.username, timestamp: e.timestamp }));
 
   res.json({
     metrics: {

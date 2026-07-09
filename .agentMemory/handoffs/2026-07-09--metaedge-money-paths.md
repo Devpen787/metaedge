@@ -26,6 +26,7 @@ Companion to `.agentMemory/handoffs/2026-07-09--metaedge-prod-audit.md`. This do
 9. [Implementation Roadmap](#9-implementation-roadmap)
 10. [Operational Readiness Checklist](#10-operational-readiness-checklist)
 11. [Infrastructure Watchdog](#11-infrastructure-watchdog)
+12. [Signal Collector Architecture](#12-signal-collector-architecture--implementation-spec)
 
 ---
 
@@ -256,6 +257,7 @@ The winning approach: **build safety first, prove edge in paper, go live small, 
 | **Polymarket Gamma API** | Polymarket | `gamma-api.polymarket.com`, public, no auth | **Medium** | Market discovery, events, token IDs. Good for matching signals to contracts. |
 | **Polymarket CLOB API** | Polymarket | Public + private (auth for trading) | **High** | Order book, prices, midpoint. Price action as signal. |
 | **HyperX Agent API** | Hyperliquid perps | WebSocket + REST, free tier | **High** | Real-time fills stream for ANY wallet. Dedicated trading token. Whale tracking + copy trading. |
+| **HyperX Twitter feed** | Crypto sentiment | WebSocket, free, **no auth** | **Medium** | Completely free, no API key, no rate limits. Real-time crypto Twitter from traders, KOLs. Sentiment signal. |
 | **Nansen** | Hyperliquid perps | API, paid | **Low (cost)** | Whale wallet tracking, position monitoring. Paid. Skip until proven need. |
 | **Onsight** | Polymarket | Telegram bot, free | **Medium** | Non-custodial, 203 MAU, $5.12M volume. Good for signal discovery. |
 | **AI-Traderv2** | Stocks, crypto, forex, Polymarket, options | Open source, API | **Medium** | Multi-market. Agents publish signals. Cross-platform sync (Binance, Coinbase, IBKR). |
@@ -669,5 +671,179 @@ df -h /                                     # Should be <80% full
 systemctl is-active metaedge                # Should be "active"
 journalctl -u metaedge --since "24 hours ago" | grep -c error  # Should be 0
 ```
+
+---
+
+## 12. Signal Collector Architecture — Implementation Spec
+
+This section is the build spec for `server/signal-collector.ts` and related modules. An agent can implement from this spec alone.
+
+### 12.1 Core Types
+
+```typescript
+// server/signal-collector.ts
+
+interface Signal {
+  id: string                    // hash(source + marketId + timestamp)
+  source: string                // 'polyzig' | 'polymarket-data-api' | 'hyperx' | 'hyperx-twitter' | 'onsight'
+  sourceWallet?: string         // wallet address that triggered the signal
+  sourceName?: string           // display name from leaderboard
+  marketId: string              // Polymarket conditionId, Hyperliquid coin, Alpaca ticker
+  marketType: 'prediction' | 'perp' | 'spot' | 'stock'
+  direction: 'yes' | 'no' | 'buy' | 'sell'
+  confidence: number            // source-reported confidence (0-1), or 0.5 if unknown
+  sizeUsd?: number              // dollar size of the originating trade
+  entryPrice?: number           // filled price of the originating trade
+  timestamp: number             // unix ms of the signal
+  metadata: Record<string, unknown>  // source-specific raw data
+}
+
+interface SignalSource {
+  name: string
+  enabled: boolean
+  pollIntervalMs: number        // how often to poll (or 0 for WebSocket)
+  fetch(): Promise<Signal[]>    // or AsyncGenerator for WS streams
+}
+
+interface ScoredSignal extends Signal {
+  convergenceCount: number      // how many sources agree
+  totalSources: number           // how many sources track this market
+  convergenceScore: number       // convergenceCount / totalSources (0-1)
+  sourceWeight: number           // aggregate reliability weight of agreeing sources
+}
+
+interface SourceScore {
+  source: string
+  totalSignals: number
+  correctSignals: number
+  accuracy: number              // rolling 30-day
+  lastUpdated: number
+}
+```
+
+### 12.2 Adapter Implementations
+
+Each signal source implements `SignalSource`:
+
+| Adapter | Source | Method | Auth | Endpoints |
+|---|---|---|---|---|
+| `polyzig-adapter.ts` | PolyZig | REST poll every 5s | `pzk_*` API key read-only | `GET /api/configs`, `GET /api/configs/{id}/pnl`, `GET /api/configs/{id}/trades` |
+| `polymarket-data-adapter.ts` | Polymarket Data API | REST poll every 10s | None (public) | `GET /positions?user=`, `GET /trades?user=`, `GET /holders?market=` |
+| `hyperx-fills-adapter.ts` | HyperX fills | WebSocket (push) | Data API token | `wss://api.hyperx.trade/v1/ws/fills` |
+| `hyperx-twitter-adapter.ts` | HyperX Twitter feed | WebSocket (push) | None (free, no auth) | `wss://api.hyperx.trade/v1/ws/twitter` |
+| `onsight-adapter.ts` | Onsight Telegram | Poll (manual) | None | Telegram webhook integration |
+
+### 12.3 Convergence Pipeline
+
+```
+SignalSource.fetch()  →  Normalize(& Signal[])  →  Group by marketId
+                                                       ↓
+                                              ConvergenceScorer.score(signals)
+                                                       ↓
+                                              ScoredSignal[]  →  filter(>threshold)
+                                                       ↓
+                                              SignalExecutor.execute(scoredSignal)
+                                                       ↓
+                                              MetaEdge autotrader (existing)
+```
+
+**ConvergenceScorer logic:**
+
+```typescript
+class ConvergenceScorer {
+  private sourceWeights: Map<string, number>  // from SourceReliabilityTracker
+
+  score(signals: Signal[]): ScoredSignal[] {
+    const grouped = groupBy(signals, s => s.marketId)
+    const results: ScoredSignal[] = []
+
+    for (const [marketId, marketSignals] of grouped) {
+      const agreeing = marketSignals.filter(s => s.direction === majorityDirection(marketSignals))
+      results.push({
+        ...marketSignals[0],  // representative signal
+        convergenceCount: agreeing.length,
+        totalSources: marketSignals.length,
+        convergenceScore: agreeing.length / marketSignals.length,
+        sourceWeight: sum(agreeing.map(s => this.sourceWeights.get(s.source) ?? 0.5))
+      })
+    }
+    return results.sort((a, b) => b.convergenceScore - a.convergenceScore)
+  }
+}
+```
+
+**Execution threshold:**
+
+```typescript
+const EXECUTION_THRESHOLDS = {
+  paper: { minConvergence: 0.5, minWeight: 1.0 },
+  live:  { minConvergence: 0.66, minWeight: 2.0 }  // 2/3 of sources must agree
+}
+```
+
+### 12.4 Source Reliability Tracker
+
+Stored in `data/source-reliability.json`:
+
+```json
+{
+  "polyzig": { "totalSignals": 342, "correctSignals": 231, "accuracy": 0.675, "lastUpdated": 1720534400000 },
+  "polymarket-data-api": { "totalSignals": 891, "correctSignals": 623, "accuracy": 0.699, "lastUpdated": 1720534400000 },
+  "hyperx-fills": { "totalSignals": 156, "correctSignals": 89, "accuracy": 0.571, "lastUpdated": 1720534400000 },
+  "hyperx-twitter": { "totalSignals": 412, "correctSignals": 128, "accuracy": 0.311, "lastUpdated": 1720534400000 }
+}
+```
+
+- Accuracy is computed on a rolling 30-day window (not all-time)
+- Sources below 0.40 accuracy for 14+ consecutive days are auto-paused
+- Sources below 100 total signals use a default weight of 0.5 (insufficient data)
+
+### 12.5 Execution Flow
+
+```
+1. Poll all sources (or receive WS push)
+2. Normalize into Signal[]
+3. ConvergenceScorer.score(signals)
+4. Filter: convergenceScore >= threshold && sourceWeight >= threshold
+5. For each scored signal:
+   a. Check MetaEdge position caps (existing)
+   b. Check balance floor (existing)
+   c. Check kill rules (existing)
+   d. If all pass → SignalExecutor.placeTrade(scoredSignal)
+   e. Log trade with signal attribution
+6. After resolution:
+   a. Mark signal as correct/incorrect
+   b. Feed outcome to SourceReliabilityTracker
+```
+
+### 12.6 File Structure
+
+```
+server/
+├── signal-collector.ts         # Main orchestrator, starts all adapters
+├── signal-collector-types.ts   # Signal, ScoredSignal, SignalSource interfaces
+├── adapters/
+│   ├── polyzig-adapter.ts
+│   ├── polymarket-data-adapter.ts
+│   ├── hyperx-fills-adapter.ts
+│   ├── hyperx-twitter-adapter.ts
+│   └── onsight-adapter.ts
+├── signal-matcher.ts           # ConvergenceScorer
+├── signal-scorer.ts            # SourceReliabilityTracker
+├── signal-executor.ts          # Bridge from scored signals → autotrader
+└── data/
+    └── source-reliability.json # Persistent source scores
+```
+
+### 12.7 Testing Protocol
+
+Before any live execution:
+1. Run collector in display-only mode for 7 days
+2. Collect all signals, score convergence, log what WOULD have traded
+3. Manually review 20 highest-convergence signals — were they correct?
+4. If accuracy > 60% on manual review, proceed to paper trading
+5. Paper trade for 30 days
+6. Compare paper performance vs source-scorer predictions
+7. If divergence < 15%, go live with $100
 
 ---

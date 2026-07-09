@@ -252,25 +252,31 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
                       </span>
                     </p>
                   </div>
-                  <button 
-                    onClick={() => {
-                      const btn = document.getElementById('deploy-btn');
-                      if (btn) {
-                        btn.innerText = 'Deployed!';
-                        btn.classList.add('bg-emerald-600', 'hover:bg-emerald-500', 'shadow-emerald-500/20');
-                        btn.classList.remove('bg-fuchsia-600', 'hover:bg-fuchsia-500', 'shadow-fuchsia-500/20');
-                        setTimeout(() => {
-                           btn.innerText = 'Deploy to Agent';
-                           btn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500', 'shadow-emerald-500/20');
-                           btn.classList.add('bg-fuchsia-600', 'hover:bg-fuchsia-500', 'shadow-fuchsia-500/20');
-                        }, 3000);
-                      }
-                    }}
-                    id="deploy-btn"
-                    className="whitespace-nowrap bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-fuchsia-500/20 transition-all text-xs uppercase tracking-wider flex items-center gap-2">
-                    <Settings className="w-4 h-4 pointer-events-none" />
-                    Deploy to Agent
-                  </button>
+                  {/* Q1 / 2.4: this button used to grab itself by getElementById,
+                      write "Deployed!" into its own innerText, turn green, and
+                      revert after three seconds. It made zero API calls. Nothing
+                      was deployed and no agent was configured — it told a trader
+                      their backtested strategy was live.
+
+                      Turning a backtest into a running agent means mapping the
+                      strategy's parameters onto POST /api/agents, which is real
+                      work and a product decision, not a Tier-2 fix. Until that
+                      exists the control says so. A button that lies about a
+                      trading action is worse than one that is plainly not ready. */}
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      type="button"
+                      disabled
+                      title="Not wired yet — create the agent in Agent Workshop and select this strategy there."
+                      className="whitespace-nowrap bg-slate-800 text-slate-500 font-bold py-3 px-6 rounded-xl transition-all text-xs uppercase tracking-wider flex items-center gap-2 cursor-not-allowed border border-slate-700"
+                    >
+                      <Settings className="w-4 h-4 pointer-events-none" />
+                      Deploy to Agent
+                    </button>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Not wired yet — deploy from Agent Workshop
+                    </span>
+                  </div>
                 </div>
               )}
 

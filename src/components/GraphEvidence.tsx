@@ -33,16 +33,32 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
     fetchGraph();
   }, []);
 
+  // The edges the server already computes (MEMBER_OF, OWNS, …), read back out.
+  const relationsFor = (nodeId: string) =>
+    edges.filter((e) => e.source === nodeId || e.target === nodeId);
+  const nodeName = (id: string) =>
+    nodes.find((n) => n.id === id)?.properties?.name || id.slice(0, 8);
+
   return (
     <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 relative overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
         <div>
+          {/* G3: this was titled "Kuzu-Projected Evidence". There is no Kuzu and no
+              projection: /api/graph returns plain nodes and edges built from the
+              audit log, the nodes are laid out by `flex flex-wrap`, and the two
+              spinning rings below are decoration, not edges. The `edges` array was
+              fetched and then never referenced — the one thing that would have made
+              this a graph was discarded on arrival. It is now shown, per node. */}
           <h3 className="text-lg font-bold text-white flex items-center gap-2">
             <Network className="w-5 h-5 text-indigo-400" />
-            MetaEdge Kuzu-Projected Evidence
+            Room Evidence
           </h3>
           <p className="text-xs text-slate-400 mt-1">
-            Visual trust and relationship paths reconstructed from verifiable room ledger logs.
+            Nodes and relationships reconstructed from your activity log
+            {(nodes.length > 0 || edges.length > 0) && (
+              <> · <span className="font-mono text-slate-300">{nodes.length}</span> node{nodes.length === 1 ? '' : 's'},{' '}
+                <span className="font-mono text-slate-300">{edges.length}</span> relationship{edges.length === 1 ? '' : 's'}</>
+            )}.
           </p>
         </div>
         <button
@@ -111,7 +127,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
 
           <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1.5 z-10 border-t border-slate-900 pt-2">
             <HelpCircle className="w-3.5 h-3.5" />
-            Click on any relation node above to inspect its security verifications and owner relationships.
+            Click a node to see its recorded relationships. Positions are decorative — this is a node list, not a laid-out graph.
           </div>
         </div>
 
@@ -139,19 +155,41 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
                 </p>
               </div>
 
+              {/* The real edges, finally used. This replaces a paragraph asserting
+                  that the node "is bound to the verified owner session ... isolated
+                  from other room participants", and a line reading "No relational
+                  orphan writes detected." Nothing detected anything: both strings
+                  were constants, rendered identically for every node, whatever the
+                  data said. */}
               <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800/40 space-y-2">
                 <div className="text-[11px] font-mono text-slate-300 font-semibold flex items-center gap-1.5">
                   <Award className="w-3.5 h-3.5 text-indigo-400" />
-                  Evidence and readiness
+                  Relationships ({relationsFor(selectedNode.id).length})
                 </div>
-                <p className="text-[11px] text-slate-400 leading-relaxed font-mono">
-                  This {selectedNode.label.toLowerCase()} is bound to the verified owner session. It is isolated from other room participants and operates within client-side execution boundaries.
-                </p>
+                {relationsFor(selectedNode.id).length === 0 ? (
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    No relationships recorded for this node yet.
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {relationsFor(selectedNode.id).map((e) => {
+                      const outgoing = e.source === selectedNode.id;
+                      const otherId = outgoing ? e.target : e.source;
+                      return (
+                        <div key={e.id} className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
+                          <span className="text-slate-600">{outgoing ? '→' : '←'}</span>
+                          <span className="text-indigo-400">{e.type}</span>
+                          <span className="text-slate-500 truncate">{nodeName(otherId)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="text-[11px] font-mono text-slate-500 flex items-center gap-1 bg-slate-900/20 p-2 rounded">
                 <FileSpreadsheet className="w-3.5 h-3.5 text-slate-400" />
-                No relational orphan writes detected.
+                Reconstructed from the audit log — nothing here is synthetic.
               </div>
             </div>
           ) : (

@@ -382,26 +382,26 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {/* AI Auto-Risk Guards */}
           <div className="grid grid-cols-2 gap-2 mt-2">
-            <button
-              type="button"
-              className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-colors group cursor-pointer text-left shadow-inner"
-            >
+            {/* H1: these were <button> elements with hover states, cursor-pointer
+                and no onClick. They named order types that do not exist and did
+                nothing when pressed. On a trading surface, a control that looks
+                like it arms a trailing stop and does not is a way to lose money.
+                They are no longer buttons, so nothing invites the click, and the
+                copy states what is true. */}
+            <div className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/60 text-left shadow-inner opacity-60">
               <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">Bot Trailing Stop</span>
+                <div className="w-2 h-2 rounded-full bg-slate-600"></div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">Bot Trailing Stop</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Secures profit dynamically</span>
-            </button>
-            <button
-              type="button"
-              className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-colors group cursor-pointer text-left shadow-inner"
-            >
+              <span className="text-[9px] text-slate-500 font-mono leading-tight">Not built yet — no trailing stop is armed</span>
+            </div>
+            <div className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/60 text-left shadow-inner opacity-60">
               <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">AI Take-Profit</span>
+                <div className="w-2 h-2 rounded-full bg-slate-600"></div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">AI Take-Profit</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Auto-exit on resistance</span>
-            </button>
+              <span className="text-[9px] text-slate-500 font-mono leading-tight">Not built yet — no auto-exit is set</span>
+            </div>
           </div>
 
           {/* AI Insight Box */}
@@ -411,15 +411,24 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 <Sparkles className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <h5 className="text-[10px] font-bold text-indigo-300 font-mono uppercase tracking-widest mb-1">Agent Intelligence</h5>
+                {/* These four strings claimed to read the market. Their only inputs
+                    are `side`, `tradeType` and `leverage` — no funding rate is
+                    fetched, no moving average is computed, nothing is measured.
+                    "Funding rates show bullish momentum" and "recommended by
+                    historical agent moving averages" were fabricated analysis
+                    printed beside a trade button. Two of them also told the user to
+                    switch on Bot Trailing Stop and AI Take-Profit, features that do
+                    not exist (H1).
+
+                    Replaced with the mechanics of the order type, which is what the
+                    component actually knows. Not renamed to "Agent Intelligence"
+                    with better copy — it is not intelligence, so it does not carry
+                    the name. */}
+                <h5 className="text-[10px] font-bold text-indigo-300 font-mono uppercase tracking-widest mb-1">Order Mechanics</h5>
                 <p className="text-[11px] text-indigo-200/70 leading-relaxed font-sans">
-                  {tradeType === 'perp' 
-                    ? side === 'long'
-                      ? `Funding rates show bullish momentum for ${assetSymbol}. Keep leverage under ${leverage > 10 ? '10x' : '15x'} to survive volatility wicks. Activate Bot Trailing Stop to secure profits dynamically.`
-                      : `Shorting ${assetSymbol} here requires caution against short-squeezes. Ensure AI Take-Profit is active to lock in downside gains automatically.`
-                    : side === 'buy'
-                      ? `Spot accumulation for ${assetSymbol} is safe from funding fees and liquidations. DCAing here is recommended by historical agent moving averages.`
-                      : `Selling ${assetSymbol} spot locks in your capital. The agent suggests keeping 20% in cold storage in case of sudden macro breakouts.`
+                  {tradeType === 'perp'
+                    ? `At ${leverage}x, roughly a ${(100 / leverage).toFixed(1)}% move against you erases this ${assetSymbol} position's margin — liquidation lands sooner, once maintenance margin and fees are counted. Perps also pay or receive funding for every hour held.`
+                    : `Spot ${side === 'buy' ? 'buys' : 'sells'} pay no funding and cannot be liquidated — your ${assetSymbol} exposure is limited to what you put in.`
                   }
                 </p>
               </div>

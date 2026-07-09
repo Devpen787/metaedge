@@ -16,7 +16,7 @@ Companion to `.agentMemory/handoffs/2026-07-09--metaedge-prod-audit.md`. This do
 ## Table of Contents
 
 1. [The Core Insight](#1-the-core-insight)
-2. [Master Comparison: All 9 Paths](#2-master-comparison-all-9-paths)
+2. [Master Comparison: All 10 Paths](#2-master-comparison-all-10-paths)
 3. [The 8 Blind Spots That Kill Trading Bots](#3-the-8-blind-spots-that-kill-trading-bots)
 4. [Safety Architecture — MetaEdge's Advantage](#4-safety-architecture)
 5. [Position Sizing — Kelly Criterion](#5-position-sizing--kelly-criterion)
@@ -55,7 +55,7 @@ The winning approach: **build safety first, prove edge in paper, go live small, 
 
 ---
 
-## 2. Master Comparison: All 9 Paths
+## 2. Master Comparison: All 10 Paths
 
 ### P1 — Prediction Market Arbitrage (Kalshi ↔ Polymarket)
 
@@ -226,7 +226,68 @@ The winning approach: **build safety first, prove edge in paper, go live small, 
 
 ---
 
-## 3. The 7 Blind Spots That Kill Trading Bots
+### P10 — Signal Aggregation & Multi-Source Copy Trading
+
+**What it is:** Collect signals from multiple sources (on-chain wallet trackers like Onsight, X/Twitter trading calls, Polymarket leaderboard wallets, Telegram/Discord signal groups), normalize them into a common format, weight by source reliability, and execute only when multiple independent sources converge. MetaEdge's safety layer (position caps, kill rules, balance floor) protects every signal-based trade.
+
+**This is different from blind copy trading because:**
+- Blind copy trading follows one wallet = one point of failure. One bad trade from a hot-streak wallet wipes gains.
+- Signal aggregation requires **multiple independent sources** to agree before executing. Three wallets independently making the same bet is stronger than one wallet's conviction.
+- MetaEdge's safety layer enforces position caps and kill rules that no Telegram bot has.
+
+**MetaEdge already has:** All the safety infrastructure (kill rules, position caps, balance floor, audit trail). Express server for aggregator API. Express + TS stack.
+
+**Needs built:**
+
+| Component | Effort | Description |
+|---|---|---|
+| `server/signal-collector.ts` | 4h | Fetch signals from Onsight API (Polycop), Polymarket leaderboard, X/Twitter scrape, Telegram |
+| `server/signal-matcher.ts` | 3h | Match signals to specific markets/events. Score convergence (N of M sources agree) |
+| `server/signal-scorer.ts` | 2h | Track source reliability over time. Down-weight wrong sources, boost consistent ones |
+| `db/signals.json` schema | 1h | Store signal: source, market, direction, confidence, timestamp, outcome |
+| Dashboard views | 3h | Show live signals, source reliability scores, convergence alerts |
+
+**Signal sources — full catalog (updated Jul 2026):**
+
+| Source | Asset Class | Access | Quality | Why |
+|---|---|---|---|---|
+| **PolyZig** | Polymarket | REST API + MCP server, free tier, scoped keys | **High** | Sub-500ms mempool copy. Top trader discovery, mirror config, PnL monitoring. Built for AI agents. |
+| **Polymarket Data API** | Polymarket | `data-api.polymarket.com`, public, no auth | **High** | Every wallet's positions, trade tape, PnL. 1,000 req/10s. Build your own pipeline. |
+| **Polymarket Gamma API** | Polymarket | `gamma-api.polymarket.com`, public, no auth | **Medium** | Market discovery, events, token IDs. Good for matching signals to contracts. |
+| **Polymarket CLOB API** | Polymarket | Public + private (auth for trading) | **High** | Order book, prices, midpoint. Price action as signal. |
+| **HyperX Agent API** | Hyperliquid perps | WebSocket + REST, free tier | **High** | Real-time fills stream for ANY wallet. Dedicated trading token. Whale tracking + copy trading. |
+| **Nansen** | Hyperliquid perps | API, paid | **Low (cost)** | Whale wallet tracking, position monitoring. Paid. Skip until proven need. |
+| **Onsight** | Polymarket | Telegram bot, free | **Medium** | Non-custodial, 203 MAU, $5.12M volume. Good for signal discovery. |
+| **AI-Traderv2** | Stocks, crypto, forex, Polymarket, options | Open source, API | **Medium** | Multi-market. Agents publish signals. Cross-platform sync (Binance, Coinbase, IBKR). |
+| **Cripton AI** | Crypto (DCA/Grid) | API, free tier | **Medium** | 6 AI algorithms per signal (HMM, DRL, Monte Carlo). Non-custodial. |
+| **X/Twitter trading calls** | All | Manual scrape | **Low** | Survivorship bias, fake P&Ls, pump groups. Use as confirmation only. |
+| **Telegram signal groups** | All | Manual scrape | **Very Low** | Nearly all are pump-and-dump or exit scams. Skip. |
+
+**Why MetaEdge has an edge over copy-trading bots:**
+
+| Feature | Onsight / PolyCop | MetaEdge + Signal Aggregation |
+|---|---|---|
+| Key custody | Non-custodial (you hold) | Same (your keys) |
+| Protection | None (copy blindly) | Position caps, kill rules, balance floor |
+| Source diversity | Single wallet per follow | Multi-source convergence scoring |
+| Learning loop | None | Source reliability tracking over time |
+| Asset classes | Polymarket only | Prediction arb + perps + crypto + stocks + forex |
+
+**Capital:** $100-500 to start. Signal aggregation doesn't need large capital — you can size positions conservatively and scale as source reliability improves.
+
+**Risk:** Medium. The risk isn't the platform (Onsight is non-custodial). The risk is following bad signals. Mitigated by:
+- Multi-source convergence (3+ sources must agree)
+- Source reliability tracking (automatic down-weight)
+- MetaEdge's position caps and kill rules (maximum loss per trade, per day)
+- Start with $100, paper trade signals for 30 days before going live
+
+**Setup time:** ~10h for full pipeline. Can start display-only with Onsight in 1h.
+
+**Reference:** Onsight.trade (verified, free, non-custodial, 203 MAU, $5.12M cumulative). The concern with Onsight is execution drift (leader's fill vs your fill) and the earn-when-copied incentive pushing leaders toward risk. Using Onsight as a signal source (not execution) avoids both problems.
+
+---
+
+## 3. The 8 Blind Spots That Kill Trading Bots
 
 From 3 independent studies of retail bot failure (CoinClaw, StratBase, MarketTrace) and 7+ open-source post-mortems. These are the patterns that separate surviving bots from blown accounts.
 
@@ -345,7 +406,55 @@ MetaEdge's existing safety layer is its competitive advantage. Here's the comple
 
 ---
 
-## 5. Tax & Regulatory
+## 5. Position Sizing — Kelly Criterion
+
+**This is the biggest gap in MetaEdge's current architecture.** The autotrader has position caps (CLIP=250, MAX_OPEN=2,500) but they're static — same size regardless of conviction, account equity, or drawdown state.
+
+### The Kelly Framework
+
+The Kelly Criterion calculates the mathematically optimal fraction of capital to risk per trade given your edge:
+
+```
+f* = (p × b - q) / b
+```
+Where: p = win rate, q = loss rate (1-p), b = ratio of avg win to avg loss
+
+**Full Kelly is dangerous for crypto trading.** Three reasons:
+1. Your edge estimates are always wrong — imprecise inputs produce wildly different outputs
+2. Crypto's volatility means losing streaks reduce bankroll faster than Kelly expects
+3. Markets are non-stationary — a 56% win rate in a ranging market may be 44% in a trend
+
+### Practical Variants (use one)
+
+| Variant | Formula | Best For |
+|---|---|---|
+| **Quarter Kelly** | `f* × 0.25` | First-time deployment, uncertain edge estimates |
+| **Half Kelly** | `f* × 0.50` | Strategies with 50+ backtested trades, stable regime |
+| **Capped Kelly** | `min(f* × fraction, 5%)` | Safest — use Kelly as floor check, hard cap prevents blowup |
+
+### MetaEdge's Implementation Gap
+
+MetaEdge is currently fixed-position sizing (static caps per agent). The industry standard is dynamic position sizing with three inputs:
+
+1. **Kelly fraction** — based on rolling trade history (50+ trades window)
+2. **Regime multiplier** — ranging market = reduced size, trending = full size
+3. **Drawdown scaler** — at 5% drawdown start reducing, at 15% go to 25% of normal
+
+**Add to `killrule.mjs` alongside `evaluateKill()`** — `calculatePositionSize()` returns a fraction that the autotrader applies before placing any trade.
+
+### Multi-Strategy Capital Allocation
+
+When running multiple paths simultaneously (P1 + P2 + P3 + P5), Kelly helps allocate capital between them. Multi-asset Kelly gives proportionally more capital to higher-edge strategies.
+
+### When NOT to use Kelly
+
+For the first live deployment of any path: use fixed 1% risk per trade. You need 100+ completed trades before you have reliable edge estimates to feed Kelly. Premature Kelly is overconfident Kelly.
+
+**Reference:** `Cuuper22/polymarket_bot` (open source, Kelly sizing with regime detection, Python). AlgoKing's dynamic Kelly post (fractional Kelly + regime + drawdown scaling, full Python implementation, MIT).
+
+---
+
+## 6. Tax & Regulatory
 
 ### Tax Reality
 
@@ -380,7 +489,66 @@ If profitable, you owe estimated taxes quarterly (Apr 15, Jun 15, Sep 15, Jan 15
 
 ---
 
-## 6. Key Management at Scale
+## 7. Legal Structure
+
+### When to Form an Entity
+
+| Situation | Structure | Why |
+|---|---|---|
+| Trading as a hobby, < $5K profit/yr | None (individual) | Simpler tax, no filing costs |
+| Trading as primary income, $5-80K profit/yr | Single-member LLC | Liability protection, business deductions, Schedule C |
+| Trading as primary income, $80K+ profit/yr | LLC electing S-corp | Saves ~$5-10K/yr in self-employment tax |
+| Multi-member or external investors | LLC taxed as partnership | K-1s to members, flexible profit distribution |
+
+### Single-member LLC (Recommended for most)
+
+**What it gives you:**
+- Liability protection (personal assets separated from trading)
+- Business expense deductions (software, hardware, education, data feeds, gas fees)
+- Professionalism (easier to open business bank accounts and exchange accounts)
+- Clean tax separation (business income/expenses tracked separately from personal)
+
+**What it does NOT do:**
+- Save you taxes by default. A single-member LLC is a "disregarded entity" — taxed identically to a sole proprietor.
+- Eliminate self-employment tax (15.3% on net earnings from trading if you qualify as a business).
+
+### S-Corp Election ($80K+ profit)
+
+At $80K+ profit, electing S-corp (Form 2553) lets you:
+1. Pay yourself a "reasonable salary" (subject to payroll/SE tax)
+2. Take remaining profits as distributions (not subject to 15.3% SE tax)
+
+Example: $300K trading profit → $80K salary (SE tax: $12,240) → $220K distribution (no SE tax). Saves ~$33,660 vs sole proprietor.
+
+Requires payroll, accounting, and annual Form 1120-S. Not worth it below $80K.
+
+### Trader Tax Status (TTS)
+
+If you meet the IRS threshold for Trader Tax Status (typically 1,000+ trades/year, short holding periods, trading as primary income activity), you qualify for:
+
+| Benefit | What it does |
+|---|---|
+| Deduct trading expenses | Software, data feeds, home office, hardware |
+| Mark-to-market (475(f)) | Treat all positions as sold Dec 31, unlimited loss deductions, eliminates wash sale rules |
+| Ordinary income treatment | Gains/losses are ordinary, not capital |
+
+475(f) election must be made by April 15 of the tax year. Consult a CPA before electing.
+
+### State-Level Considerations
+
+- **Wyoming LLC:** No state income tax, DAO LLC Act, anonymous LLCs allowed, low fees (~$102/yr).
+- **Delaware LLC:** Corporate-friendly courts, franchise tax ($300/yr min), no anonymity.
+- **Your home state:** Simplest but may have state income tax on trading profits.
+
+If prediction market arbitrage is a primary path, note: Polymarket's legal status varies by state (MA, NV, AZ, TN, IL, CT challenging). An LLC does not shield you from regulatory liability if the activity itself is restricted in your jurisdiction.
+
+### Estimated quarterly payments
+
+Any profitable trading year requires estimated tax payments (Apr 15, Jun 15, Sep 15, Jan 15). Failure to pay = underpayment penalty. Rule of thumb: set aside 30% of gross trading profit for taxes.
+
+---
+
+## 8. Key Management at Scale
 
 Each path needs credentials. One leak = blown account.
 
@@ -406,7 +574,7 @@ Each path needs credentials. One leak = blown account.
 
 ---
 
-## 7. Implementation Roadmap
+## 9. Implementation Roadmap
 
 ### Phase 0: Foundation (1-2 days)
 
@@ -424,12 +592,13 @@ Each path needs credentials. One leak = blown account.
 | 1.1 | P5 paper → live | Flip `LIVE_EXECUTION_ENABLED`. Start with $20 gas budget on Base. Paper trade first 30 days. |
 | 1.2 | P1 arb shell | `server/market-proxy.ts` — fetches Polymarket + Kalshi markets, displays gaps. Display-only first. |
 | 1.3 | P2 Hyperliquid setup | Agent wallet, basic strategy adapter, paper trade on Hyperliquid testnet (free). |
+| 1.4 | P10 signal collector | `server/signal-collector.ts` — pull signals from PolyZig (REST/MCP) + Polymarket Data API + HyperX. Display convergence score, skip execution. |
 
 ### Phase 2: Scale (1 week)
 
 | # | Path | Deliverable |
 |---|---|---|
-| 2.1 | P1 arb execution | Market matching engine + automated arb execution. Start with $50-200. |
+| 2.1 | P1 arb execution | Market matching engine + automated arb execution. Start with $500-1,000 for realistic edge. |
 | 2.2 | P4 Freqtrade/Bybit | Hyperopt-tuned strategy from MetaEdge's signal pipeline. Paper 30 days. |
 | 2.3 | Strategy decay monitoring | Hit rate, gate agreement, slippage drift tracked per strategy. |
 
@@ -441,6 +610,13 @@ Each path needs credentials. One leak = blown account.
 | 3.2 | P8 Alpaca stocks | Stock adapter, paper trade, start with index ETFs only. |
 | 3.3 | P9 OANDA forex | Forex adapter, practice account, trend-following strategy first. |
 
+### Phase 3.5: Signal maturity (1 week)
+
+| # | Path | Deliverable |
+|---|---|---|
+| 3.4 | P10 signal execution | `server/signal-matcher.ts` + `server/signal-scorer.ts`. Execute only on 3+ source convergence. Paper 30 days. |
+| 3.5 | P10 source reliability | Track source hit rate over time. Auto-downweight unreliable sources. Dashboard. |
+
 ### Phase 4: Passive income (2-3 days)
 
 | # | Path | Deliverable |
@@ -450,7 +626,7 @@ Each path needs credentials. One leak = blown account.
 
 ---
 
-## 8. Operational Readiness Checklist
+## 10. Operational Readiness Checklist
 
 Before any path goes live with real money, verify:
 
@@ -473,7 +649,7 @@ Before any path goes live with real money, verify:
 
 ---
 
-## 9. Infrastructure Watchdog
+## 11. Infrastructure Watchdog
 
 The GCP e2-micro runs all of this. It's also the single point of failure.
 

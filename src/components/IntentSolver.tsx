@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, ArrowRight, CheckCircle, Clock, Zap, Shield, ChevronRight, Settings2, Command } from 'lucide-react';
+import { Sparkles, ArrowRight, CheckCircle, XCircle, Clock, Zap, Shield, ChevronRight, Settings2, Command } from 'lucide-react';
 import { User } from '../types';
 import { setGlobalAgentProcessing } from '../lib/events';
 import { parseTrade, executeTrade } from '../lib/tradeParse';
@@ -16,7 +16,9 @@ interface IntentStep {
   details: string;
   asset: string;
   network: string;
-  status: 'pending' | 'simulating' | 'ready' | 'executed' | 'failed';
+  // `simulated` is distinct from `executed`. A step that a 700ms timer walked
+  // past was never executed, and the UI must not say it was.
+  status: 'pending' | 'simulating' | 'ready' | 'simulated' | 'executed' | 'failed';
   estimatedCost?: string;
   data?: any;
 }
@@ -26,6 +28,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
   const [isSolving, setIsSolving] = useState(false);
   const [steps, setSteps] = useState<IntentStep[]>([]);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [hasRun, setHasRun] = useState(false);
   const [execResult, setExecResult] = useState<string>('');
   const tradeAction = parseTrade(prompt);
 
@@ -55,6 +58,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
         // Show the route "simulating", then deterministically flip every step to
         // ready together — so the plan reliably becomes executable (no dangling
         // per-step timers, no button stuck disabled).
+        setHasRun(false); // a fresh plan has not been run
         setSteps(data.steps.map((s: any, i: number) => ({ ...s, id: `step-${i}`, status: 'simulating' })));
         await new Promise(r => setTimeout(r, 900));
         setSteps(prev => prev.map(step => ({ ...step, status: 'ready' })));
@@ -78,14 +82,34 @@ export default function IntentSolver({ user }: IntentSolverProps) {
     setGlobalAgentProcessing(true, 'Executing plan');
     // Walk the visual steps, then place the REAL tradeable action (if the intent
     // named a known asset). Multi-step DeFi routes stay simulated/advisory.
+    //
+    // I1: every step used to land on `status: 'executed'` after a 700ms timer,
+    // including steps that execute nothing. An ANALYZE → SWAP → STAKE plan showed
+    // three green "executed" rows while at most ONE paper trade was placed — and
+    // when the intent named no tradeable asset, zero were. The timer is a
+    // progress animation, so it may only advance a step to `simulated`. The
+    // single real fill below is the one thing allowed to claim execution.
     for (let i = 0; i < steps.length; i++) {
       setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'simulating' } : step));
       await new Promise(r => setTimeout(r, 700));
-      setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'executed' } : step));
+      setSteps(prev => prev.map((step, idx) => idx === i ? { ...step, status: 'simulated' } : step));
     }
+    setHasRun(true);
     if (tradeAction) {
       const r = await executeTrade(tradeAction, 'intent', prompt);
       setExecResult(r.message);
+      if (r.ok) {
+        // Mark only the leg that actually became a fill. Prefer a SWAP/TRADE step
+        // if the plan named one; otherwise the last step stands in for the fill.
+        setSteps(prev => {
+          const tradeish = prev.map((s) => String(s.action || '').toUpperCase());
+          const idx = Math.max(tradeish.lastIndexOf('SWAP'), tradeish.lastIndexOf('TRADE'));
+          const target = idx >= 0 ? idx : prev.length - 1;
+          return prev.map((s, i) => (i === target ? { ...s, status: 'executed' } : s));
+        });
+      } else {
+        setSteps(prev => prev.map((s) => ({ ...s, status: 'failed' })));
+      }
     } else {
       setExecResult('Plan simulated. This intent doesn\'t name a paper-tradeable asset (BTC, ETH, SOL…), so nothing was placed — try e.g. "buy $500 of ETH".');
     }
@@ -93,8 +117,11 @@ export default function IntentSolver({ user }: IntentSolverProps) {
     setGlobalAgentProcessing(false);
   };
 
-  const allReady = steps.length > 0 && steps.every(s => s.status === 'ready' || s.status === 'executed');
-  const allExecuted = steps.length > 0 && steps.every(s => s.status === 'executed');
+  const allReady = steps.length > 0 && steps.every(s => s.status === 'ready');
+  // The run is over when the walk finished — not when every row turned green,
+  // because most rows never execute anything. `hasRun` locks the button that
+  // `allExecuted` used to lock, without asserting that all steps executed.
+  const allExecuted = hasRun;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -187,6 +214,9 @@ export default function IntentSolver({ user }: IntentSolverProps) {
                     animate={{ opacity: 1, y: 0 }}
                     className={`relative p-4 rounded-xl border ${
                       step.status === 'executed' ? 'bg-emerald-500/10 border-emerald-500/30' :
+                      // Simulated is deliberately NOT green. Green means a fill.
+                      step.status === 'simulated' ? 'bg-slate-800/60 border-slate-700' :
+                      step.status === 'failed' ? 'bg-rose-500/10 border-rose-500/30' :
                       step.status === 'ready' ? 'bg-slate-800 border-slate-700' :
                       step.status === 'simulating' ? 'bg-fuchsia-500/10 border-fuchsia-500/30 animate-pulse' :
                       'bg-slate-950 border-slate-800 opacity-50'
@@ -198,10 +228,22 @@ export default function IntentSolver({ user }: IntentSolverProps) {
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex items-center gap-2">
                         {step.status === 'executed' ? <CheckCircle className="w-4 h-4 text-emerald-400" /> :
+                         step.status === 'simulated' ? <Clock className="w-4 h-4 text-slate-500" /> :
+                         step.status === 'failed' ? <XCircle className="w-4 h-4 text-rose-400" /> :
                          step.status === 'ready' ? <Zap className="w-4 h-4 text-fuchsia-400" /> :
                          step.status === 'simulating' ? <Clock className="w-4 h-4 text-fuchsia-400 animate-spin" /> :
                          <div className="w-4 h-4 rounded-full border-2 border-slate-600" />}
                         <span className="text-xs font-bold text-white tracking-wider uppercase">{step.action}</span>
+                        {step.status === 'simulated' && (
+                          <span className="text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+                            simulated
+                          </span>
+                        )}
+                        {step.status === 'executed' && (
+                          <span className="text-[9px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            filled
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] font-mono text-slate-400 px-2 py-0.5 bg-slate-900 rounded border border-slate-800">
                         {step.network}

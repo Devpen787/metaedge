@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { FlaskConical, RefreshCw, ShieldOff, Activity } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 // The edge factory, visible: which strategy families are running, every
 // thesis-tagged trade with its reasoning, and what the system DECLINED.
@@ -30,17 +30,31 @@ function ago(ts: number) {
 export default function ResearchFleet() {
   const [data, setData] = useState<FleetData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
       setLoading(true);
       const res = await apiFetch('/api/research-fleet');
-      if (res.ok) setData(await res.json());
+      // A failed poll used to leave the last-good data on screen with no
+      // indication it had gone stale — the fleet looked healthy while blind.
+      if (!res.ok) {
+        const body = await safeJson<{ error?: string }>(res);
+        setError(body.error || `Could not load fleet (HTTP ${res.status})`);
+        return;
+      }
+      setData(await safeJson(res));
+      setError(null);
+    } catch (err: any) {
+      setError(err?.message || 'Could not reach the fleet API.');
     } finally { setLoading(false); }
   }
   useEffect(() => { load(); const id = setInterval(load, 30_000); return () => clearInterval(id); }, []);
 
-  const declinedRows = Object.entries(data?.declined || {}).sort((a, b) => b[1] - a[1]);
+  // `data?.declined || {}` widened to `{}`, so Object.entries produced `unknown`
+  // values and the sort/reduce below could not typecheck.
+  const declined: Record<string, number> = data?.declined ?? {};
+  const declinedRows = Object.entries(declined).sort((a, b) => b[1] - a[1]);
   const declinedTotal = declinedRows.reduce((s, [, n]) => s + n, 0);
 
   return (
@@ -57,6 +71,13 @@ export default function ResearchFleet() {
           </div>
         )}
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
+          {error}
+          {data && <span className="text-rose-400/70"> — showing the last successful snapshot, which may be stale.</span>}
+        </div>
+      )}
 
       {/* Strategy families */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

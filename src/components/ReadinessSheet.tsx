@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { ShieldCheck, AlertTriangle, Check, Ban, KeyRound, Wallet } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 // The Live gate. ONE wallet concept everywhere: your MetaMask Agent Wallet
 // (the same connection the Wallet button manages). No browser-extension
@@ -29,7 +29,7 @@ export default function ReadinessSheet({ onClose, onStayPaper, onGoLive }: Readi
     (async () => {
       try {
         const res = await apiFetch('/api/mm/readiness');
-        const data = await res.json();
+        const data = await safeJson(res);
         if (!res.ok) throw new Error(data.message || 'Could not check readiness.');
         setChecks(data.checks || []);
         setLiveLocked(data.liveModeGlobalLock !== false);

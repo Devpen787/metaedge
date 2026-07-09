@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Database, TrendingUp, Activity, BarChart2, Shield, Settings, Zap } from 'lucide-react';
 import { TradingAgent } from '../types';
+import { safeJson } from '../lib/api';
 
 interface QuantEngineProps {
   agents: TradingAgent[];
@@ -45,7 +46,7 @@ export default function QuantEngine({ agents }: QuantEngineProps) {
           feeds: enabledFeeds
         })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) throw new Error(data.error || 'Quant simulation failed');
       setResults(data);
     } catch (err) {

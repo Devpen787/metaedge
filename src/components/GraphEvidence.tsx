@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { GraphNode, GraphEdge, User } from '../types';
 import { Network, HelpCircle, ShieldAlert, Award, FileSpreadsheet, RefreshCw } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 interface GraphEvidenceProps {
   currentUser: User;
@@ -19,7 +19,7 @@ export default function GraphEvidence({ currentUser, paperLiveMode }: GraphEvide
     setLoading(true);
     try {
       const res = await apiFetch('/api/graph');
-      const data = await res.json();
+      const data = await safeJson(res);
       setNodes(data.nodes || []);
       setEdges(data.edges || []);
     } catch (e) {

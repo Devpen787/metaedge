@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ShieldCheck, AlertTriangle, Wallet as WalletIcon } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 // A compact guardrail chip: "which wallet am I acting as, and is it the right
 // one?" Shown wherever a real action can originate (e.g. the Trading Desk) so
@@ -26,7 +26,7 @@ export default function ActingAsChip({ className = '' }: { className?: string })
       try {
         const res = await apiFetch('/api/mm/acting-as');
         if (!res.ok) { if (alive) setGone(true); return; } // 403 when no wallet connected
-        const d = await res.json();
+        const d = await safeJson(res);
         if (alive) setData(d);
       } catch {
         if (alive) setGone(true);

@@ -4,6 +4,7 @@ import { Sparkles, ArrowRight, CheckCircle, Clock, Zap, Shield, ChevronRight, Se
 import { User } from '../types';
 import { setGlobalAgentProcessing } from '../lib/events';
 import { parseTrade, executeTrade } from '../lib/tradeParse';
+import { safeJson } from '../lib/api';
 
 interface IntentSolverProps {
   user: User;
@@ -48,7 +49,7 @@ export default function IntentSolver({ user }: IntentSolverProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ intent: prompt })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (res.ok && Array.isArray(data.steps) && data.steps.length) {
         // Show the route "simulating", then deterministically flip every step to

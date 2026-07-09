@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, YAxis, ReferenceDot } from 'recharts';
 import { User, TradingAgent, PaperTrade } from '../types';
 import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2, Wallet, RefreshCw } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 import ActingAsChip from './ActingAsChip';
 import { spark, originOf } from '../lib/fx';
 
@@ -72,7 +72,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
     const fetchPrices = async () => {
       try {
         const response = await fetch('/api/prices');
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success && data.prices) {
           const pricesMap: Record<string, number> = {};
           Object.keys(data.prices).forEach(symbol => {
@@ -124,7 +124,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ from: 'USDC', to: assetSymbol === 'BTC' ? 'WBTC' : assetSymbol === 'ETH' ? 'WETH' : assetSymbol, amount: String(usd) })
         });
-        const body = await res.json();
+        const body = await safeJson(res);
         if (!res.ok) throw new Error(body.message || 'No live route for this pair right now.');
         const inner = body.quote?.data?.quote || {};
         const dec = Number(inner?.destAsset?.decimals);
@@ -137,7 +137,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ symbol: assetSymbol, side, size: String(positionSize || 0.1), leverage: String(leverage) })
         });
-        const body = await res.json();
+        const body = await safeJson(res);
         if (!res.ok) throw new Error(body.message || 'No live venue quote for this market right now.');
         const q = body.quote?.data || {};
         if (!q.entryPrice) throw new Error('No live venue quote for this market right now.');

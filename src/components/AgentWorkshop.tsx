@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { TradingAgent, PaperStrategy, User, PaperTrade } from '../types';
 import { Bot, HelpCircle, Plus, AlertCircle, Play, Pause, Trash2, ArrowRight, TrendingUp, Info } from 'lucide-react';
+import { safeJson } from '../lib/api';
 
 interface AgentWorkshopProps {
   currentUser: User;
@@ -49,12 +50,17 @@ export default function AgentWorkshop({
     DOGE: 0.285
   });
 
+  // Latest prices, readable without making them a hook dependency (see the seed
+  // effect below — depending on them would clobber the user's typed price).
+  const realPricesRef = useRef(realPrices);
+  useEffect(() => { realPricesRef.current = realPrices; }, [realPrices]);
+
   // Fetch prices from server to keep everything in sync
   useEffect(() => {
     const fetchPrices = async () => {
       try {
         const response = await fetch('/api/prices');
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success && data.prices) {
           const pricesMap: Record<string, number> = {};
           Object.keys(data.prices).forEach(symbol => {
@@ -72,16 +78,15 @@ export default function AgentWorkshop({
     return () => clearInterval(interval);
   }, []);
 
+  // Seed the simulator price when the SELECTED AGENT (or its asset) changes —
+  // never on a price refresh. `realPrices` used to be a dependency here, so every
+  // poll of /api/prices overwrote whatever price the user had typed.
+  const simSymbol = agents.find(a => a.id === simAgentId)?.assetSymbol || 'BTC';
   useEffect(() => {
-    if (simAgentId) {
-      const selectedAgent = agents.find(a => a.id === simAgentId);
-      if (selectedAgent) {
-        const symbol = selectedAgent.assetSymbol || 'BTC';
-        const price = realPrices[symbol] || 1.0;
-        setSimPrice(price.toString());
-      }
-    }
-  }, [simAgentId, agents, realPrices]);
+    if (!simAgentId) return;
+    setSimPrice((realPricesRef.current[simSymbol] || 1.0).toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simAgentId, simSymbol]);
 
   // Auto-select an active bot for the fill simulator, so "Simulate Fill" isn't
   // dead-disabled until the user manually picks the only bot they just created.
@@ -268,6 +273,7 @@ export default function AgentWorkshop({
                   <option value="momentum">Momentum</option>
                   <option value="grid">Grid Trading</option>
                   <option value="mean_reversion">Mean Reversion</option>
+                  <option value="rsi_meanrev">RSI Mean Reversion</option>
                   <option value="custom_ai">Custom AI</option>
                 </select>
               </div>

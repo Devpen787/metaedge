@@ -62,7 +62,10 @@ export interface TradingAgent {
   roomId?: string; // Optional room scope
   assetSymbol: string; // e.g., 'BTC', 'ETH', 'SOL'
   tradeType: 'token' | 'perp';
-  strategyType: 'momentum' | 'grid' | 'mean_reversion' | 'custom_ai';
+  // rsi_meanrev is a LIVE strategy (server/autotrader.ts decideRsiMeanrev). Omitting
+  // it here made `agent.strategyType === 'rsi_meanrev'` a compile error and hid the
+  // strategy from the AgentWorkshop form.
+  strategyType: 'momentum' | 'grid' | 'mean_reversion' | 'custom_ai' | 'rsi_meanrev';
   leverage: number; // For perps (1x to 20x)
   status: AgentStatus;
   createdAt: number;

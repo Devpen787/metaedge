@@ -1,3 +1,4 @@
+import { safeJson } from './api';
 // Deterministically pull a tradeable paper action out of plain English, so the
 // Copilot and Intent Solver can actually place trades — with or without an AI key.
 
@@ -48,7 +49,7 @@ export async function executeTrade(
         },
       }),
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (!res.ok) return { ok: false, message: data.error || 'Trade failed.' };
     // Display the LEDGER fill price (cost-adjusted), never pre-cost spot.
     const fillPx = Number(data.trade?.price ?? data.price);

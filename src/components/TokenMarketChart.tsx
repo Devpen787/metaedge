@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { Search, TrendingUp, TrendingDown, Clock, BarChart3, Star, Coins, ArrowRight, ShieldCheck, RefreshCw } from 'lucide-react';
+import { safeJson } from '../lib/api';
 
 interface TokenInfo {
   symbol: string;
@@ -109,7 +110,7 @@ export default function TokenMarketChart() {
     const fetchPrices = async () => {
       try {
         const response = await fetch('/api/prices');
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success && data.prices) {
           setTokens(prev => {
             const next = { ...prev };

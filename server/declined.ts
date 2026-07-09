@@ -44,7 +44,15 @@ export function recordDeclined(source: string, family: string, reason: DeclineRe
     const cutoff = new Date(Date.now() - KEEP_DAYS * 86_400_000).toISOString().slice(0, 10);
     for (const k of Object.keys(data)) if (k.slice(0, 10) < cutoff) delete data[k];
 
-    fs.writeFileSync(FILE, JSON.stringify(data, null, 2));
+    // Atomic write (temp + rename). A plain writeFileSync truncates first, so a
+    // reader in ANOTHER process — server/research.ts and scripts/edgeops_report.mjs
+    // both read this file — can observe a half-written, unparseable file. rename(2)
+    // is atomic on the same filesystem, so readers see either the old file or the
+    // new one, never a torn one. (A promise mutex could not fix this: the racing
+    // reader is a separate process.)
+    const tmp = `${FILE}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, FILE);
   } catch {
     // Accounting must never break trading — a lost counter is acceptable.
   }

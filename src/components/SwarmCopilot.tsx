@@ -4,6 +4,7 @@ import { Send, Bot, User as UserIcon, ShieldCheck, Zap, Activity, ChevronRight, 
 import { User } from '../types';
 import { setGlobalAgentProcessing } from '../lib/events';
 import { parseTrade, executeTrade, TradeAction } from '../lib/tradeParse';
+import { safeJson } from '../lib/api';
 
 interface SwarmCopilotProps {
   user: User;
@@ -61,7 +62,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMsg.content, model: selectedModel, apiKey: userApiKey })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (res.ok) {
         const assistantMsg: ChatMessage = {

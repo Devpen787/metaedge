@@ -40,6 +40,10 @@ async function recordFunding() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ type: 'metaAndAssetCtxs' })
     });
+    // An HTML error page from the venue would make .json() throw and be swallowed
+    // by the catch below, leaving a silent gap in the funding series. Skip the tick
+    // instead — a recorded gap is honest; a fabricated row is not.
+    if (!res.ok) return;
     const [meta, ctxs] = await res.json() as any[];
     const t = Date.now();
     const lines: string[] = [];

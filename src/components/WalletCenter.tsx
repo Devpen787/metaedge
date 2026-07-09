@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, AlertTriangle, ArrowDownToLine, Wallet as WalletIcon, RefreshCw, Star, KeyRound } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 import WalletsPanel from './WalletsPanel';
 
 // The account command center — the dedicated home for everything wallet: what
@@ -24,6 +24,9 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
   const [planLoading, setPlanLoading] = useState(false);
   const [consolMsg, setConsolMsg] = useState('');
   const [switching, setSwitching] = useState(false);
+  const [switchError, setSwitchError] = useState('');
+  // Real key bump. The old code left a comment promising one and never wrote it.
+  const [walletsKey, setWalletsKey] = useState(0);
 
   const connected = !!user?.walletAddress && user.walletAddress !== 'connected';
   const active = data?.wallets.find((w) => eq(w.address, data.activeAddress));
@@ -34,10 +37,19 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
   async function switchTo(address: string) {
     try {
       setSwitching(true);
-      await apiFetch('/api/mm/wallets/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address }) });
+      setSwitchError('');
+      const res = await apiFetch('/api/mm/wallets/select', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address }) });
+      // The response was ignored: a REJECTED switch still fired `wallet-connected`,
+      // so the app re-read balances as the new wallet while the server was still
+      // acting as the old one. Read it before announcing success.
+      const d = await safeJson<{ error?: string }>(res);
+      if (!res.ok) throw new Error(d.error || 'Could not switch wallet.');
+
       window.dispatchEvent(new Event('wallet-connected'));
-      // WalletsPanel will re-fetch on its own refresh; nudge a reload via key bump.
       setData(null);
+      setWalletsKey((k) => k + 1); // force WalletsPanel to remount and refetch
+    } catch (e: any) {
+      setSwitchError(e?.message || 'Could not switch wallet.');
     } finally {
       setSwitching(false);
     }
@@ -47,7 +59,7 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
     try {
       setPlanLoading(true); setConsolMsg('');
       const res = await apiFetch('/api/mm/wallets/consolidate/preview');
-      const d = await res.json();
+      const d = await safeJson(res);
       if (!res.ok) throw new Error(d.error || 'Could not build the plan.');
       setPlan(d);
     } catch (e: any) {
@@ -61,7 +73,7 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
     try {
       setPlanLoading(true); setConsolMsg('');
       const res = await apiFetch('/api/mm/wallets/consolidate', { method: 'POST' });
-      const d = await res.json();
+      const d = await safeJson(res);
       if (d.locked) { setConsolMsg(d.message); return; }
       if (!res.ok) throw new Error(d.error || 'Consolidation failed.');
       setConsolMsg('Consolidation submitted. Refreshing balances…');
@@ -125,8 +137,14 @@ export default function WalletCenter({ user, onConnect }: { user: any; onConnect
         </div>
       )}
 
-      {/* Phase 1/2: all wallets (reused component, expanded by default) */}
-      <WalletsPanel defaultOpen onData={setData} onActiveChanged={() => setData(null)} />
+      {switchError && (
+        <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">{switchError}</div>
+      )}
+
+      {/* Phase 1/2: all wallets (reused component, expanded by default).
+          refreshKey bumps after a successful switch so the panel refetches
+          instead of rendering the previous wallet's balances. */}
+      <WalletsPanel refreshKey={walletsKey} defaultOpen onData={setData} onActiveChanged={() => setData(null)} />
 
       {/* Phase 4: consolidation */}
       <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4 space-y-3">

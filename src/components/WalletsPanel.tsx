@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { RefreshCw, Star, Check, AlertTriangle, ChevronDown, ChevronUp, Wallet as WalletIcon } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 // Account management: every wallet under the account, its balance across all
 // chains + perps, which is active/canonical, and loud warnings when the wallet
@@ -20,10 +20,14 @@ interface WalletsData {
 function short(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
 const eq = (a?: string | null, b?: string | null) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
-export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = false }: {
+export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = false, refreshKey = 0 }: {
   onActiveChanged?: (addr: string) => void;
   onData?: (d: WalletsData) => void;
   defaultOpen?: boolean;
+  // Bumped by the parent after a wallet switch so this panel refetches. The old
+  // code left a comment promising a "key bump" and never implemented one, so the
+  // panel kept showing the previous wallet's balances.
+  refreshKey?: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [data, setData] = useState<WalletsData | null>(null);
@@ -84,6 +88,12 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [defaultOpen]);
 
+  // Refetch when the parent signals the active wallet changed.
+  useEffect(() => {
+    if (refreshKey > 0 && !loading) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
+
   function toggle() {
     const next = !open;
     setOpen(next);
@@ -96,7 +106,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
       const res = await apiFetch('/api/mm/wallets/select', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address })
       });
-      const d = await res.json();
+      const d = await safeJson(res);
       if (!res.ok) throw new Error(d.error || 'Could not switch wallet.');
       onActiveChanged?.(address);
       window.dispatchEvent(new Event('wallet-connected'));
@@ -114,7 +124,7 @@ export default function WalletsPanel({ onActiveChanged, onData, defaultOpen = fa
       const res = await apiFetch('/api/mm/wallets/canonical', {
         method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ address })
       });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Could not set canonical.'); }
+      if (!res.ok) { const d = await safeJson(res); throw new Error(d.error || 'Could not set canonical.'); }
       await load();
     } catch (e: any) {
       setError(e.message || 'Could not set canonical.');

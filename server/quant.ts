@@ -236,8 +236,11 @@ quantRouter.post('/api/quant/backtest', async (req, res) => {
         const aiRes = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt });
         aiCommentary = aiRes.text?.trim();
       }
-    } catch {
-      // commentary is optional; the metrics stand on their own
+    } catch (err: any) {
+      // Commentary is optional and the metrics stand on their own, so the request
+      // still succeeds — but swallowing this silently hides a revoked API key, an
+      // exhausted quota, or an SDK change for as long as nobody looks.
+      console.warn('[quant] AI commentary unavailable:', err?.message ?? err);
     }
 
     res.json({

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Trophy, Swords, Users, Target, Award, TrendingUp, Plus, Bot, Zap, ShieldCheck, Clock, ChevronRight, Crown, Activity, Rocket, DollarSign, PieChart, Play, Pause, X, Wallet, Settings, Terminal, ArrowUpRight, ArrowDownRight, Sliders, Share2 } from 'lucide-react';
 import { User, TradingAgent, PaperTrade } from '../types';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 import { burst } from '../lib/fx';
 
 function msToLeft(endsAt: number): string {
@@ -160,8 +160,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const loadPositions = React.useCallback(async () => {
     try {
       const res = await apiFetch('/api/arena/positions');
-      if (res.ok) setPositions((await res.json()).positions || []);
-    } catch { /* keep last good state */ }
+      if (res.ok) setPositions((await safeJson(res)).positions || []);
+    } catch (e) { console.warn('[arena] loadPositions failed; keeping last good state', e); }
   }, []);
 
   const loadArena = React.useCallback(async () => {
@@ -194,8 +194,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         }
         prevRankRef.current = mine ? { leagueId: activeLeagueId, rank: mine.rank } : null;
       }
-    } catch {
-      /* keep last good state */
+    } catch (e) {
+      console.warn('[arena] loadArena failed; keeping last good state', e);
     }
   }, [activeLeagueId, user.id]);
 
@@ -204,7 +204,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     try {
       const res = await apiFetch(`/api/arena/positions/${id}/close`, { method: 'POST' });
       if (res.ok) {
-        const data = await res.json().catch(() => null);
+        const data = await safeJson(res).catch(() => null);
         const pnl = data?.position?.pnl;
         if (typeof pnl === 'number' && pnl > 0) {
           setCelebration(`💰 +${pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} locked in!`);
@@ -213,7 +213,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         await loadPositions();
         await loadArena();
       }
-    } catch { /* ignore transient failures */ } finally {
+    } catch (e) { console.error('[arena] closePosition failed; the next refresh reconciles state', e); } finally {
       setClosingId(null);
     }
   };
@@ -291,8 +291,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
       } else if (res.status === 403) {
         promptConnect();
       }
-    } catch {
-      /* ignore transient failures; state stays consistent on next load */
+    } catch (e) {
+      console.error('[arena] league action failed; the next load reconciles state', e);
     }
   };
 
@@ -321,8 +321,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
       } else if (res.status === 403) {
         promptConnect();
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      console.error('[arena] league action failed', e);
     }
   };
 
@@ -351,7 +351,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const handlePauseResume = async (agent: TradingAgent) => {
     try {
       await onAgentStatusChanged(agent.id, agent.status === 'active' ? 'paused' : 'active');
-    } catch { /* refreshed state will tell the truth */ }
+    } catch (e) { console.error('[arena] pause/resume failed; refreshed state will show the truth', e); }
   };
 
   return (

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Wallet, RefreshCw, AlertTriangle, KeyRound, ShieldCheck, ChevronDown, ChevronUp, Landmark, Bot, Copy, Check, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 import { connectBank, refreshBalance, fundAgentWallet, hasMetaMask, BASE_CHAIN_ID_HEX, type BankConnection } from '../lib/bankWallet';
 import { spark, originOf } from '../lib/fx';
 import WalletsPanel from './WalletsPanel';
@@ -75,7 +75,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   async function loadReadiness() {
     try {
       const res = await apiFetch('/api/mm/readiness');
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) setReadiness(data);
     } catch {
       /* readiness stays unknown */
@@ -85,7 +85,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   async function checkStatus() {
     try {
       const res = await apiFetch('/api/mm/connect/status');
-      const s = await res.json();
+      const s = await safeJson(res);
       setConnected(!!s.connected);
       setConnectedAddress(s.address || undefined);
       return !!s.connected;
@@ -102,7 +102,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
       setLoading(true);
       setMessage('');
       const res = await apiFetch('/api/mm/connect/start', { method: 'POST' });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login. Try again in a few seconds.');
       setLoginUrl(data.loginUrl);
       setConnectPolling(true);
@@ -136,7 +136,7 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ token: tokenInput.trim() })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok || !data.connected) throw new Error(data.message || data.error || 'Token login failed.');
       setTokenInput('');
       setConnected(true);
@@ -160,7 +160,14 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   async function disconnectWallet() {
     try {
       setLoading(true);
-      await apiFetch('/api/mm/connect/disconnect', { method: 'POST' });
+      const res = await apiFetch('/api/mm/connect/disconnect', { method: 'POST' });
+      // The response was ignored, so a FAILED disconnect still cleared local state:
+      // the UI read "disconnected" while the server kept the wallet attached.
+      const d = await safeJson<{ error?: string }>(res);
+      if (!res.ok) {
+        setMessage(d.error || 'Could not disconnect the wallet.');
+        return;
+      }
       setConnected(false);
       setConnectedAddress(undefined);
       setMessage('');

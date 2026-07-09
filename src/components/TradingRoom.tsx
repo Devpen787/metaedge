@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { FriendRoom, User, PaperStrategy } from '../types';
 import { Users, UserPlus, ShieldAlert, Plus, DoorOpen, Link2, Copy, ToggleLeft, ToggleRight, Settings, Info } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 interface TradingRoomProps {
   currentUser: User;
@@ -23,26 +23,38 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
   const [joinLoading, setJoinLoading] = useState(false);
   const [msg, setMsg] = useState({ text: '', type: '' }); // type: 'success' | 'error'
 
-  const fetchActiveRoomDetails = async (roomId: string) => {
+  const fetchActiveRoomDetails = async (roomId: string, signal?: AbortSignal) => {
     try {
-      const res = await apiFetch(`/api/rooms/${roomId}`);
-      const data = await res.json();
-      if (res.ok) {
-        setActiveRoomDetails(data);
-      } else {
+      const res = await apiFetch(`/api/rooms/${roomId}`, { signal });
+      const data = await safeJson(res);
+      if (!res.ok) {
         setActiveRoomDetails(null);
+        setMsg({ text: data?.error || `Could not load room (HTTP ${res.status}).`, type: 'error' });
+        return;
       }
-    } catch (e) {
+      setActiveRoomDetails(data);
+    } catch (e: any) {
+      // An aborted request is the expected outcome of switching rooms quickly.
+      // It is not an error and must not clobber the new room's state.
+      if (e?.name === 'AbortError') return;
       console.error('Error loading room details', e);
+      // Previously swallowed: a failed load left the PREVIOUS room's details on
+      // screen, so the desk showed one room's data while acting on another.
+      setActiveRoomDetails(null);
+      setMsg({ text: e?.message || 'Could not load room details.', type: 'error' });
     }
   };
 
   useEffect(() => {
-    if (activeRoomId) {
-      fetchActiveRoomDetails(activeRoomId);
-    } else {
+    if (!activeRoomId) {
       setActiveRoomDetails(null);
+      return;
     }
+    // Rapid room switches raced: an earlier, slower response could resolve after a
+    // later one and overwrite it. Abort the in-flight request on switch/unmount.
+    const controller = new AbortController();
+    fetchActiveRoomDetails(activeRoomId, controller.signal);
+    return () => controller.abort();
   }, [activeRoomId, rooms]);
 
   const handleCreateRoom = async (e: React.FormEvent) => {
@@ -86,7 +98,7 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
     if (!activeRoomId) return;
     try {
       const res = await apiFetch(`/api/rooms/${activeRoomId}/invite/toggle`, { method: 'POST' });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         fetchActiveRoomDetails(activeRoomId);
       }
@@ -113,7 +125,7 @@ export default function TradingRoom({ currentUser, rooms, onRoomCreated, onJoinR
         method: 'POST',
         body: JSON.stringify({ strategyId })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         setMsg({ text: `Strategy copied! Agent "${data.agent.name}" created in your Agents tab.`, type: 'success' });
         fetchActiveRoomDetails(activeRoomId!);

@@ -23,13 +23,18 @@ import SwarmCopilot from './components/SwarmCopilot';
 import { AgentArena } from './components/AgentArena';
 import MetaedgeAnalytics from './components/MetaedgeAnalytics';
 import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal, Swords, Loader2, BarChart2 } from 'lucide-react';
-import { apiFetch } from './lib/api';
+import { apiFetch, safeJson } from './lib/api';
 
 import GuidedTour from './components/GuidedTour';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Most handlers below are `async` with no catch. A rejected one used to vanish:
+  // no toast, no log the user could see, nothing. ErrorBoundary (wired in main.tsx)
+  // only catches errors thrown during RENDER, never a rejected promise from an
+  // event handler. This surfaces those instead of letting them disappear.
+  const [appError, setAppError] = useState<string | null>(null);
 
   // Navigation
   const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>('dashboard');
@@ -67,7 +72,7 @@ export default function App() {
   const loadSession = async () => {
     try {
       const res = await apiFetch('/api/session');
-      const data = await res.json();
+      const data = await safeJson(res);
       if (data.user) {
         setCurrentUser(data.user);
         localStorage.removeItem('metaedge_session_id');
@@ -84,7 +89,7 @@ export default function App() {
     try {
       // Use batched endpoint to avoid hitting rate limits
       const res = await apiFetch('/api/dashboard-data');
-      const data = await res.json();
+      const data = await safeJson(res);
 
       setRooms(data.rooms || []);
       setAgents(data.agents || []);
@@ -100,6 +105,19 @@ export default function App() {
 
   useEffect(() => {
     loadSession();
+  }, []);
+
+  // Catch every rejected promise that no handler caught, and show it once. This
+  // is deliberately global rather than 22 hand-wrapped handlers: the failure mode
+  // is "the user clicked and nothing happened", and that can originate anywhere.
+  useEffect(() => {
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const reason: any = e.reason;
+      console.error('Unhandled rejection in a handler:', reason);
+      setAppError(reason?.message || 'Something went wrong. Please try again.');
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
   }, []);
 
   useEffect(() => {
@@ -188,7 +206,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName, bio, avatarUrl })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update profile.');
       }
@@ -199,13 +217,17 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error updating profile', err);
+      // Rethrow. Dashboard.handleSaveProfile already catches this, keeps the modal
+      // open and renders the message. Swallowing it here made the promise resolve,
+      // so the modal closed as though the save had succeeded.
+      throw err;
     }
   };
 
   // Faucet claim handler
   const handleClaimFaucet = async () => {
     const res = await apiFetch('/api/faucet', { method: 'POST' });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({
@@ -227,7 +249,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       await fetchEntities();
       return data.room.id;
@@ -243,7 +265,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inviteToken: token })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       fetchEntities();
       return data.roomId;
@@ -259,7 +281,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
@@ -286,7 +308,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to change agent status.');
     }
   };
@@ -298,7 +320,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ strategyId })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
@@ -313,7 +335,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -331,7 +353,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to delete agent.');
     }
   };
@@ -343,7 +365,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to delete trade.');
     }
   };
@@ -355,7 +377,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to clear trades.');
     }
   };
@@ -367,7 +389,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -385,7 +407,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
@@ -400,7 +422,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ side, amount })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -418,7 +440,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ outcome })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       loadSession();
       fetchEntities();
@@ -480,6 +502,14 @@ export default function App() {
 
   return (
     <div className="h-screen bg-[#060813] text-slate-100 flex flex-col lg:flex-row relative overflow-hidden">
+      {appError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[90%] rounded-xl border border-rose-500/40 bg-rose-950/90 backdrop-blur px-4 py-3 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-rose-200">{appError}</p>
+            <button onClick={() => setAppError(null)} className="text-rose-400 hover:text-rose-200 text-xs font-semibold shrink-0">Dismiss</button>
+          </div>
+        </div>
+      )}
       {/* Ambient glowing background meshes */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-orange-600/5 rounded-full blur-[150px] pointer-events-none" />

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, PredictionMarket } from '../types';
 import { Landmark, TrendingUp, HelpCircle, AlertCircle, Percent, Coins, ChevronRight, Award, Globe } from 'lucide-react';
-import { apiFetch } from '../lib/api';
+import { apiFetch, safeJson } from '../lib/api';
 
 interface PredictionMarketsProps {
   currentUser: User;
@@ -15,15 +15,23 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
   // Real-world market discovery (MetaMask → Polymarket fallback, labeled).
   const [liveMarkets, setLiveMarkets] = useState<any[] | null>(null);
   const [liveSource, setLiveSource] = useState<string>('');
+  const [liveError, setLiveError] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const res = await apiFetch('/api/mm/predict/markets');
-        const data = await res.json();
+        const data = await safeJson(res);
         if (cancelled) return;
-        if (!res.ok) { setLiveMarkets([]); return; }
+        if (!res.ok) {
+          setLiveMarkets([]);
+          // Kept SOURCE-AGNOSTIC deliberately: this endpoint is slated to become a
+          // Polymarket -> Kalshi -> local proxy, so naming a provider here would
+          // start lying the day that proxy lands.
+          setLiveError(data?.error || `Could not load live markets (HTTP ${res.status}).`);
+          return;
+        }
         setLiveSource(data.source || '');
         if (data.source === 'polymarket') {
           setLiveMarkets((data.markets || []).slice(0, 5));
@@ -32,12 +40,19 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
           const raw = data.markets?.data?.result?.markets || data.markets?.result?.markets || [];
           setLiveMarkets(raw.slice(0, 5).map((m: any) => {
             let prices: number[] = [];
-            try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); } catch { /* none */ }
+            // Malformed outcomePrices yields NO price rather than a wrong one — but
+            // say so, instead of silently rendering a market with a blank price.
+            try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); }
+            catch { console.warn('[predictions] malformed outcomePrices for market', m?.id); }
             return { id: m.id, question: m.question, yesPrice: prices[0] ?? null, volume: m.volume ?? m.liquidity ?? null };
           }));
         }
-      } catch {
-        if (!cancelled) setLiveMarkets([]);
+        setLiveError('');
+      } catch (err: any) {
+        if (!cancelled) {
+          setLiveMarkets([]);
+          setLiveError(err?.message || 'Could not reach the markets service.');
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -254,7 +269,11 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
           {liveMarkets === null ? (
             <div className="text-[11px] font-mono text-slate-500">Loading real markets…</div>
           ) : liveMarkets.length === 0 ? (
-            <div className="text-[11px] font-mono text-slate-500">Live markets are unavailable right now — paper pools below still work.</div>
+            <div className="text-[11px] font-mono text-slate-500">
+              {liveError
+                ? <span className="text-rose-400">{liveError} — paper pools below still work.</span>
+                : 'Live markets are unavailable right now — paper pools below still work.'}
+            </div>
           ) : (
             <div className="space-y-1.5">
               {liveMarkets.map((m) => (

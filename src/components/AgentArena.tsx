@@ -108,6 +108,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const [newLeagueName, setNewLeagueName] = useState('');
   const [newLeagueBalance, setNewLeagueBalance] = useState(10000);
   const [newLeagueDuration, setNewLeagueDuration] = useState(7);
+  // AR6: these were hardcoded to 'Medium' / 'Community Pool' in the POST body,
+  // while every league card rendered them as if the creator had chosen them. The
+  // server validates `risk` against ['Low','Medium','High'] and sanitizes
+  // `prize` (arena.ts:340-341) — it always accepted real values; the form simply
+  // never asked. Now it asks.
+  const [newLeagueRisk, setNewLeagueRisk] = useState<'Low' | 'Medium' | 'High'>('Medium');
+  const [newLeaguePrize, setNewLeaguePrize] = useState('');
   const [activeTier, setActiveTier] = useState('All');
 
   const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
@@ -348,8 +355,10 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
           name: newLeagueName,
           startBalance: newLeagueBalance,
           durationDays: newLeagueDuration,
-          risk: 'Medium',
-          prize: 'Community Pool',
+          risk: newLeagueRisk,
+          // Empty means "let the server pick its default" (Reputation Badge),
+          // rather than the client asserting a prize nobody chose.
+          prize: newLeaguePrize.trim() || undefined,
         }),
       });
       if (res.ok) {
@@ -357,6 +366,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         setNewLeagueName('');
         setNewLeagueBalance(10000);
         setNewLeagueDuration(7);
+        setNewLeagueRisk('Medium');
+        setNewLeaguePrize('');
         await loadArena();
       } else if (res.status === 403) {
         promptConnect();
@@ -940,28 +951,39 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2">Allowed Strategies</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="flex items-center gap-3 p-3 border border-slate-800 rounded-xl cursor-pointer hover:bg-slate-800">
-                      <input type="checkbox" defaultChecked className="accent-yellow-500" />
-                      <span className="text-sm">Spot Trading</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 border border-slate-800 rounded-xl cursor-pointer hover:bg-slate-800">
-                      <input type="checkbox" defaultChecked className="accent-yellow-500" />
-                      <span className="text-sm">Perpetuals</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 border border-slate-800 rounded-xl cursor-pointer hover:bg-slate-800">
-                      <input type="checkbox" defaultChecked className="accent-yellow-500" />
-                      <span className="text-sm">Yield Farming</span>
-                    </label>
-                    <label className="flex items-center gap-3 p-3 border border-slate-800 rounded-xl cursor-pointer hover:bg-slate-800">
-                      <input type="checkbox" defaultChecked className="accent-yellow-500" />
-                      <span className="text-sm">Prediction Markets</span>
-                    </label>
+                {/* 2.5: this block used to be four `defaultChecked` checkboxes
+                    labelled "Allowed Strategies" — unbound to state, absent from
+                    the POST body, and unknown to the server, which has no concept
+                    of per-league strategy restrictions. Toggling them changed
+                    nothing, while promising a permission system that does not
+                    exist. Replaced with the two fields the API actually honours
+                    (AR6), which the form had been hardcoding behind the user's
+                    back. */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Risk band</label>
+                    <select
+                      value={newLeagueRisk}
+                      onChange={(e) => setNewLeagueRisk(e.target.value as 'Low' | 'Medium' | 'High')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white outline-none focus:border-yellow-500"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Prize</label>
+                    <input
+                      type="text"
+                      maxLength={60}
+                      value={newLeaguePrize}
+                      onChange={(e) => setNewLeaguePrize(e.target.value)}
+                      placeholder="Reputation Badge"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white placeholder-slate-600 outline-none focus:border-yellow-500"
+                    />
                   </div>
                 </div>
-
                 <div className="pt-4">
                   <button type="submit" className="w-full py-4 bg-white text-slate-900 font-bold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
                     Initialize League <Zap className="w-4 h-4" />

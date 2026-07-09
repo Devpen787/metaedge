@@ -41,41 +41,63 @@ export default function AgentWorkshop({
   const [simAgentId, setSimAgentId] = useState('');
   const [simSide, setSimSide] = useState<'buy' | 'sell' | 'long' | 'short'>('buy');
   const [simSize, setSimSize] = useState('0.1');
-  const [simPrice, setSimPrice] = useState('96420.50');
-  const [realPrices, setRealPrices] = useState<Record<string, number>>({
-    BTC: 96420.50,
-    ETH: 3125.20,
-    SOL: 184.80,
-    LINK: 16.15,
-    DOGE: 0.285
-  });
+  // No seeded price. `simPrice` is submitted verbatim as the fill price of a REAL
+  // paper trade, so a fabricated seed does not merely mislead the eye — it books
+  // a trade at a price that never existed. The old seed was BTC $96,420.50
+  // against a server truth of $63,089, and the seeding fallback below was
+  // `|| 1.0`, which would have filled at one dollar. Until a real price arrives
+  // the field stays empty and the fill button is locked.
+  const [simPrice, setSimPrice] = useState('');
+  const [realPrices, setRealPrices] = useState<Record<string, number>>({});
+  const [pricesLoaded, setPricesLoaded] = useState(false);
+  const [feedStale, setFeedStale] = useState(false);
+
+  // A5: the status buttons fired straight into an async mutation with nothing
+  // disabled, so a double-click sent two concurrent writes — and Pause followed
+  // by REVOKE could land in either order. One agent at a time may be in flight.
+  const [busyAgentId, setBusyAgentId] = useState<string | null>(null);
+  const changeStatus = async (id: string, status: 'active' | 'paused' | 'revoked') => {
+    if (busyAgentId) return;
+    setBusyAgentId(id);
+    try { await onAgentStatusChanged(id, status); } finally { setBusyAgentId(null); }
+  };
 
   // Latest prices, readable without making them a hook dependency (see the seed
   // effect below — depending on them would clobber the user's typed price).
   const realPricesRef = useRef(realPrices);
   useEffect(() => { realPricesRef.current = realPrices; }, [realPrices]);
 
-  // Fetch prices from server to keep everything in sync
+  // Fetch prices from server to keep everything in sync.
+  // A9: the in-flight request is aborted on unmount, so it cannot setState into
+  // a component that is gone.
   useEffect(() => {
+    const ctrl = new AbortController();
     const fetchPrices = async () => {
       try {
-        const response = await fetch('/api/prices');
+        const response = await fetch('/api/prices', { signal: ctrl.signal });
         const data = await safeJson(response);
+        if (ctrl.signal.aborted) return;
         if (data.success && data.prices) {
           const pricesMap: Record<string, number> = {};
           Object.keys(data.prices).forEach(symbol => {
             pricesMap[symbol] = data.prices[symbol].price;
           });
           setRealPrices(pricesMap);
+          setPricesLoaded(true);
+          // The server has always sent `feed.stale`; nothing read it. A price
+          // more than two minutes old should not silently look live next to a
+          // button that books a fill at it.
+          setFeedStale(!!data.feed?.stale);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
         console.error('Failed to fetch prices', err);
       }
     };
 
     fetchPrices();
     const interval = setInterval(fetchPrices, 60000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); ctrl.abort(); };
   }, []);
 
   // Seed the simulator price when the SELECTED AGENT (or its asset) changes —
@@ -84,9 +106,13 @@ export default function AgentWorkshop({
   const simSymbol = agents.find(a => a.id === simAgentId)?.assetSymbol || 'BTC';
   useEffect(() => {
     if (!simAgentId) return;
-    setSimPrice((realPricesRef.current[simSymbol] || 1.0).toString());
+    // `|| 1.0` used to fabricate a one-dollar price whenever the real one was
+    // missing. Leave the field empty instead: an absent price is a fact, and the
+    // fill button below refuses to submit without one.
+    const px = realPricesRef.current[simSymbol];
+    setSimPrice(typeof px === 'number' && px > 0 ? px.toString() : '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simAgentId, simSymbol]);
+  }, [simAgentId, simSymbol, pricesLoaded]);
 
   // Auto-select an active bot for the fill simulator, so "Simulate Fill" isn't
   // dead-disabled until the user manually picks the only bot they just created.
@@ -141,6 +167,13 @@ export default function AgentWorkshop({
   const handleTriggerTrade = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!simAgentId) return;
+    // The field is user-editable, so the button's disabled state is not enough.
+    // Refuse to book a fill at a price we do not have rather than send NaN or 0.
+    const px = Number(simPrice);
+    if (!Number.isFinite(px) || px <= 0) {
+      setMsg({ text: 'No live price for this asset yet — a fill needs a real price, not a placeholder.', type: 'error' });
+      return;
+    }
     setTradeLoading(true);
     setMsg({ text: '', type: '' });
     try {
@@ -149,7 +182,7 @@ export default function AgentWorkshop({
         assetSymbol: agents.find(a => a.id === simAgentId)?.assetSymbol || 'BTC',
         side: simSide,
         size: Number(simSize),
-        price: Number(simPrice),
+        price: px,
         nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
       setMsg({ text: 'Paper fill executed successfully. Balances deducted server-side.', type: 'success' });
@@ -359,16 +392,18 @@ export default function AgentWorkshop({
                     <div className="flex items-center gap-2">
                       {agent.status === 'active' ? (
                         <button
-                          onClick={() => onAgentStatusChanged(agent.id, 'paused')}
-                          className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-lg border border-amber-500/20 transition-colors cursor-pointer"
+                          onClick={() => changeStatus(agent.id, 'paused')}
+                          disabled={busyAgentId === agent.id}
+                          className="p-1.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-40 text-amber-400 rounded-lg border border-amber-500/20 transition-colors cursor-pointer"
                           title="Pause Bot"
                         >
                           <Pause className="w-4 h-4" />
                         </button>
                       ) : (
                         <button
-                          onClick={() => onAgentStatusChanged(agent.id, 'active')}
-                          className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg border border-emerald-500/20 transition-colors cursor-pointer"
+                          onClick={() => changeStatus(agent.id, 'active')}
+                          disabled={busyAgentId === agent.id}
+                          className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 disabled:opacity-40 text-emerald-400 rounded-lg border border-emerald-500/20 transition-colors cursor-pointer"
                           title="Activate Bot"
                         >
                           <Play className="w-4 h-4" />
@@ -376,8 +411,9 @@ export default function AgentWorkshop({
                       )}
                       {agent.status !== 'revoked' && (
                         <button
-                          onClick={() => onAgentStatusChanged(agent.id, 'revoked')}
-                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg border border-rose-500/20 transition-colors cursor-pointer"
+                          onClick={() => changeStatus(agent.id, 'revoked')}
+                          disabled={busyAgentId === agent.id}
+                          className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-40 text-rose-400 rounded-lg border border-rose-500/20 transition-colors cursor-pointer"
                           title="Revoke Strategy"
                         >
                           <span className="text-[10px] font-bold px-0.5">REVOKE</span>
@@ -452,15 +488,23 @@ export default function AgentWorkshop({
                       required
                       value={simPrice}
                       onChange={(e) => setSimPrice(e.target.value)}
-                      placeholder="Price"
+                      placeholder={pricesLoaded ? 'Price' : 'Waiting for price…'}
                       className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-2 py-1 text-white placeholder-slate-600 outline-none"
                     />
                   </div>
+                  {feedStale && (
+                    <div className="mt-1 text-[10px] text-amber-400">
+                      Price feed is stale — this fill would book at an old price.
+                    </div>
+                  )}
                 </div>
 
                 <button
                   type="submit"
-                  disabled={tradeLoading || !simAgentId}
+                  // Locked until a real price exists: this books a paper fill at
+                  // whatever is in the field, and it scores in the Arena.
+                  disabled={tradeLoading || !simAgentId || !(Number(simPrice) > 0)}
+                  title={!(Number(simPrice) > 0) ? 'Waiting for a live price for this asset' : undefined}
                   className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-1.5 px-4 rounded-xl shadow-lg transition-all cursor-pointer text-center"
                 >
                   {tradeLoading ? 'Fills...' : 'Simulate Fill'}

@@ -6,6 +6,7 @@ import fs from 'fs';
 import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
 import { recordDeclined } from './declined.js';
+import { isOperator } from './operator.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
@@ -36,19 +37,16 @@ const MM_PACKAGE = '@metamask/agentic-cli@3';
 const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
 const LIVE_EXECUTION_ENABLED = process.env.LIVE_EXECUTION_ENABLED === 'true';
 
-// Allowlist live mode (Operator tier, docs/DATA_MODEL.md): when the global
-// flag is OFF, live execution can still be enabled for specific WALLET
-// addresses via LIVE_ALLOWLIST (comma-separated). The wallet address on a user
-// record is authentic — finalizeConnect/wallets-select read it from the user's
-// OWN authenticated mm session, so it can't be spoofed by request data.
-const LIVE_ALLOWLIST = (process.env.LIVE_ALLOWLIST || '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean);
+// Allowlist live mode (Operator tier, docs/DATA_MODEL.md): when the global flag
+// is OFF, live execution can still be enabled for specific WALLET addresses.
+//
+// The allowlist itself now lives in server/operator.ts so that other routes can
+// ask "is this an operator?" without re-parsing the env var. Semantics here are
+// unchanged: live execution is permitted if the GLOBAL flag is on, or if this
+// specific user is an operator.
 function liveEnabledFor(userId: string | undefined): boolean {
   if (LIVE_EXECUTION_ENABLED) return true;
-  if (!userId || LIVE_ALLOWLIST.length === 0) return false;
-  try {
-    const w = (readDatabase().users[userId]?.walletAddress || '').toLowerCase();
-    return !!w && LIVE_ALLOWLIST.includes(w);
-  } catch { return false; }
+  return isOperator(userId);
 }
 
 // Each user gets their OWN MetaMask CLI profile (an isolated HOME) on the

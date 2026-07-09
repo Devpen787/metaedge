@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId } from './storage.js';
+import { isOperator } from './operator.js';
 
 export const predictionsRouter = Router();
 
@@ -109,11 +110,23 @@ predictionsRouter.post('/api/predictions/:id/bet', (req: any, res) => {
 // Resolve a prediction market. Dev-only: letting any player mint outcomes
 // would corrupt the game, so this is gated behind an operator env flag.
 predictionsRouter.post('/api/predictions/:id/resolve', (req: any, res) => {
+  // Manual resolution is a DEV TOOL — in production markets settle at their end
+  // date, so this stays shut. Behaviour unchanged.
   if (process.env.METAEDGE_DEV_TOOLS !== 'true') {
     res.status(403).json({ error: 'Market resolution is operator-only. Markets settle at their end date.' });
     return;
   }
   const userId = req.userId;
+
+  // `userId` was read here and never used: with dev tools enabled, ANY
+  // authenticated user could resolve ANY market and trigger its payouts. A market
+  // has no owner field, so ownership cannot be checked — the correct control is
+  // operator identity. An unconfigured allowlist authorises nobody, by design.
+  if (!isOperator(userId)) {
+    res.status(403).json({ error: 'Market resolution requires an operator. Set OPERATOR_ALLOWLIST to the operator wallet address.' });
+    return;
+  }
+
   const marketId = req.params.id;
   const { outcome } = req.body;
 
@@ -139,18 +152,30 @@ predictionsRouter.post('/api/predictions/:id/resolve', (req: any, res) => {
   market.resolved = true;
   market.outcome = outcome;
 
-  // Pay out winning bets
+  // Pay out winning bets.
+  //
+  // UNITS BUG (fixed 2026-07-09): the payout proportion was
+  //   winningShares / totalWinningPool
+  // which divides a SHARE COUNT by a DOLLAR POOL. Shares are bought at
+  // `betAmount / price`, so they are not denominated in dollars. Concretely: on a
+  // 50k/35k market a $100 YES bet buys 170 shares and should pay $170 — the old
+  // formula paid $288.76, minting $118.76 out of nothing on every winning bet.
+  //
+  // The correct denominator is the TOTAL WINNING SHARES, which must be summed —
+  // the market stores no running total of them.
   const totalPool = market.yesPool + market.noPool;
-  const totalWinningPool = outcome === 'yes' ? market.yesPool : market.noPool;
+  const totalWinningShares = Object.values(market.bets).reduce(
+    (sum, b) => sum + (outcome === 'yes' ? b.yesShares : b.noShares),
+    0,
+  );
 
   Object.entries(market.bets).forEach(([betUserId, betInfo]) => {
     const winningShares = outcome === 'yes' ? betInfo.yesShares : betInfo.noShares;
     const targetUser = db.users[betUserId];
 
     if (winningShares > 0 && targetUser) {
-      // Calculate payout based on proportion of winning pool
-      // As a fallback to avoid infinite multiplier, limit payout or do simple proportion
-      const userProportion = winningShares / (totalWinningPool || 1);
+      // Each winner takes their share of the whole pool, pro rata by shares held.
+      const userProportion = winningShares / (totalWinningShares || 1);
       const payout = userProportion * totalPool;
       targetUser.paperBalance += payout;
 

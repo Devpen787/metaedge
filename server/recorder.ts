@@ -45,7 +45,16 @@ async function recordFunding() {
     const lines: string[] = [];
     meta.universe.forEach((u: any, i: number) => {
       if (['ETH', 'BTC', 'SOL'].includes(u.name) && ctxs[i]) {
-        lines.push(JSON.stringify({ t, sym: u.name, fundingHourly: Number(ctxs[i].funding), openInterest: Number(ctxs[i].openInterest || 0), markPx: Number(ctxs[i].markPx || 0) }));
+        // `premium` (perp-vs-oracle basis, a FRACTION) is captured because the
+        // hedged-carry card's cost model needs basis drift. It was previously
+        // discarded, which made basis unmeasurable on our own live feed.
+        lines.push(JSON.stringify({
+          t, sym: u.name,
+          fundingHourly: Number(ctxs[i].funding),
+          premium: Number(ctxs[i].premium ?? 0),
+          openInterest: Number(ctxs[i].openInterest || 0),
+          markPx: Number(ctxs[i].markPx || 0),
+        }));
       }
     });
     if (lines.length) appendLines(dayFile('funding'), lines);

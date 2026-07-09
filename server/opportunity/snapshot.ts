@@ -48,6 +48,47 @@ function realizedVol(symbol: string): number | null {
   return Math.sqrt(variance) * 100; // percent per hour
 }
 
+// Every captured funding row for a symbol, oldest first — the funding_scanner_snapshot
+// contract as a time series. The carry trial consumes THIS rather than reading raw
+// files, so the trial is the scanner's first consumer instead of a private bolt-on.
+//
+// `premium` is null for rows captured before 2026-07-09 (the recorder discarded it).
+// Callers must treat that as basis UNMEASURED, never as zero basis.
+export interface FundingSeriesRow {
+  t: number;
+  fundingHourly: number;
+  fundingApr: number | null;
+  premium: number | null;
+  openInterestUsd: number | null;
+}
+
+export function readFundingSeries(symbol: string, sinceMs = 0): FundingSeriesRow[] {
+  const rows: FundingSeriesRow[] = [];
+  try {
+    const dir = path.join(process.cwd(), 'data', 'market');
+    const files = fs.readdirSync(dir)
+      .filter((f) => f.startsWith('funding-') && f.endsWith('.jsonl') && !f.startsWith('funding-hist-'))
+      .sort();
+    for (const f of files) {
+      for (const line of fs.readFileSync(path.join(dir, f), 'utf8').split('\n')) {
+        if (!line) continue;
+        try {
+          const e = JSON.parse(line);
+          if (e.sym !== symbol || typeof e.fundingHourly !== 'number' || e.t < sinceMs) continue;
+          rows.push({
+            t: e.t,
+            fundingHourly: e.fundingHourly,
+            fundingApr: fundingAprPercent(e.fundingHourly),
+            premium: typeof e.premium === 'number' ? e.premium : null,
+            openInterestUsd: openInterestUsd(e.openInterest, e.markPx),
+          });
+        } catch { /* skip malformed line */ }
+      }
+    }
+  } catch { /* no funding capture yet */ }
+  return rows.sort((a, b) => a.t - b.t);
+}
+
 // Latest funding from the recorder's own capture (ETH/BTC/SOL only today).
 //
 // Unit conversions are NOT performed here — they live in server/units.mjs, the

@@ -23,30 +23,20 @@ MetaEdge is a production-deployed React 19 + Express monolith (AI trading simula
 
 ---
 
-## Instructions for the reader
+## How to use this handoff
 
-Each item below follows this format:
+1. **Read the Master Execution Checklist** at the bottom — it lists all 114 items with status columns.
+2. **Execute in tier order**: Tier 0 → Tier 1 → Tier 2. Do not skip tiers.
+3. **Read sections on demand, not all at once.** Each tier section below has Problem/Fix/Verify. Read only what you're working on.
+4. **Mark progress** in the Master Execution Checklist: `[x]` Reviewed → `[x]` Decide → `[x]` Implemented or `[x]` Left Out (with reason).
+5. **Skip-if logic**: Items marked "Skip if X" are optional — implement only if the precondition applies.
+6. **Research sections (5-7)** are labeled Reference vs Actionable. Reference = read for context if working on that topic. Actionable = implementation-ready plans.
+7. **Grading sections have been removed** — they were useful during peer review but are not needed for execution.
 
-1. **Problem** — what's wrong, and why it matters for a production system
-2. **Fix** — exactly which file(s) and line(s) to change, and what to change them to
-3. **Verify** — how to confirm the fix worked
-4. **GRADING** — post-audit quality assessment (added after peer review)
-
-Start with Tier 0, then proceed downward. Do not skip tiers.
-
-### Grading Rubric Applied
-
-Each item was scored 1-5 on five dimensions by a peer reviewer:
-
-| Dimension | What it measures |
-|---|---|
-| **Accuracy** | Are file:line refs correct? Is the proposed fix correct? |
-| **Priority** | Is the tier placement right for a production system? |
-| **Completeness** | Does the fix address the full scope? Are edge cases handled? |
-| **Actionability** | Can a dev implement from this description alone? |
-| **Risk awareness** | Are downstream effects, dependencies, and failure modes flagged? |
-
-A score of **1** means the dimension is poorly addressed; **5** means production-ready.
+### Quick start
+- Need fastest time-to-fix? Do the **6 Batch Fix Patterns** first (they cover 40+ items via grep).
+- Want to risk-rank? Follow tiers (Tier 0 = active production threats).
+- Just exploring? Read the **Consolidated Fix Queue** for a bird's-eye view.
 
 ---
 
@@ -58,7 +48,7 @@ All items cataloged in this handoff. Each maps to a detailed section below. Cros
 |---|---|---|---|---|---|
 | **0.1** | HMAC pepper fallback + timing leak | Tier 0 | 10m | `server/secure-core/crypto/secrets.ts` | — |
 | **0.2** | JSON DB no concurrent write lock | Tier 0 | 2-4h | `server/storage.ts` (all callers) | — |
-| **S2** | Cookie secret hardcoded fallback | Tier 0 | 2m | `server.ts:40` | Deep Audit |
+| **DA2** | Cookie secret hardcoded fallback | Tier 0 | 2m | `server.ts:40` | Deep Audit |
 | **1.1** | `res.json()` before `res.ok` (17+ sites) | Tier 1 | 30m | `App.tsx` + all components | — |
 | **1.2** | Uncaught mutation errors | Tier 1 | 35m | All `catch {}` in App.tsx handlers | — |
 | **1.3** | `tradeParse.ts` missing `await` on `fetch()` | Tier 1 | 5m | `src/lib/tradeParse.ts:50` | — |
@@ -81,10 +71,10 @@ All items cataloged in this handoff. Each maps to a detailed section below. Cros
 | **Q2** | `res.json` before `res.ok` in quant routes | Tier 1 | 5m | `server/quant.ts` | Tab 12 |
 | **Q3** | Silent catch with comment admitting error gap | Tier 1 | 5m | `server/quant.ts` | Tab 12 |
 | **I2** | `res.json` before `res.ok` in intent routes | Tier 1 | 5m | `server/intents.ts` | Tab 14 |
-| **S1** | `res.json` before `res.ok` in swarm routes | Tier 1 | 5m | `server/swarm.ts` | Tab 15 |
+| **SW1** | `res.json` before `res.ok` in swarm routes | Tier 1 | 5m | `server/swarm.ts` | Tab 15 |
 | **AR1** | 6 empty catch blocks in AgentArena | Tier 1 | 15m | `AgentArena.tsx` | Tab 16 |
 | **M1** | Check `res.ok` before `r.json()` | Tier 1 | 5m | `MetaedgeAnalytics.tsx` | Tab 17 |
-| **S1** | `uncaughtException` handler doesn't exit | Tier 1 | 5m | `server.ts:156` | Deep Audit |
+| **DA1** | `uncaughtException` handler doesn't exit | Tier 1 | 5m | `server.ts:156` | Deep Audit |
 | **2.1** | Autotrader tick stacking | Tier 2 | 5m | `server/autotrader.ts` | — |
 | **2.2** | Split `metamask.ts` (1383 lines) | Tier 2 | 3h | `server/metamask.ts` | — |
 | **2.3** | VaultClubs copy-paste `activeRoomId` | Tier 2 | 2m | `VaultClubs.tsx` | — |
@@ -110,8 +100,8 @@ All items cataloged in this handoff. Each maps to a detailed section below. Cros
 | **AP1** | Autopilot handler silently returns on error | Tier 2 | 5m | `server/autopilot.ts` | Tab 13 |
 | **AP2** | Unused `user` prop | Tier 2 | 2m | `AgenticAutopilot.tsx` | Tab 13 |
 | **I1** | Multi-step is 700ms setTimeout theater | Tier 2 | 2m | `IntentSolver.tsx` | Tab 14 |
-| **S2** | 3 array index keys in SwarmCopilot | Tier 2 | 5m | `SwarmCopilot.tsx` | Tab 15 |
-| **S3** | Unused `user` prop | Tier 2 | 5m | `SwarmCopilot.tsx` | Tab 15 |
+| **SW2** | 3 array index keys in SwarmCopilot | Tier 2 | 5m | `SwarmCopilot.tsx` | Tab 15 |
+| **SW3** | Unused `user` prop | Tier 2 | 5m | `SwarmCopilot.tsx` | Tab 15 |
 | **AR3** | No `.catch()` on clipboard write | Tier 2 | 2m | `AgentArena.tsx` | Tab 16 |
 | **AR4** | No AbortController on fetch effects | Tier 2 | 15m | `AgentArena.tsx` | Tab 16 |
 | **AR5** | No loading states on async operations | Tier 2 | 20m | `AgentArena.tsx` | Tab 16 |
@@ -120,11 +110,11 @@ All items cataloged in this handoff. Each maps to a detailed section below. Cros
 | **M2** | Add error logging + user-visible error state | Tier 2 | 5m | `MetaedgeAnalytics.tsx` | Tab 17 |
 | **M3** | Use stable key instead of array index | Tier 2 | 2m | `MetaedgeAnalytics.tsx` | Tab 17 |
 | **M4** | Replace setInterval with recursive setTimeout | Tier 2 | 10m | `MetaedgeAnalytics.tsx` | Tab 17 |
-| **S3** | server.ts no CORS config | Tier 2 | 10m | `server.ts` | Deep Audit |
-| **S5** | `tradeParse.ts` `res.json` before `res.ok` root cause | Tier 2 | 2m | `src/lib/tradeParse.ts:51` | Deep Audit |
-| **S6** | `tradeParse.ts` NaN `fillPx` when no `.trade.price` | Tier 2 | 2m | `src/lib/tradeParse.ts:54` | Deep Audit |
-| **S7** | `types.ts` missing `canonicalWallet` on `User` | Tier 2 | 5m | `src/types.ts:13-25` | Deep Audit |
-| **S8** | Dead schema: `autopilot`, `thesis`, `edgeops`, `review` never persisted | Tier 2 | 10m | `src/types.ts` | Deep Audit |
+| **DA3** | server.ts no CORS config | Tier 2 | 10m | `server.ts` | Deep Audit |
+| **DA5** | `tradeParse.ts` `res.json` before `res.ok` root cause | Tier 2 | 2m | `src/lib/tradeParse.ts:51` | Deep Audit |
+| **DA6** | `tradeParse.ts` NaN `fillPx` when no `.trade.price` | Tier 2 | 2m | `src/lib/tradeParse.ts:54` | Deep Audit |
+| **DA7** | `types.ts` missing `canonicalWallet` on `User` | Tier 2 | 5m | `src/types.ts:13-25` | Deep Audit |
+| **DA8** | Dead schema: `autopilot`, `thesis`, `edgeops`, `review` never persisted | Tier 2 | 10m | `src/types.ts` | Deep Audit |
 
 ---
 
@@ -203,14 +193,6 @@ return crypto.timingSafeEqual(Buffer.from(storedHash), Buffer.from(computedHash)
 ```
 
 **Verify:** Start the server without `SYSTEM_PEPPER` set — it should crash immediately with a clear error message. Then set `SYSTEM_PEPPER` — it should start normally.
-
-**GRADING: 25/25**
-- Accuracy: 5 — Correct analysis, correct fix for both the fallback and the timing leak. The hex comparison timing leak is minimal in practice (fixed-length strings) but defense-in-depth is correct.
-- Priority: 5 — Key forgery is a genuine production threat. Tier 0 is correct.
-- Completeness: 5 — Covers both issues (fallback string + timing comparison).
-- Actionability: 5 — Exact code provided, clear verification.
-- Risk awareness: 5 — Self-contained change, crash-at-startup is the safe default.
-- **Gap found:** None.
 
 ---
 
@@ -304,14 +286,6 @@ A and B both read 100, both mutate, the mutex serializes writes, but B still wro
 
 **Verify:** Write a test that fires 10 concurrent writeDatabase calls, then reads the database and confirms all 10 changes are present. The existing smoke tests (`npm run smoke:session`, etc.) should still pass.
 
-**GRADING: 19/25** (revised after peer review)
-- Accuracy: 5 — Correct analysis of the race condition. Mutex implementation is correct.
-- Priority: 5 — Silent data loss is a production threat. Tier 0 is correct.
-- Completeness: 3 — ⚠️ Guarding only `writeDatabase` doesn't fix stale-reads (see "Better approach" above). The mutex needs to wrap the entire read-mutate-write cycle.
-- Actionability: 3 — "Audit all call sites across: [11 files]" is most of the work. No grep command or automated check provided.
-- Risk awareness: 3 — Originally didn't flag stale-read problem or sync-to-async silent failure. These notes were added above.
-- **Gap found:** Stale-read race not prevented. Sync callers silently drop writes after refactor.
-
 ---
 
 ## Tier 1 — Fix This Week (Production bugs)
@@ -344,14 +318,6 @@ const data = await res.json();
 **Grep target:** `rg 'const data = await res.json\(\)' src/ --include '*.tsx' --include '*.ts'` to find all 17+ occurrences.
 
 **Verify:** Temporarily make a route return `res.status(500).send('Server Error')` (text, not JSON) and confirm the frontend shows an error instead of a blank white screen.
-
-**GRADING: 22/25**
-- Accuracy: 5 — Correct problem, correct fix pattern.
-- Priority: 4 — Tier 1 reasonable. Silent failures but no data corruption. Could argue Tier 0 since a server crash causes every action to silently fail, making the whole app non-functional.
-- Completeness: 3 — ⚠️ Original handoff only referenced App.tsx, but the same bug exists in WalletsPanel.tsx:104, AgentWalletModal.tsx:70, and tradeParse.ts:39. Scope was wider than described.
-- Actionability: 5 — Clear before/after. Grep command provided above.
-- Risk awareness: 5 — try/catch on error parsing handles non-JSON responses correctly.
-- **Gap found:** Scope is wider than App.tsx — component files also affected.
 
 ---
 
@@ -402,14 +368,6 @@ await safeHandler(() => handleClaimFaucet(), (e) => setError(e.message));
 - Add `fallback` parameter to `safeHandler` (already shown in type signature as optional)
 - Or add `.catch(console.error)` to every handler call site (minimum viable)
 
-**GRADING: 19/25**
-- Accuracy: 5 — ErrorBoundary is unimported, no try/catch on any handler. Analysis is correct.
-- Priority: 4 — Tier 1 is reasonable. White-screen crashes are user-blocking but recoverable.
-- Completeness: 3 — ⚠️ `safeHandler` returns `undefined` on failure, which means `setX(undefined)` gets called. Need a fallback value or explicit handling. Also no error shown to user (console.error only).
-- Actionability: 4 — Two approaches given, but applying to every handler in 945-line App.tsx is manual. No grep target.
-- Risk awareness: 3 — ⚠️ Didn't flag that `safeHandler` silently returns `undefined`, causing downstream `setState(undefined)` issues. Added note above.
-- **Gap found:** Undefined-return risk on error. No user-facing error display (console only).
-
 ---
 
 ### NEW 1.3 `executeTrade()` in tradeParse.ts has no `await` on `fetch()` — call is silently dropped
@@ -457,14 +415,6 @@ if (!res.ok) {
 ```
 
 **Verify:** Call `executeTrade("buy $100 BTC")` from the console. Confirm the POST request appears in the Network tab of DevTools. Without the fix, the request never fires.
-
-**GRADING: 25/25**
-- Accuracy: 5 — `fetch()` without `await` returns a Promise, `Promise.json()` throws TypeError. Correct analysis.
-- Priority: 5 — Tier 1 is correct. This breaks a core feature silently. Arguably Tier 0 since it makes "execute trade" a no-op.
-- Completeness: 5 — Fix covers both the missing `await` AND the `res.ok` check (de-duplicating with 1.1).
-- Actionability: 5 — Two-line change plus the existing pattern from 1.1.
-- Risk awareness: 5 — Self-contained, no downstream effects.
-- **Gap found (filled):** This was missing from the original handoff entirely.
 
 ---
 
@@ -540,14 +490,6 @@ for (const session of existingSessions) {
 
 **Verify:** Send a POST to `/api/predictions/resolve` with an invalid marketId — should return 400, not 500. Send a POST to `/api/trades/execute` with `{ "amount": -100 }` — should reject. Log in twice and confirm the first session token is invalidated.
 
-**GRADING: 22/25**
-- Accuracy: 5 — All attack vectors are real. `req: any` is a TypeScript-hole that masks all these issues. Session rotation is a standard security practice.
-- Priority: 4 — Tier 1 is borderline. Market resolution without ownership check could lose funds (Tier 0?). Session non-rotation is a real vulnerability. But the JSON database already limits blast radius. Keeping at Tier 1 is defensible.
-- Completeness: 4 — ⚠️ The recommended validation utility covers basic types but doesn't handle: enums/unions, nested objects, arrays, email/URL format validation. For a solo-dev codebase this is acceptable; adding zod would be better but requires a dependency install.
-- Actionability: 4 — The validation utility code is complete, but applying it to every route across 10 files is a significant effort (~1-2 days). No route-by-route migration guide.
-- Risk awareness: 5 — Flagged specific attack vectors per route (predictions ownership, arena rate limit, auth rotation, trades limits).
-- **Gap found (filled):** This was missing from the original handoff entirely.
-
 ---
 
 ## Tier 2 — Fix This Month
@@ -576,14 +518,6 @@ async function runAutotrader() {
 
 **Verify:** Inject an artificial delay (e.g., `await new Promise(r => setTimeout(r, 200_000))`) into the tick, confirm the interval does not stack calls.
 
-**GRADING: 21/25** (revised)
-- Accuracy: 5 — Correct inFlight guard pattern.
-- Priority: 4 — Tier 2 is OK for a solo dev. Only matters after 0.2 adds write contention.
-- Completeness: 5 — Complete and minimal.
-- Actionability: 5 — 2-minute change, exact code.
-- Risk awareness: 2 — ⚠️ Originally didn't flag dependency on 0.2. If fix 2.1 is applied AFTER 0.2, there's a window where ticks stack. Added above.
-- **Gap found:** Missing dependency ordering note.
-
 ---
 
 ### 2.2 Split metamask.ts
@@ -606,14 +540,6 @@ Each file re-exports its router, and `server.ts` imports from all four.
 
 **Verify:** All existing smoke tests pass: `npm run smoke:session`, `npm run smoke:metamask`, etc.
 
-**GRADING: 18/25** (revised)
-- Accuracy: 5 — 1383 lines is objectively too large. Split plan is logical.
-- Priority: 3 — Tier 2 is correct. This is maintenance debt, not a bug. Lowest-impact item on the list.
-- Completeness: 4 — Split plan is outlined, but shared state handling is not designed. Added notes above.
-- Actionability: 2 — ⚠️ Low. "Extract into 4 files with no behavior change" is descriptive, not prescriptive. No import maps, no router registration pattern, no shared state diagram. This item needs more design work before implementation.
-- Risk awareness: 4 — "All existing smoke tests pass" is good verification. Added circular dependency and state sharing notes above.
-- **Gap found:** Low actionability — needs design before coding.
-
 ---
 
 ### 2.3 VaultClubs copy-paste bug — `activeRoomId` instead of `activeVaultId`
@@ -629,14 +555,6 @@ await onContributeToVault(activeVaultId, Number(contribAmount));
 ```
 
 **Verify:** Create two vaults, select the second one, contribute. Confirm the contribution goes to the correct vault.
-
-**GRADING: 24/25**
-- Accuracy: 5 — `activeRoomId()` → `activeVaultId` is a classic copy-paste error. Correct fix.
-- Priority: 4 — Tier 2 is slightly low — wrong-vault contributions are a data integrity issue. Could be Tier 1 if users actively use multiple vaults.
-- Completeness: 5 — One-line fix, nothing missing.
-- Actionability: 5 — Cannot be simpler.
-- Risk awareness: 5 — Self-contained.
-- **Gap found:** None.
 
 ---
 
@@ -656,14 +574,6 @@ await onContributeToVault(activeVaultId, Number(contribAmount));
 // Option B — wire it to the agent update API:
 // (requires backend endpoint, ~30 min)
 ```
-
-**GRADING: 24/25**
-- Accuracy: 5 — setTimeout renaming, no API call, correct analysis.
-- Priority: 4 — Tier 2 appropriate. Misleading UX, not destructive.
-- Completeness: 5 — Two options, both complete. Option A recommended.
-- Actionability: 5 — Exact replacement code.
-- Risk awareness: 5 — No risk.
-- **Gap found:** None.
 
 ---
 
@@ -697,14 +607,6 @@ Check if `server/arena.ts` reads and enforces `allowedStrategies` from the POST 
 
 **Verify:** Create a league with only one strategy enabled. Confirm the league record reflects that restriction in the database.
 
-**GRADING: 20/25** (revised)
-- Accuracy: 5 — `defaultChecked` with no onChange + missing from body is correct.
-- Priority: 4 — Tier 2 reasonable. Silent data omission, not destructive.
-- Completeness: 3 — ⚠️ Only addresses frontend. Backend in `server/arena.ts` may also need changes to read/enforce `allowedStrategies`. Added note above.
-- Actionability: 5 — Clear frontend code.
-- Risk awareness: 3 — ⚠️ Didn't flag backend dependency. Added above.
-- **Gap found:** Backend route may not handle the field yet.
-
 ---
 
 ### NEW 2.6 Price seed discrepancy — server/prices.ts vs TokenMarketChart
@@ -737,14 +639,6 @@ eth: 3125,
 Remove `INITIAL_TOKENS` from TokenMarketChart and use server prices only. This requires loading server prices on mount and handling the loading state.
 
 **Verify:** Open TradingHub and TokenMarketChart side by side. BTC price should be the same in both (within polling delay).
-
-**GRADING: 24/25**
-- Accuracy: 5 — Real discrepancy confirmed during audit.
-- Priority: 4 — Tier 2 is appropriate. Cosmetic inconsistency, not data corruption.
-- Completeness: 5 — Two options, recommended one is clear. Also flags the duplicate polling cross-cutting concern.
-- Actionability: 5 — Exact values to change.
-- Risk awareness: 5 — Both options considered, Option A is safer (no loading state changes).
-- **Gap found (filled):** Was missing from original handoff.
 
 ---
 
@@ -818,14 +712,6 @@ const side = req.body.side === 'long' ? 'buy' : req.body.side === 'short' ? 'sel
 ```
 
 **Verify:** Run `npx tsc --noEmit` (or whatever the type-check command is) — no type errors related to `PaperTrade.side` or `DatabaseState`.
-
-**GRADING: 23/25**
-- Accuracy: 5 — Both mismatches are real and confirmed during the audit.
-- Priority: 4 — Tier 2 is appropriate. Type correctness, not runtime data corruption.
-- Completeness: 4 — ⚠️ Two approaches given (type widening vs server normalization). Type widening is simpler but kicks the can; normalization is better long-term but requires changing server code. Not explicitly recommended.
-- Actionability: 5 — Exact type changes and grep targets.
-- Risk awareness: 5 — Both approaches considered. Self-contained.
-- **Gap found (filled):** Was missing from original handoff entirely.
 
 ---
 
@@ -977,8 +863,8 @@ This replaces only the problematic files while keeping everything else.
 | **0.1** HMAC pepper | If `SYSTEM_PEPPER` env var was unset, crash-at-startup breaks deploy. **Set env var first, then deploy.** | `git revert <sha> && git push` |
 | **0.2** DB mutex | If mutex deadlocks, all writes freeze. Monitor `data/db.json` mtime after deploy. | `git revert <sha> && git push` |
 | **1.4** Input validation | Overly strict validation may reject legitimate inputs. Monitor error rates after deploy. | Roll back validation rules individually — keep session rotation fix. |
-| **S2** Cookie secret | Same as 0.1 — if `COOKIE_SECRET` is unset, crash. | Set env var first, then `git revert <sha> && git push` |
-| **S1** uncaughtException exit | If the app has background tasks that clean up on uncaughtException, exit may orphan them. | `git revert <sha> && git push` |
+| **DA2** Cookie secret | Same as 0.1 — if `COOKIE_SECRET` is unset, crash. | Set env var first, then `git revert <sha> && git push` |
+| **DA1** uncaughtException exit | If the app has background tasks that clean up on uncaughtException, exit may orphan them. | `git revert <sha> && git push` |
 | Everything else | Low risk — mostly error handling, type fixes, AbortControllers. Safe to revert one file at a time. | `git checkout HEAD~1 -- <file>` |
 
 ### Pre-deploy checklist for Tier 0 items
@@ -1108,48 +994,19 @@ This gives a load balancer or monitoring tool (UptimeRobot, BetterStack) a real 
 | 2.5 | AgentArena checkboxes not state-bound | 10 min + backend audit | Form submits wrong data |
 | **2.6** | **Price seed discrepancy** | **5 min** | **Conflicting portfolio values** |
 | **2.7** | **TypeScript type mismatches** | **10 min** | **Type errors, runtime confusion** |
-| **S1** | **uncaughtException should exit** | **5 min** | **Process runs in corrupt state** |
-| **S2** | **Cookie secret hardcoded fallback** | **2 min** | **Session forgery** |
-| **S3** | No CORS config | 10 min | Blocks external API consumers |
-| **S5** | tradeParse.ts res.json before res.ok root cause | 2 min | Real error message lost on non-JSON 500 |
-| **S6** | tradeParse.ts NaN fillPx | 2 min | "$NaN" in UI |
-| **S7** | types.ts missing canonicalWallet | 2 min | Type mismatch at runtime |
-| **S8** | Dead schema surface cleanup | 10 min | Confusion about what works |
+| **DA1** | **uncaughtException should exit** | **5 min** | **Process runs in corrupt state** |
+| **DA2** | **Cookie secret hardcoded fallback** | **2 min** | **Session forgery** |
+| **DA3** | No CORS config | 10 min | Blocks external API consumers |
+| **DA5** | tradeParse.ts res.json before res.ok root cause | 2 min | Real error message lost on non-JSON 500 |
+| **DA6** | tradeParse.ts NaN fillPx | 2 min | "$NaN" in UI |
+| **DA7** | types.ts missing canonicalWallet | 2 min | Type mismatch at runtime |
+| **DA8** | Dead schema surface cleanup | 10 min | Confusion about what works |
 
 **Total effort:** ~4-11 hours for all 21+ items. Recommended order: 0.x → 1.x → 2.x → S items.
 
 ~40 additional sub-items from tab-by-tab reviews (D1, W1, R1, etc.) are scoped in the Consolidated Fix Queue above — most are 2-15 min each, totaling ~5-6 extra hours. They can be picked off in any order by grep target pattern.
 
 ---
-
-## Grading Summary
-
-### Per-Item Scores
-
-| Item | Accuracy | Priority | Completeness | Actionability | Risk Awareness | **Total (/25)** |
-|---|---|---|---|---|---|---|
-| 0.1 HMAC pepper | 5 | 5 | 5 | 5 | 5 | **25** |
-| 0.2 DB mutex | 5 | 5 | 3 | 3 | 3 | **19** |
-| 1.1 res.json() order | 5 | 4 | 3 | 5 | 5 | **22** |
-| 1.2 Uncaught errors | 5 | 4 | 3 | 4 | 3 | **19** |
-| **1.3 tradeParse await** | **5** | **5** | **5** | **5** | **5** | **25** |
-| **1.4 Input validation** | **5** | **4** | **4** | **4** | **5** | **22** |
-| 2.1 Tick stacking | 5 | 4 | 5 | 5 | 2 | **21** |
-| 2.2 Split metamask | 5 | 3 | 4 | 2 | 4 | **18** |
-| 2.3 VaultClubs bug | 5 | 4 | 5 | 5 | 5 | **24** |
-| 2.4 QuantEngine fake | 5 | 4 | 5 | 5 | 5 | **24** |
-| 2.5 Arena checkboxes | 5 | 4 | 3 | 5 | 3 | **20** |
-| **2.6 Price seeds** | **5** | **4** | **5** | **5** | **5** | **24** |
-| **2.7 Type mismatches** | **5** | **4** | **4** | **5** | **5** | **23** |
-| S1 uncaughtException exit | 5 | 4 | 4 | 5 | 4 | **22** |
-| S2 Cookie secret fallback | 5 | 5 | 5 | 5 | 5 | **25** |
-| S3 CORS missing | 5 | 3 | 4 | 5 | 3 | **20** |
-| S5 tradeParse res.json order | 5 | 4 | 3 | 5 | 4 | **21** |
-| S6 NaN fillPx | 5 | 3 | 4 | 5 | 3 | **20** |
-| S7 canonicalWallet missing | 5 | 3 | 5 | 5 | 4 | **22** |
-| S8 Dead schema cleanup | 5 | 2 | 4 | 5 | 3 | **19** |
-
-**Total: 437 / 500** (87.4%) — 20 items scored (13 original + 7 new deep audit items). Tab-by-tab sub-items (D1, W1, etc.) are ungraded but scoped in the consolidated queue.
 
 ---
 
@@ -1177,15 +1034,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | D8 | **LOW** | `Dashboard.tsx:271-275` | Avatar `<img>` has no `onError` fallback, no `loading="lazy"`. Broken URL = broken image icon. |
 | D9 | **LOW** | `Dashboard.tsx:472-477` | Refresh button fires `onRefreshAudits` but shows no spinner, doesn't self-disable, allows hammering multiple requests. |
 | D10 | **LOW** | `Dashboard.tsx:343,353,363,373` | Navigation buttons dispatch global CustomEvents/KeyboardEvent at document. Bypasses React event system. If listener is removed or mounted after click, buttons silently do nothing. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | D2 — `loadSession()` line 70 is a specific instance not previously called out |
-| 1.2 (uncaught errors) | D1 — `handleProfileClaimed` catch-as-swallow is the exact failure mode 1.2 warns about |
-| 0.2 (magic numbers) | Re: duplicated 100000 address/faucet amounts — new call sites identified |
-| 1.4 (CSRF) | No CSRF token despite cookie auth — new context for this finding |
 
 #### Findings the agent missed or skimmed
 
@@ -1226,14 +1074,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | W9 | **LOW** | `WalletCenter.tsx:91-176` | **No loading skeleton at WalletCenter level**: WalletsPanel has its own loading state, but WalletCenter's consolidation section and grand total area show no indicator while data is null. |
 | W10 | **LOW** | `AgentWalletModal.tsx:55,134-140` | **CLI token sits in React state as plain string**: Visible in React DevTools. Mitigated by immediate send + clear, but if XSS exists elsewhere in app, token could be exfiltrated. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | W1 — `switchTo()` never reads response at all. Also `loadPlan()` (line 49-51), `runConsolidation()` (63-66), `load()` in WalletsPanel (41-42, 54-56), `selectWallet` (96-100), `loadReadiness` in AgentWalletModal (77-79), `checkStatus` (87-91 — NO res.ok at all), `startConnect` (104-106), `connectWithToken` (134-140) |
-| 1.2 (uncaught errors) | W1, W4 — both silently swallow API failures |
-| 0.2 (stale data races) | W2 — known stale-data bug acknowledged in comment but left unfixed |
-
 **New fix items from Tab 2 (add to queue if not already covered):**
 - W1: Check `res.ok` in `switchTo()` before firing `wallet-connected` — **5 min, Tier 1 priority**
 - W2: Add key bump or `useEffect` trigger on `data` change in WalletsPanel — **10 min, Tier 1 priority**
@@ -1264,15 +1104,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | R10 | **LOW** | `ResearchFleet.tsx:46-126` | **No skeleton on initial load**: Only loading indicator is "refreshing…" text below the fold at line 123. On first paint the page appears empty. |
 | R11 | **LOW** | `server/research.ts:44` | **Unstable sort on equal trade counts**: `.sort((a, b) => b.trades - a.trades)` — Timsort is not stable when comparator returns 0. Cards randomly reorder on re-fetch. Fix: add `|| a.family.localeCompare(b.family)` as tiebreaker. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.2 (uncaught errors) | R2 — `!res.ok` silently skipped, no error path at all |
-| 1.3 (tradeParse await) | R1 — declined-daily.json race is same class of bug: concurrent read/write with no atomicity |
-| 0.2 (DB mutex/atomicity) | R1 — `declined.ts` doesn't even use the atomic-write pattern from `storage.ts`, let alone a mutex |
-| 2.1 (autotrader tick) | R1 — autotrader calls `recordDeclined()` on every tick, amplifying the race window |
-
 **New fix items from Tab 3 (add to queue if not already covered):**
 - R1: Replace `declined.ts:47` with atomic write (temp file + rename) from `storage.ts` pattern, add corrupt-file recovery in `research.ts:29` — **15 min, Tier 1 priority**
 - R2: Add error state + visible error banner in ResearchFleet — **10 min, Tier 1 priority**
@@ -1302,13 +1133,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | T11 | **LOW** | `TradingRoom.tsx:308-332` | **No empty-state for members grid**: If `activeRoomDetails.members` is empty (corrupted data, inconsistent state), `.map()` produces nothing — blank section titled "Room Membership Ledger". |
 | T12 | **LOW** | `TradingRoom.tsx:393-404` vs `server/rooms.ts:158-170` | **Duplicated URL-parsing logic**: Both `extractInviteToken` (client) and `normalizeInviteToken` (server) parse the same invite token from a URL. Nearly identical code. If format changes, both must be updated. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | T2 — catch block catches JSON parse errors from non-JSON 500s |
-| 1.2 (uncaught errors) | T3 — unhandled promise rejection on clipboard write |
-
 **New fix items from Tab 4 (add to queue if not already covered):**
 - T1: Add AbortController to `fetchActiveRoomDetails` — **15 min, Tier 1 priority**
 - T2: Set `activeRoomDetails` to null on error, add error state — **10 min, Tier 1 priority**
@@ -1337,14 +1161,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | A9 | **LOW** | `AgentWorkshop.tsx:53-73` | **No AbortController on price fetch**: In-flight `fetchPrices` can call `setRealPrices` after unmount. |
 | A10 | **LOW** | `server/storage.ts:164-166` | **Partial sanitizeText**: Only escapes `<` and `>`, not `&`, `"`, `'` or backticks. Mitigated by JSX auto-escaping but risky if values flow to `dangerouslySetInnerHTML` or title attributes. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | A1 — `handleAgentCreated` (App.tsx:262), `handleCopyStrategy` (301), `handlePlaceSimulatedTrade` (316) |
-| 2.7 (type mismatches) | A1 — `rsi_meanrev` missing from type union is a specific instance of the type mismatch problem |
-| 1.2 (uncaught errors) | A3 — fetchEntities errors silently swallowed across 9 call sites |
-
 **New fix items from Tab 5 (add to queue if not already covered):**
 - A1: Add `'rsi_meanrev'` to type union in types.ts:65 AND add `<option>` to form at AgentWorkshop.tsx:267-272 — **5 min, Tier 1 priority**
 - A2: Add dirty flag or prevent auto-overwrite when user has edited simPrice — **10 min, Tier 1 priority**
@@ -1368,13 +1184,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | H4 | **LOW** | `TradingHub.tsx:21,24,25,26-31` | **Hardcoded defaults**: Default asset (BTC), trade size (0.1), leverage (10x), and fallback prices all hardcoded. These should come from user profile or server config. |
 | H5 | **LOW** | `TradingHub.tsx:71-91` | **No AbortController on price fetch**: In-flight fetch can call `setSimPrices` after unmount. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | H1 — 3 occurrences at lines 75, 127, 140 |
-| 1.2 (uncaught errors) | H2 — silent catch on price polling |
-
 **New fix items from Tab 6 (add to queue if not already covered):**
 - H1: Add onClick handlers to "Bot Trailing Stop" and "AI Take-Profit" buttons, or replace with decorative `<div>` elements — **10 min, Tier 2 priority**
 - H2: Add error state + stale-data warning banner on price fetch failure — **10 min, Tier 2 priority**
@@ -1396,14 +1205,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | C5 | **MEDIUM** | `TokenMarketChart.tsx:138` vs `server/prices.ts:112` | **60s client poll vs 3s server update**: Client polls every 60s, server updates every 3s. Client lags behind by up to 60s. The server's `lastGoodFetch` and `feed.stale` flag are never exposed to the client. |
 | C6 | **LOW** | `TokenMarketChart.tsx:349,362` | **Array index as React key**: `key={i}` in order book section. Static for now but would break if dynamic. |
 | C7 | **LOW** | `TokenMarketChart.tsx:98` | **`any[]` type for chartData**: Should be `ChartDataPoint[]`. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 2.6 (price seed discrepancy) | C1 — confirms BTC $96,420 in client vs $63,089 in server, plus 8 other symbols with similar gaps |
-| Cross-cutting #3 (fake placeholder data) | C1 — exact line numbers for the random-walk fabrication |
-| 1.1 (res.json before res.ok) | C4 — no res.ok check at line 111-112 |
 
 **New fix items from Tab 7 (add to queue if not already covered):**
 - C1: Either wire to a real historical price endpoint or add a disclaimer badge "Simulated chart data" — **30 min, Tier 2 priority**
@@ -1428,14 +1229,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | P5 | **LOW** | `PredictionMarkets.tsx:29,33` | **Live markets capped at 5**: `.slice(0, 5)` hardcoded — no way to show more or paginate. |
 | P6 | **LOW** | `PredictionMarkets.tsx:16,33,92,106,211` | **Pervasive `any` types**: Live market response shapes entirely untyped. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | P1 — 3 occurrences at PredictionMarkets.tsx:24, App.tsx:403, App.tsx:421 |
-| 1.2 (uncaught errors) | P1 — empty catch block on live-markets fetch |
-| 1.4 (server validation) | P3 — server has duplicate balance check (correct) but client shows insufficient balance error instead of server's actual error |
-
 **New fix items from Tab 8 (add to queue if not already covered):**
 - P1: Add logging to empty catch blocks in PredictionMarkets — **5 min, Tier 2 priority**
 - P4: Derive default bet amount from user balance (e.g., 10%) instead of hardcoded $1000 — **5 min, Tier 2 priority**
@@ -1456,13 +1249,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | V4 | **LOW** | `VaultClubs.tsx:236` | **No empty state for milestones array**: If milestones is empty, the "Club Target Milestones" section shows heading but blank content area. |
 | V5 | **LOW** | `VaultClubs.tsx:36,52` | **`catch (err: any)`**: Should be `unknown` with type guard for strict mode. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 2.3 (VaultClubs copy-paste bug) | V1 — confirmed activeRoomId() at line 49, exact code confirmed |
-| 1.1 (res.json before res.ok) | V2 — App.tsx:370 and 388 for vault handlers |
-
 **New fix items from Tab 9 (add to queue if not already covered):**
 - V2: Use stable key for milestones instead of array index — **2 min, Tier 2 priority**
 - V3: Remove unused `currentUser` prop from VaultClubs and App.tsx — **2 min, Tier 2 priority**
@@ -1482,14 +1268,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | G3 | **MEDIUM** | `GraphEvidence.tsx:14,61,77-79,91-105` | **Not a real graph — CONFIRMED**: `edges` state is populated at line 24 but **never referenced in JSX** (dead code). Nodes are equally-spaced flex items (`flex flex-wrap justify-center`), not positioned by any layout algorithm. Two concentric `<div>` elements with CSS spinning animations pretend to be edges. No SVG lines, no paths, no force-directed layout. The "Kuzu-Projected" label overpromises massively. |
 | G4 | **LOW** | `GraphEvidence.tsx:8-12` | **`currentUser` and `paperLiveMode` props passed but never used**: Both destructured from props but never referenced in component logic or JSX. The `/api/graph` fetch doesn't pass them as query params either — dead props from App.tsx. |
 | G5 | **LOW** | `GraphEvidence.tsx:18-34,48-49` | **No AbortController**: In-flight fetch + race condition on rapid re-fresh clicks. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| Cross-cutting #4 (GraphEvidence not a real graph) | G3 — exact line numbers and confirmation of every aspect |
-| 1.1 (res.json before res.ok) | G1 — line 21-24 |
-| 1.2 (uncaught errors) | G2 — silent catch, no error state |
 
 **New fix items from Tab 10 (add to queue if not already covered):**
 - G3: Either add real graph visualization (d3-force, vis-network) or rename "Evidence Map" label and remove "Kuzu-Projected" badge — **strategic decision, not a quick fix**
@@ -1531,14 +1309,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | Q5 | **MEDIUM** | `QuantEngine.tsx:12,218,283` | **`any` types**: `results` state is `useState<any>(null)`, map iterators use `(m: any)`. No `QuantBacktestResult` interface. |
 | Q6 | **LOW** | `QuantEngine.tsx:218,283` | **Unsafe `.map()` on nullable `results.curve/matrix`**: No optional chaining — throws `TypeError` if server returns unexpected shape. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 2.4 (QuantEngine fake deploy) | Q1 — exact line numbers confirmed, still unfixed |
-| 1.1 (res.json before res.ok) | Q2 — backtest API call at line 48-49 |
-| 1.2 (uncaught errors) | Q3 — silent catch with missing error state |
-
 **New fix items from Tab 12 (add to queue if not already covered):**
 - Q2: Check `res.ok` before `res.json()` in backtest handler — **5 min, Tier 1 priority**
 - Q3: Add error state + user-visible error feedback in QuantEngine — **10 min, Tier 2 priority**
@@ -1558,13 +1328,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | AP2 | **MEDIUM** | `AgenticAutopilot.tsx:6,28` + `App.tsx:859` | **`user` prop passed but never used**: Interface declares `user: User`, App.tsx passes `user={currentUser}`, but component destructuring explicitly omits it (only uses `agents, trades, audits, onAgentAutopilotChanged, onRefresh`). Dead prop causing unnecessary re-renders. |
 | AP3 | **MEDIUM** | `AgenticAutopilot.tsx:127-134` | **Autopilot toggle button has no loading state**: After clicking Engage/Stop, button remains interactive with no spinner. On API failure, toggle snaps back only on next 15s fetchEntities poll — user never told. |
 | AP4 | **MEDIUM** | `AgenticAutopilot.tsx:38-43` | **No AbortController on 15s polling effect**: In-flight `fetchEntities` can call `setState` after unmount. `autoAgents.length`-only dependency means swapping agents (same count) doesn't re-evaluate effect. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.2 (uncaught errors) | AP1 — silent return on autopilot error |
-| 1.4 (inconsistent server patterns) | AP1 — inconsistency between autopilot and status handlers |
 
 **New fix items from Tab 13 (add to queue if not already covered):**
 - AP1: Add error handling to `handleAgentAutopilotChanged` (read error body, surface to user) — **5 min, Tier 1 priority**
@@ -1588,14 +1351,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | I5 | **LOW** | `IntentSolver.tsx:20,57` | **`any` types**: `IntentStep.data` typed as `any`, server response steps typed `(s: any)`. |
 | I6 | **LOW** | `IntentSolver.tsx:175-180` | **No loading state during fetch**: Steps panel goes blank while `isSolving=true`. No spinner. |
 
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| Cross-cutting #5 (IntentSolver fake multi-step) | I1 — exact line numbers, comment confirms the design |
-| 1.1 (res.json before res.ok) | I2 — line 51-53 |
-| 1.2 (uncaught errors) | I4 — error swallowed |
-
 **New fix items from Tab 14 (add to queue if not already covered):**
 - I1: Either wire multi-step to real execution or replace with disclaimer explaining single-asset-only — **30 min, Tier 2 priority**
 - I2: Check `res.ok` before `res.json()` — **5 min, Tier 2 priority**
@@ -1610,23 +1365,18 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 
 | # | Severity | File:Line | Finding |
 |---|---|---|---|
-| S1 | **MEDIUM** | `SwarmCopilot.tsx:59-66` | **`res.json()` before `res.ok`**: Chat API call parses body unconditionally at line 64 before status check at line 66. Non-JSON error body causes `SyntaxError` → misleading "Unexpected token" message shown to user instead of actual HTTP error. |
-| S2 | **MEDIUM** | `SwarmCopilot.tsx:177,204,289` | **Array index as React key (3 instances)**: `key={i}` on thought process steps, proposal actions, and suggestion buttons. The suggestions list (line 289) is static now but would break if made dynamic. |
-| S3 | **MEDIUM** | `SwarmCopilot.tsx:8-10,29` | **`user` prop passed but never used**: Destructured from props, never referenced in component logic or API calls. Chat endpoint receives no user context (no `user.id`, no `user.address`). All users talk to the same stateless endpoint — unauthorized access risk if server actually needs identity. |
-| S4 | **LOW** | `SwarmCopilot.tsx:59,97` | **No AbortController on either fetch**: Chat and execute calls can fire state updates after unmount. |
-| S5 | **LOW** | `SwarmCopilot.tsx:80` | **`catch (err: any)`**: Error type erased. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | S1 — line 64-66 |
-| 1.3 (tradeParse.ts missing await) | S1 — same anti-pattern in tradeParse.ts |
+| SW1 | **MEDIUM** | `SwarmCopilot.tsx:59-66` | **`res.json()` before `res.ok`**: Chat API call parses body unconditionally at line 64 before status check at line 66. Non-JSON error body causes `SyntaxError` → misleading "Unexpected token" message shown to user instead of actual HTTP error. |
+| SW2 | **MEDIUM** | `SwarmCopilot.tsx:177,204,289` | **Array index as React key (3 instances)**: `key={i}` on thought process steps, proposal actions, and suggestion buttons. The suggestions list (line 289) is static now but would break if made dynamic. |
+| SW3 | **MEDIUM** | `SwarmCopilot.tsx:8-10,29` | **`user` prop passed but never used**: Destructured from props, never referenced in component logic or API calls. Chat endpoint receives no user context (no `user.id`, no `user.address`). All users talk to the same stateless endpoint — unauthorized access risk if server actually needs identity. |
+| SW4 | **LOW** | `SwarmCopilot.tsx:59,97` | **No AbortController on either fetch**: Chat and execute calls can fire state updates after unmount. |
+| SW5 | **LOW** | `SwarmCopilot.tsx:80` | **`catch (err: any)`**: Error type erased. |
 
 **New fix items from Tab 15 (add to queue if not already covered):**
-- S1: Check `res.ok` before `res.json()` in chat handler — **5 min, Tier 2 priority**
-- S2: Use stable keys instead of array index — **5 min, Tier 2 priority**
-- S3: Either pass user context to API or remove unused `user` prop — **5 min, Tier 2 priority**
+- SW1: Check `res.ok` before `res.json()` in chat handler — **5 min, Tier 2 priority** (already in master table as SW1, Tier 1)
+- SW2: Use stable keys instead of array index — **5 min, Tier 2 priority** (already in master table)
+- SW3: Either pass user context to API or remove unused `user` prop — **5 min, Tier 2 priority** (already in master table)
+- SW4: Add AbortController — **10 min, Tier 2 priority**
+- SW5: Replace `: any` with proper type — **2 min, Tier 2 priority**
 
 ---
 
@@ -1647,14 +1397,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | AR7 | **LOW** | `AgentArena.tsx` (entire file) | **No leave-league capability**: `handleJoinLeague` exists but no `handleLeaveLeague`. Server also has no DELETE endpoint for league membership. Users cannot leave a league once joined. |
 | AR8 | **LOW** | `AgentArena.tsx:810-857` | **Missing empty state for Leagues tab**: When `leagues.length === 0`, grid renders with no children — blank area. Other sections have proper empty states. |
 | AR9 | **LOW** | `AgentArena.tsx:105,107,137,175,189,344,772,1165` | **Pervasive `any` types**: API response shapes entirely untyped. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 2.5 (checkboxes not state-bound) | AR2 — confirmed with exact line numbers |
-| 1.2 (uncaught errors) | AR1 — 6 empty catch blocks |
-| 1.1 (res.json before res.ok) | AR2 — App.tsx:262-263 called via onAgentCreated prop |
 
 **New fix items from Tab 16 (add to queue if not already covered):**
 - AR1: Add error handling to all 6 empty catch blocks in AgentArena — **15 min, Tier 1 priority**
@@ -1679,13 +1421,6 @@ Each tab gets a dedicated sub-agent audit with exact file:line findings. These s
 | M3 | **MEDIUM** | `MetaedgeAnalytics.tsx:121` | **Array index as React key**: `key={i}` on recentEvents. New events prepend to top (server sorts by timestamp), so every new event shifts all indices — React re-renders all rows unnecessarily. |
 | M4 | **MEDIUM** | `MetaedgeAnalytics.tsx:31-33` | **No AbortController + interval overlap race**: `setInterval(load, 15000)` with no AbortController. If fetch takes >15s, overlapping in-flight calls compete. Stale response can overwrite fresh data. Use recursive setTimeout or fetchId. |
 | M5 | **LOW** | `MetaedgeAnalytics.tsx:27,97,120` | **`any` types**: Response shape fully known (server/platform.ts:55-70) but untyped on client. |
-
-#### Findings that reinforce existing fix items
-
-| Existing Item | Reinforced by |
-|---|---|
-| 1.1 (res.json before res.ok) | M1 — line 31 |
-| 1.2 (uncaught errors) | M2 — silent `.catch(() => {})` |
 
 **New fix items from Tab 17 (add to queue if not already covered):**
 - M1: Check `res.ok` before `r.json()` — **5 min, Tier 1 priority**
@@ -1738,9 +1473,10 @@ The original handoff (v1) had 9 items. This revision (v2) adds 4 critical gaps p
 
 ---
 
-## Research: Agent-Driven Trading Landscape (July 2026)
+## Research 1: Agent-Driven Trading Landscape (July 2026)
 
-Commissioned deep-dive across 3 parallel agents covering crypto perps/spot, prediction markets, and tokenized RWAs with agent safety patterns.
+**Type:** Reference / Long-term planning
+**Actionability:** Informational — survey of platforms, frameworks, safety patterns, and regulation. Use when deciding which real exchange to connect MetaEdge to, or which agent framework to adopt. Not immediately actionable on the current codebase.
 
 ### 1. Platform Landscape for Agent Trading
 
@@ -1933,9 +1669,10 @@ Stage 4: Staged scale (10% → 50% → 100% with gates at each step)
 
 ---
 
-## Research: Production Architecture, Data & Pipeline (July 2026)
+## Research 2: Production Architecture, Data & Pipeline (July 2026)
 
-Second deep-dive covering deployment orchestration, free data APIs, trading strategies, and the full ingestion→analysis→triggers→execution→learning loop.
+**Type:** Reference / Architectural guidance
+**Actionability:** Mostly informational — deployment patterns, free data APIs, trading strategies, and full pipeline architecture. The free API list and concrete repo references are actionable immediately. The pipeline architecture section should inform any future LLM strategy work (Research 4).
 
 ### 1. Deployment Orchestration
 
@@ -2281,6 +2018,9 @@ Phase 4: Full scale after 60 days meeting criteria
 
 ## Research 3: SQLite Migration Plan (July 2026)
 
+**Type:** Actionable implementation plan
+**Actionability:** HIGH — concrete schema (14 tables), migration path, adapter layer for zero-change rollout, backup strategy, npm install commands. The adapter pattern allows phased migration: all routes work unchanged in Phase 1, migrate one by one in Phase 2.
+
 ### Best-Fit Library: `better-sqlite3`
 
 | | better-sqlite3 | sql.js | bun:sqlite |
@@ -2366,6 +2106,9 @@ Run every 6 hours via `setInterval`, prune backups older than 7 days. Optional S
 ---
 
 ## Research 4: Gemini LLM Trading Strategies (July 2026)
+
+**Type:** Actionable implementation plan
+**Actionability:** HIGH — concrete hook points in `autotrader.ts:152-153`, prompt templates, cost analysis ($0/mo free tier with caching), sidecar cache architecture, wire points in all affected files. Can be implemented alongside Tier 2 fixes since it's additive (no refactoring of existing code).
 
 ### SDK Status
 
@@ -2454,6 +2197,9 @@ Track last 100 LLM interventions vs realized P&L. If accuracy < 40% over 30+ tra
 
 ## Research 5: Live Prediction Market APIs (July 2026)
 
+**Type:** Actionable implementation plan
+**Actionability:** HIGH — server-side proxy pattern with 3-tier fallback (Polymarket → Kalshi → local), zero new npm deps (native fetch), unified market schema, caching strategy, WebSocket available for future live odds. The existing `PredictionMarkets.tsx` already handles `source: 'polymarket'` at lines 28-29.
+
 ### Polymarket Gamma API (Free, No Auth)
 
 **Base:** `https://gamma-api.polymarket.com`
@@ -2519,6 +2265,9 @@ Map both APIs to MetaEdge's existing `PredictionMarket` shape. Key mapping: `out
 ---
 
 ## Research 6: Production Deployment (July 2026)
+
+**Type:** Actionable implementation plan
+**Actionability:** HIGH — complete Dockerfile, docker-compose.yml, GitHub Actions CI/CD, Fly.io hosting recommendation with cost, deployment checklist. Can be implemented in a single session. Note: requires completing code fixes first so the Docker image is built from a clean state.
 
 ### Multi-Stage Dockerfile
 
@@ -2617,6 +2366,9 @@ Already have Caddy in `scripts/gcp_setup.sh`. Caddy wins over Nginx for single-s
 
 ## Research 7: Monitoring & Observability (July 2026)
 
+**Type:** Actionable implementation plan
+**Actionability:** HIGH — exact npm install commands, pino setup with redaction, Sentry init for error tracking, enhanced `/api/health` endpoint code, per-file error surface catalog (7 files, 14+ specific line ranges), Prometheus metrics middleware, alert thresholds. Can be implemented incrementally alongside Tier 1/2 fixes.
+
 ### Structured Logging — pino
 
 Install: `npm install pino express-pino-logger pino-pretty`
@@ -2673,3 +2425,185 @@ price feed age > 300s → WARN
 5xx rate > 1% → ALERT
 trade execution fail rate > 10% → ERROR
 ```
+
+---
+
+## Master Execution Checklist
+
+**Purpose:** Track every item in this handoff through 5 stages. Claude (or any tool) updates this checklist as work progresses. When a session ends, the checklist shows exactly what's been reviewed, decided, implemented, left out, or still pending.
+
+### How to use
+1. Start at the top. Review each item → mark `[x]` Reviewed.
+2. Decide whether to implement, defer, or skip → mark `[x]` Decide.
+3. Implement code changes → mark `[x]` Implemented.
+4. If intentionally skipping → mark `[x]` Left Out + add reason in Notes.
+5. Revisit remaining items in next session.
+
+### Tier 0 — Fix Today (Active production threats)
+
+| ID | Description | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **0.1** | HMAC pepper fallback + timing leak | 10m | [ ] | [ ] | [ ] | `secrets.ts:24` Remove fallback, crash on missing, use timingSafeEqual |
+| **0.2** | JSON DB no concurrent write lock | 2-4h | [ ] | [ ] | [ ] | `storage.ts` + 11 callers. Mutex must wrap entire read-mutate-write cycle. Sync→async audit needed. |
+| **DA2** | Cookie secret hardcoded fallback | 2m | [ ] | [ ] | [ ] | `server.ts:40` Crash at startup if COOKIE_SECRET unset |
+
+### Tier 1 — Fix This Week (Production bugs)
+
+| ID | Description | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **1.1** | `res.json()` before `res.ok` (17+ sites) | 30m | [ ] | [ ] | [ ] | App.tsx + WalletsPanel + AgentWalletModal + tradeParse. Grep target provided. |
+| **1.2** | Uncaught mutation errors → white screen | 35m | [ ] | [ ] | [ ] | Wire ErrorBoundary + `safeHandler()` wrapper. Watch for `setState(undefined)` on failure. |
+| **1.3** | tradeParse.ts missing `await` on fetch | 5m | [ ] | [ ] | [ ] | Trades silently never execute. Two-line fix. |
+| **1.4** | Server routes: no input validation, session rotation | 1-2d | [ ] | [ ] | [ ] | Create `server/validate.ts`, apply to 10 files. Add session rotation on re-auth. |
+| **D1** | Profile save silently closes modal | 5m | [ ] | [ ] | [ ] | `App.tsx:200-202` Add `throw err` in catch |
+| **D12** | Profile edit resets on parent re-render | 5m | [ ] | [ ] | [ ] | `Dashboard.tsx:83-90` Gate useEffect with `!isEditingProfile` |
+| **W1** | `switchTo()` fires `wallet-connected` on failure | 5m | [ ] | [ ] | [ ] | `WalletCenter.tsx:34-44` Read API response before firing event |
+| **W2** | Stale data — key bump never implemented | 10m | [ ] | [ ] | [ ] | `WalletCenter.tsx:39-40,68,129` + `WalletsPanel.tsx:82-85` |
+| **W4** | `disconnectWallet()` ignores API response | 5m | [ ] | [ ] | [ ] | `AgentWalletModal.tsx:160-172` Read response before clearing state |
+| **R1** | `declined-daily.json` non-atomic write race | 15m | [ ] | [ ] | [ ] | `server/declined.ts` + `server/research.ts` |
+| **R2** | ResearchFleet silent API failure (no else) | 5m | [ ] | [ ] | [ ] | Add error state + user feedback |
+| **T1** | TradingRoom race on rapid room switch | 15m | [ ] | [ ] | [ ] | AbortController on room switch |
+| **T2** | Silent error swallowing — stale room data | 5m | [ ] | [ ] | [ ] | Error propagation |
+| **A1** | `rsi_meanrev` missing from type + form | 15m | [ ] | [ ] | [ ] | `types.ts` + `AgentWorkshop.tsx` |
+| **A2** | Price auto-update overwrites user edits | 10m | [ ] | [ ] | [ ] | Local state isolation |
+| **C2** | Server empty catch blocks on feed failure | 15m | [ ] | [ ] | [ ] | `server/chart.ts` |
+| **P1** | Empty catch block | 5m | [ ] | [ ] | [ ] | `PredictionMarkets.tsx` |
+| **P2** | Malformed `outcomePrices` swallowed | 5m | [ ] | [ ] | [ ] | `server/predictionMarkets.ts` |
+| **P3** | TOCTOU balance check | 5m | [ ] | [ ] | [ ] | `server/predictionMarkets.ts` |
+| **Q2** | `res.json` before `res.ok` in quant routes | 5m | [ ] | [ ] | [ ] | `server/quant.ts` |
+| **Q3** | Silent catch with comment admitting error gap | 5m | [ ] | [ ] | [ ] | `server/quant.ts` |
+| **I2** | `res.json` before `res.ok` in intent routes | 5m | [ ] | [ ] | [ ] | `server/intents.ts` |
+| **SW1** | `res.json` before `res.ok` in swarm routes | 5m | [ ] | [ ] | [ ] | `server/swarm.ts` (Tab 15) |
+| **AR1** | 6 empty catch blocks in AgentArena | 15m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
+| **M1** | Check `res.ok` before `.json()` | 5m | [ ] | [ ] | [ ] | `MetaedgeAnalytics.tsx` |
+| **S1-DA** | `uncaughtException` handler doesn't exit | 5m | [ ] | [ ] | [ ] | `server.ts:156` Log → cleanup → `process.exit(1)` |
+
+### Tier 2 — Fix This Month
+
+| ID | Description | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **2.1** | Autotrader tick stacking (inFlight guard) | 5m | [ ] | [ ] | [ ] | Depends on 0.2. Guard harmless before 0.2, essential after. |
+| **2.2** | Split `metamask.ts` (1383 lines) | 3h | [ ] | [ ] | [ ] | 4 files: exec, tx, balance, connect |
+| **2.3** | VaultClubs copy-paste `activeRoomId` | 2m | [ ] | [ ] | [ ] | `VaultClubs.tsx` |
+| **2.4** | QuantEngine fake "Deploy to Agent" button | 5m | [ ] | [ ] | [ ] | Remove or wire up |
+| **2.5** | AgentArena checkboxes not state-bound | 10m | [ ] | [ ] | [ ] | Form submits wrong data |
+| **2.6** | Price seed discrepancy ($63k vs $96k) | 5m | [ ] | [ ] | [ ] | `server/prices.ts` vs `TokenMarketChart.tsx` |
+| **2.7** | TS type mismatches | 10m | [ ] | [ ] | [ ] | `src/types.ts` |
+| **D11** | Safety Rails uses wrong audit count | 2m | [ ] | [ ] | [ ] | `Dashboard.tsx:305` vs `:139` |
+| **W3** | 5-min polling loop no AbortController | 10m | [ ] | [ ] | [ ] | `AgentWalletModal.tsx:111-125` |
+| **R3** | Array index as React key | 2m | [ ] | [ ] | [ ] | `ResearchFleet.tsx` |
+| **T5** | Invite token in URL query param | 15m | [ ] | [ ] | [ ] | `TradingRoom.tsx` Move to POST body |
+| **A4** | No delete confirmation on agent delete | 5m | [ ] | [ ] | [ ] | `AgentWorkshop.tsx` |
+| **A5** | Strategy form missing `maxDrawdown` validation | 15m | [ ] | [ ] | [ ] | `AgentWorkshop.tsx` |
+| **A6** | Strategy name uniqueness not enforced | 10m | [ ] | [ ] | [ ] | `AgentWorkshop.tsx` |
+| **A9** | Edit strategy modal resets on re-render | 10m | [ ] | [ ] | [ ] | `AgentWorkshop.tsx` |
+| **H1** | Fake "Bot Trailing Stop" buttons, no onClick | 2m | [ ] | [ ] | [ ] | `TradingHub.tsx` |
+| **H2** | Silent catch on price polling | 5m | [ ] | [ ] | [ ] | `TradingHub.tsx` |
+| **C1** | TokenMarketChart fabricated random walk | 2m | [ ] | [ ] | [ ] | Label as "Simulated" or add real data |
+| **C3** | No loading/error states on chart | 15m | [ ] | [ ] | [ ] | `TokenMarketChart.tsx` |
+| **V2** | Array index keys on milestones | 2m | [ ] | [ ] | [ ] | `VaultClubs.tsx` |
+| **G3** | GraphEvidence CSS divs are not a real graph | 2m | [ ] | [ ] | [ ] | Rename or add real graph viz |
+| **Q1** | Fake deploy button (reinforces 2.4) | 2m | [ ] | [ ] | [ ] | `QuantEngine.tsx` |
+| **AP1** | Autopilot handler silently returns on error | 5m | [ ] | [ ] | [ ] | `server/autopilot.ts` |
+| **AP2** | Unused `user` prop | 2m | [ ] | [ ] | [ ] | `AgenticAutopilot.tsx` |
+| **I1** | Multi-step is 700ms setTimeout theater | 2m | [ ] | [ ] | [ ] | `IntentSolver.tsx` |
+| **SW2** | 3 array index keys in SwarmCopilot | 5m | [ ] | [ ] | [ ] | `SwarmCopilot.tsx` (Tab 15) |
+| **SW3** | Unused `user` prop | 5m | [ ] | [ ] | [ ] | `SwarmCopilot.tsx` |
+| **AR3** | No `.catch()` on clipboard write | 2m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
+| **AR4** | No AbortController on fetch effects | 15m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
+| **AR5** | No loading states on async operations | 20m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
+| **AR6** | Form controls or remove POST body | 5m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
+| **AR7** | No leave-league feature | 30m | [ ] | [ ] | [ ] | `AgentArena.tsx` + `server/arena.ts` |
+| **M2** | Add error logging + user-visible error state | 5m | [ ] | [ ] | [ ] | `MetaedgeAnalytics.tsx` |
+| **M3** | Use stable key instead of array index | 2m | [ ] | [ ] | [ ] | `MetaedgeAnalytics.tsx` |
+| **M4** | Replace setInterval with recursive setTimeout | 10m | [ ] | [ ] | [ ] | `MetaedgeAnalytics.tsx` |
+| **DA3** | server.ts no CORS config | 10m | [ ] | [ ] | [ ] | Add cors middleware |
+| **DA5** | tradeParse.ts root cause of res.json order | 2m | [ ] | [ ] | [ ] | `tradeParse.ts:51-52` |
+| **DA6** | tradeParse.ts NaN fillPx | 2m | [ ] | [ ] | [ ] | `tradeParse.ts:54` Guard with `?? 0` |
+| **DA7** | types.ts missing `canonicalWallet` | 2m | [ ] | [ ] | [ ] | Add to User interface |
+| **DA8** | Dead schema surface cleanup | 10m | [ ] | [ ] | [ ] | Remove or comment as planned |
+
+### Batch Fix Patterns (run in parallel with Tier 1-2)
+
+| ID | Pattern | Grep Command | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **BP1** | `res.json()` before `res.ok` | `rg "\.json\(\)" --type ts --type tsx src/ server/` | [ ] | [ ] | [ ] | Covers 1.1, Q2, I2, S1-T15, M1, S5-DA |
+| **BP2** | Array index as React key | `rg "key=\{\s*i\s*\}" --type tsx src/components/` | [ ] | [ ] | [ ] | Covers R3, V2, S2-T15, M3 |
+| **BP3** | Empty/silent catch blocks | `rg "\.catch\(\s*\(\s*\)\s*=>\s*\{\s*\}\s*\)" src/ server/` | [ ] | [ ] | [ ] | Covers 1.2, C2, P1, Q3, AR1, AR3 |
+| **BP4** | setInterval with no cleanup | `rg "setInterval" --type ts --type tsx src/ server/` | [ ] | [ ] | [ ] | Covers W3, M4, 2.1 |
+| **BP5** | `any` type usage | `rg ": any" --type ts --type tsx src/` | [ ] | [ ] | [ ] | Covers 1.4 |
+| **BP6** | Unused imports sweep | `rg "import.*from" src/components/ \| rg -v "react\|useState\|useEffect\|use"` | [ ] | [ ] | [ ] | Cleanup |
+
+### Cross-Cutting Deep Audit Items
+
+| ID | Description | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **DA1** | uncaughtException handler doesn't exit | 5m | [ ] | [ ] | [ ] | (Listed in Tier 1 above) |
+| **DA2** | Cookie secret hardcoded fallback | 2m | [ ] | [ ] | [ ] | (Listed in Tier 0 above) |
+| **DA3** | No CORS config | 10m | [ ] | [ ] | [ ] | (Listed in Tier 2 above) |
+| **DA4** | No concurrent write lock (covered by 0.2) | — | [ ] | [ ] | [ ] | Duplicate of 0.2 |
+| **DA5** | tradeParse.ts res.json root cause | 2m | [ ] | [ ] | [ ] | (Listed in Tier 2 above) |
+| **DA6** | tradeParse.ts NaN fillPx | 2m | [ ] | [ ] | [ ] | (Listed in Tier 2 above) |
+| **DA7** | types.ts missing canonicalWallet | 2m | [ ] | [ ] | [ ] | (Listed in Tier 2 above) |
+| **DA8** | Dead schema surface | 10m | [ ] | [ ] | [ ] | (Listed in Tier 2 above) |
+| SERVER-1 | Routes registered with no prefix pattern | — | [ ] | [ ] | [ ] | `server.ts:80-92` Silent shadowing risk |
+| SERVER-2 | Sync readFileSync blocks event loop | — | [ ] | [ ] | [ ] | `server.ts:73,77` |
+| SERVER-3 | Vite middleware failure silently swallowed | — | [ ] | [ ] | [ ] | `server.ts:107-109` |
+| SERVER-4 | fs.existsSync('dist/index.html') in dev | — | [ ] | [ ] | [ ] | `server.ts:98` |
+
+### Code Size & Decomposition (Optional — post-fix cleanup)
+
+| ID | File | Lines | Suggested Split | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|---|---|
+| **DECOMP-1** | `server/metamask.ts` | 1,383 | 4 files (exec, tx, balance, connect) | 3h | [ ] | [ ] | [ ] | (Covered by 2.2) |
+| **DECOMP-2** | `src/components/AgentArena.tsx` | 1,215 | 5 files + useArena hook | 2h | [ ] | [ ] | [ ] | |
+| **DECOMP-3** | `src/App.tsx` | 945 | Extract hooks + context, keep ~100 lines | 10h | [ ] | [ ] | [ ] | Highest impact. Kills 1,200 lines boilerplate. |
+| **DECOMP-4** | `src/components/TradingHub.tsx` | 696 | 4 files + usePrices hook | 1.5h | [ ] | [ ] | [ ] | |
+| **DECOMP-5** | `src/components/Dashboard.tsx` | 585 | 3 sub-components | 1h | [ ] | [ ] | [ ] | |
+
+### Optimization Tactics (Optional — after decomposition)
+
+| ID | Tactic | Impact | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **OPT-1** | Extract `useApiFetch<T>` hook | Eliminates ~1,200 lines boilerplate, adds AbortController everywhere | [ ] | [ ] | [ ] | Code provided in section above |
+| **OPT-2** | Add res.ok check in apiFetch() itself | Every caller gets consistent errors without remembering | [ ] | [ ] | [ ] | 4-line change to `src/lib/api.ts` |
+| **OPT-3** | React Router or Map-based tab routing | Adding a tab = 1 file, not touching App.tsx 5 spots | [ ] | [ ] | [ ] | |
+| **OPT-4** | ESLint max component size rule (400 lines) | Architectural discipline, prevents future bloat | [ ] | [ ] | [ ] | |
+
+### Test Coverage (Optional — critical for 0.2 and 1.4)
+
+| ID | Step | Effort | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **TEST-1** | Add vitest + @testing-library/react | 10m | [ ] | [ ] | [ ] | Fastest setup for Vite project |
+| **TEST-2** | Test storage.ts concurrent writes | 1h | [ ] | [ ] | [ ] | Validates item 0.2 |
+| **TEST-3** | Test apiFetch error handling | 30m | [ ] | [ ] | [ ] | Validates item 1.1 root fix |
+| **TEST-4** | Test tradeParse.ts edge cases | 30m | [ ] | [ ] | [ ] | Validates 1.3, S5, S6 |
+| **TEST-5** | Snapshot test each tab component | 2h | [ ] | [ ] | [ ] | Catches regressions from all fix items |
+| **TEST-6** | Add CI step: npm test | 10m | [ ] | [ ] | [ ] | Runs on every push |
+
+### Research Topics (Reference — use to inform future direction)
+
+| ID | Topic | Type | Reviewed | Decide | Status | Notes |
+|---|---|---|---|---|---|---|
+| **R3** | SQLite Migration Plan | Actionable — schema, adapter, migration | [ ] | [ ] | [ ] | Highest-impact infra change. Phased rollout via adapter. |
+| **R4** | Gemini LLM Trading Strategies | Actionable — hooks, prompts, costs | [ ] | [ ] | [ ] | Additive to existing code. Free tier viable with cache. |
+| **R5** | Live Prediction Market APIs | Actionable — Polymarket + Kalshi proxy | [ ] | [ ] | [ ] | Zero new deps. 3-tier fallback to local. |
+| **R6** | Production Deployment | Actionable — Docker, CI/CD, Fly.io | [ ] | [ ] | [ ] | Wait until code fixes complete for clean build. |
+| **R7** | Monitoring & Observability | Actionable — pino, Sentry, health, metrics | [ ] | [ ] | [ ] | Can be implemented incrementally alongside T1/T2. |
+| **R1** | Agent-Driven Trading Landscape | Reference — platforms, safety, regulation | [ ] | [ ] | [ ] | Use when deciding real exchange integration. |
+| **R2** | Production Architecture & Pipeline | Reference — deployment, data, strategies | [ ] | [ ] | [ ] | Free API list and repo refs are immediately useful. |
+
+### Summary
+
+| Category | Total Items | Reviewed | Decided | Implemented | Left Out | Remaining |
+|---|---|---|---|---|---|---|
+| Tier 0 | 3 | — | — | — | — | — |
+| Tier 1 | 27 | — | — | — | — | — |
+| Tier 2 | 44 | — | — | — | — | — |
+| Batch Patterns | 6 | — | — | — | — | — |
+| Deep Audit | 12 | — | — | — | — | — |
+| Code Size | 5 | — | — | — | — | — |
+| Optimization | 4 | — | — | — | — | — |
+| Test Coverage | 6 | — | — | — | — | — |
+| Research | 7 | — | — | — | — | — |
+| **Total** | **114** | **0** | **0** | **0** | **0** | **114** |

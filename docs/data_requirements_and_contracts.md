@@ -192,7 +192,15 @@ INVALID until every term's unit and transform is declared here.
     This is where linear cost lives (7 coins × ~2,500 rows = 17,519 rows).
   Claiming "funding is per-coin" without naming the endpoint is a cost-model error.
 - Note: this is the shared contract the funding-basis-v2 B $100 forward accrual
-  MUST write to — it is the scanner's first consumer, NOT a private one-off file.
+  reads via `readFundingSeries()` — the scanner's first consumer, NOT a private file.
+- `premium` captured from 2026-07-09 (the recorder previously discarded it, making
+  basis unmeasurable on our own live feed). Rows before that date report premium
+  as **null = UNMEASURED**, never 0. Basis PnL for a short perp = premium(entry) −
+  premium(now).
+- **Capture coverage is itself evidence.** A recorder gap does not accrue funding,
+  so gaps UNDERSTATE carry. Any trial reading this series must compute
+  `hoursCaptured / hoursElapsed` and refuse a verdict below 90% — otherwise an
+  outage is indistinguishable from a failing strategy.
 - CANNOT conclude: fill quality at size, exchange/custody risk.
 
 ### Contract: energy_liquidity_snapshot

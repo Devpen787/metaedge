@@ -1,8 +1,10 @@
 # Trading Research Operating Model
 
-Status: GOVERNING DOCUMENT (2026-07-08). Supersedes `docs/edgeops/RESEARCH_CHARTER.md`.
+Status: GOVERNING DOCUMENT (2026-07-08, reaffirmed under comprehension gate
+2026-07-09). Supersedes `docs/edgeops/RESEARCH_CHARTER.md`.
 Evidence rules live in `docs/edgeops/TRADING_CANON.md` (subordinate to this model).
-Origin: Devin's research-OS reset — see `docs/decision_records/2026-07-08-research-os-reset.md`.
+Origin: Devin's research-OS reset — see `docs/decision_records/2026-07-08-research-os-reset.md`
+and the comprehension-gate record `docs/decision_records/2026-07-09-research-os-reset.md`.
 
 ## Role
 
@@ -56,31 +58,43 @@ Levels 6–9 are hypothesis sources only, never proof.
 
 A strategy cannot pass without all five sign-offs recorded on its card.
 
-## Order of operations (hard gates)
+## Order of operations (12 hard gates — each forbids the next until complete)
 
-1. **Instrument mechanics** — classify per `docs/strategy_taxonomy.md`; how it
-   trades, who uses it, costs, break modes, required data.
-2. **Opportunity pool** — classify by source of edge, never by indicator.
-3. **Research card before code** — no strategy code without a card conforming
-   to `docs/research_card_template.md`. NO CARD, NO CODE.
-4. **Data contract before backtest** — per
-   `docs/data_requirements_and_contracts.md`. NO CONTRACT, NO BACKTEST.
-5. **WHERE/WHEN selectors before HOW** — "is this market worth trading now?"
-   precedes "what do we do?". No energy, no trade — but energy is tradability,
-   not edge.
-6. **HOW** — entry, invalidation, stop, target, time stop, regime-change exit,
-   no-trade rules, benchmark, falsifier, expected frequency, expected failure
-   mode.
-7. **HOW MUCH** — sizing only after survival: max notional, wallet exposure,
-   daily loss, drawdown, vol targeting, correlation caps, leverage cap,
-   liquidation-distance check, loss cooldown, kill switch. Never optimize
-   sizing to rescue a bad edge.
-8. **Testing discipline** — per `docs/backtest_validation_rules.md`.
-9. **Forward paper** — live feed, realistic fills, precommitted thesis per
-   trade, minimum sample, benchmark comparison, kill rules, full audit log.
-10. **Live wallet** — only after forward paper; tiny size; operator approval;
-    no autonomous strategy mutation once live; no leverage increase without
-    approval; full audit log. Per `docs/agent_and_user_safety_policy.md`.
+1. **Instrument mechanics** — classify per `docs/strategy_taxonomy.md`.
+   *Forbidden until done:* naming a pool or writing any card before the
+   instrument's costs, break modes, and required data are classified.
+2. **Participant map** — who is forced/levered/hedging/constrained; who pays us;
+   why it persists. *Forbidden until done:* proposing any edge before a named
+   counterparty who loses on purpose.
+3. **Opportunity pool** — classify by source of edge, never by indicator.
+   *Forbidden until done:* writing entry logic before the edge source is placed
+   in a pool.
+4. **Research card** — template-conformant, per `docs/research_card_template.md`.
+   *Forbidden until done:* ANY strategy code. NO CARD, NO CODE.
+5. **Data contract** — fields/units for every dataset, per
+   `docs/data_requirements_and_contracts.md`. *Forbidden until done:* ANY
+   backtest. NO CONTRACT, NO BACKTEST.
+6. **WHERE/WHEN selector** — tradability gate: liquidity, vol/energy,
+   funding/basis regime, session, event/expiry window. *Forbidden until done:*
+   any HOW/entry design. Energy is tradability, NOT edge.
+7. **HOW — entry/exit** — entry, invalidation, stop, target, time stop,
+   regime-change exit, no-trade rules, benchmark, falsifier, expected
+   frequency, expected failure mode. *Forbidden until done:* sizing or backtest.
+8. **HOW MUCH — sizing** — max notional, wallet exposure, daily loss, drawdown,
+   vol targeting, correlation/leverage caps, liquidation-distance, cooldown,
+   kill switch. *Forbidden until done:* any allocation; sizing may NEVER be
+   tuned to rescue a losing edge.
+9. **Backtest** — walk-forward OOS, realistic costs, units check, registry log,
+   per `docs/backtest_validation_rules.md`. *Forbidden until done:* calling any
+   result an edge — passing yields only a FORWARD-PAPER CANDIDATE.
+10. **Forward paper** — live feed, realistic fills, precommitted per-trade
+    thesis, minimum sample, benchmark, kill rules, full audit. *Forbidden until
+    done:* any live wallet.
+11. **Tiny live** — operator approval, full gate stack, minimal size, per
+    `docs/agent_and_user_safety_policy.md`. *Forbidden until done:* scaling,
+    leverage increase, or autonomous strategy mutation.
+12. **Scale or kill** — scale only what survived real fills; kill on falsifier,
+    no exceptions. *Forbidden:* scaling anything unproven on real fills.
 
 ## Hard anti-patterns (you are failing if…)
 

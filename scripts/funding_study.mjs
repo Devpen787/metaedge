@@ -22,11 +22,11 @@
  * All evaluations appended to the hypothesis registry.
  */
 import fs from 'node:fs';
+import { fundingAprPercent, annualizedReturnPercent, HOURS_PER_YEAR } from '../server/units.mjs';
 
 const cflag = process.argv.indexOf('--coins');
 const COINS = cflag >= 0 ? process.argv[cflag + 1].split(',') : ['ETH', 'BTC', 'SOL'];
 const COST_EPISODE = 0.004;             // 40bps round trip, 4 legs
-const HOURS_YEAR = 24 * 365;
 const registry = fs.createWriteStream('data/edgeops/hypothesis-registry.jsonl', { flags: 'a' });
 const dstr = new Date().toISOString().slice(0, 10);
 const out = []; const p = (s = '') => out.push(s);
@@ -45,7 +45,11 @@ function simulate(rows, Tin, Tout, from, to, trailN = 24) {
   const episodes = [];
   let pos = null;
   for (let i = from + trailN; i < to; i++) {
-    const trail = rows.slice(i - trailN, i).reduce((s, r) => s + r.funding, 0) / trailN * HOURS_YEAR * 100; // annualized PERCENT (units must match Tin/Tout)
+    // Mean hourly funding FRACTION over the trailing window → annualized PERCENT.
+    // The conversion is NOT inlined here: units.mjs owns it. This exact line, with
+    // the ×100 missing, invalidated two full study runs on 2026-07-08.
+    const meanHourly = rows.slice(i - trailN, i).reduce((s, r) => s + r.funding, 0) / trailN;
+    const trail = fundingAprPercent(meanHourly); // PERCENT — matches Tin/Tout units
     if (!pos && trail >= Tin) {
       pos = { entryI: i, acc: 0, pIn: rows[i].premium, entryPx: rows[i].px, maxPx: rows[i].px ?? 0 };
     } else if (pos) {
@@ -65,7 +69,7 @@ function simulate(rows, Tin, Tout, from, to, trailN = 24) {
   const hoursIn = episodes.reduce((s, e) => s + e.hours, 0);
   return {
     episodes: episodes.length, totalNetPct: totalNet * 100, hoursIn,
-    aprDeployed: hoursIn ? (totalNet / (hoursIn / HOURS_YEAR)) * 100 : 0,
+    aprDeployed: annualizedReturnPercent(totalNet, hoursIn),
     basisDragPct: episodes.reduce((s, e) => s + e.basisPnl, 0) * 100,
     worstEpisodePct: episodes.length ? Math.min(...episodes.map((e) => e.net)) * 100 : 0,
     marginStress: episodes.filter((e) => e.marginStress).length,
@@ -83,7 +87,7 @@ p(`|---|---|---|---|---|---|`);
 const data = {};
 for (const coin of COINS) {
   const rows = loadCoin(coin); data[coin] = rows;
-  const aprs = rows.map((r) => r.funding * HOURS_YEAR * 100);
+  const aprs = rows.map((r) => fundingAprPercent(r.funding));
   const mean = aprs.reduce((s, a) => s + a, 0) / aprs.length;
   const pct = (t) => (aprs.filter((a) => a > t).length / aprs.length * 100).toFixed(1);
   const neg = (aprs.filter((a) => a < 0).length / aprs.length * 100).toFixed(1);

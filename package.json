@@ -18,6 +18,8 @@
     "smoke:tabs": "node scripts/all_tabs_smoke.mjs",
     "capability:matrix": "node scripts/capability_matrix.mjs",
     "edgeops:check": "node scripts/edgeops_check.mjs",
+    "edgeops:killcheck": "node scripts/kill_check.mjs",
+    "edgeops:killrule:selftest": "node scripts/kill_check.mjs --selftest",
     "bots:battle": "node scripts/arena_bots.mjs",
     "edgeops:report": "node scripts/edgeops_report.mjs"
   },

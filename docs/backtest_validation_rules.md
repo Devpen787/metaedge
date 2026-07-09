@@ -32,7 +32,32 @@ exists for every dataset touched. No exceptions.
 
 OOS only: n ≥ 30 · PF ≥ 1.1 · ≥55% positive folds · t-stat ≥ 2 · beats all
 required benchmarks · no unmodeled margin stress. Passing = FORWARD-PAPER
-CANDIDATE, never "edge". n=30–50 earns observation, not belief.
+CANDIDATE, never "edge" and NEVER a promotion to live. n=30–50 earns
+observation, not belief. A high PF on low n (e.g. PF>2, n=40) is explicitly NOT
+a shortcut to live — it goes to forward paper like everything else.
+
+## Timeframe is a decision, not a default
+
+The card must justify its timeframe (1h/4h/1d) from cost + signal half-life +
+opportunity type. Using 1h because the data was handy is a logged failure mode.
+4h/1d are derivable from the 1h backfill (aggregation) — no missing-data excuse.
+
+## The kill rule is CODE, not prose (2026-07-09)
+
+This document asserted "n ≥ 30, PF ≥ 1.1, or kill" from the day it was written,
+and enforced nothing. `grid` ran to 542 trades at −$0.48 each and `custom_ai` to
+268 at −$0.76 — about **$464 of paper losses past a rule already written down** —
+and it was caught only because Devin looked at a screenshot.
+
+The rule now lives in `scripts/kill_check.mjs`:
+- pure `evaluateKill()` function = the entire bar, in one testable place
+- `node scripts/kill_check.mjs` aggregates closed paper trades by family and
+  **exits 1 on any violation**, so it can gate a cron or a deploy
+- `--selftest` replays the real corpses (grid n=542, custom_ai n=268) and asserts
+  the rule fires. It does.
+
+Changing MIN_N or MIN_PROFIT_FACTOR is a research decision that belongs on a card.
+A rule in a document is not a rule.
 
 ## Honest-limits section (required in every report)
 

@@ -33,12 +33,37 @@ and real money. This encodes the platform's live posture as of 2026-07-08.
 - No autonomous strategy mutation once any strategy is live. No leverage
   increases without operator approval.
 
+## Kill guard — the one autonomous actor (added 2026-07-09)
+
+`server/killguard.ts` runs hourly IN-PROCESS and is the only component permitted to
+change agent behavior without a human. It exists because the kill rule previously
+lived in a document and `grid` bled 542 trades at −$0.48 before a human noticed.
+
+Bounded by construction:
+- **The only mutation it may make is `autopilot = false`.** It can stop a strategy.
+  It can never start one, resize one, place a trade, or touch a wallet.
+- Fail-safe direction: every action it takes strictly REDUCES activity and risk.
+- Scope: paper autopilot only (autopilot is paper-only by architecture).
+- Trigger: the shared rule in `server/killrule.mjs` (n ≥ 30 AND (avg PnL < 0 OR
+  PF < 1.1)). Same code path as `scripts/kill_check.mjs` — the rule exists once.
+- Every kill writes a `CARD_KILLED` audit event naming the family and the reason.
+- Idempotent: an already-disabled agent is not re-killed and triggers no write.
+- Escape hatch: `KILL_GUARD_ENFORCE=false` downgrades it to warn-only.
+
+Why in-process and not cron: enforcement read-modify-writes `data/db.json`. Node's
+single thread makes a synchronous read→write atomic within one process; a cron
+script doing the same from a second process would clobber concurrent server writes.
+The CLI (`npm run edgeops:killcheck`) is therefore READ-ONLY and exits 1 on violation.
+
 ## Competition rules
 
 - Paper competitions: standings real, funds simulated; faucet-capped.
-- QUEUED PRODUCT DECISION (2026-07-08): Arena must not rank by raw PnL alone —
-  risk-adjusted/expectancy-aware scoring to be designed before the next
-  competition cycle.
+- ACTION ITEM (raised 2026-07-08, reaffirmed 2026-07-09): Arena must not rank by
+  raw PnL alone — raw-PnL ranking rewards reckless variance and is a hard
+  anti-pattern. Trigger: BEFORE the next competition cycle (NOT mid-flight during
+  the Jul 6–12 MetaMask window — changing rules mid-competition is itself unsafe).
+  Target scoring: risk-adjusted / expectancy-aware (e.g. penalize drawdown and
+  variance, reward hit-rate × payoff). Owner: product-safety role on next card.
 
 ## Real-money research rules (from practice, now policy)
 

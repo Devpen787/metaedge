@@ -7,7 +7,7 @@ indicator. "RSI strategy" is not a classification; RSI is a feature.
 
 | Class | Status for us | Notes |
 |---|---|---|
-| Spot crypto | TRADEABLE (paper + operator-live) | 11-token universe; Arbitrum real rails |
+| Spot crypto | TRADEABLE (paper + operator-live) | 11-token CONVENIENCE list (see universe note); Arbitrum real rails |
 | Crypto perps | TRADEABLE (paper + operator-live) | Hyperliquid via mm; funding = structural data |
 | Paper synthetic instruments | PLATFORM-NATIVE | MetaEdge paper ledger; cost-adjusted fills |
 | Competition instruments | PLATFORM-NATIVE | Arena scoring; scoring reform queued (no raw-PnL ranking) |
@@ -31,7 +31,20 @@ indicator. "RSI strategy" is not a classification; RSI is a feature.
 | Allocation / rebalancing | n/a (self-service) | platform feature | not a trading edge |
 | Execution / cost reduction | ourselves | ✅ proven | ✅ measured 0.048% RT live |
 
+## Universe note (2026-07-09) — the 11-token list is a convenience, not a choice
+
+The live universe (`server/prices.ts`) is 11 hand-typed majors, inherited from
+seed data. Our own data contract confesses the resulting survivorship bias, and
+the trigger loop pins one asset per agent (`autotrader.ts`) — the machine cannot
+"scan N assets, act where a condition is met." Under this model that is a
+FAILURE MODE, not a design: universe membership must become a deliberate
+opportunity-field decision, and triggering must become scan-and-select gated by
+a WHERE/WHEN selector (order-of-operations step 6). Any universe change is a
+data decision (contract required), never a convenience edit.
+
 ## Classification rule
 
 Every research card names exactly one instrument class and one primary pool.
 A card claiming edge without naming WHO PAYS US in that pool is invalid.
+"Volume spiked" / "volatility spiked" is a TRADABILITY observation (step 6),
+never an edge — a card that stops there is invalid.

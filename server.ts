@@ -20,6 +20,7 @@ import { startRecorder } from './server/recorder.js';
 import { platformRouter } from './server/platform.js';
 import { researchRouter } from './server/research.js';
 import { startJanitor } from './server/janitor.js';
+import { startKillGuard } from './server/killguard.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -126,6 +127,7 @@ async function startServer() {
     startAutotrader();
     startRecorder();
     startJanitor();
+    startKillGuard();
 
     // EdgeOps report automation: regenerate the edge report daily so fresh
     // evidence is always sitting in data/edgeops/ — no cron, no SSH needed.

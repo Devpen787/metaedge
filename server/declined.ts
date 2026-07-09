@@ -22,7 +22,13 @@ export type DeclineReason =
   | 'CANONICAL_MISMATCH' // live-action guard blocked a wrong-wallet action
   | 'TRIGGER_NOT_MET'    // a card's trigger check returned NO-GO
   | 'INSUFFICIENT_HISTORY' // strategy needs more recorded history than exists (never fake a lookback)
-  | 'POSITION_CAP';        // open position already at max notional — no pyramiding past the cap
+  | 'POSITION_CAP'         // open position already at max notional — no pyramiding past the cap
+  // Scanner declines (opportunity-screener-v1) — why an asset did NOT become a candidate:
+  | 'STALE_DATA'           // snapshot older than freshness budget
+  | 'LIQUIDITY_FLOOR'      // 24h volume below the pool's liquidity floor
+  | 'NOT_IN_UNIVERSE'      // asset not in the tier the card operates on
+  | 'NO_FUNDING_DATA'      // funding/basis pool but no funding captured for this symbol
+  | 'VENUE_UNSUPPORTED';   // no supported execution venue for this instrument
 
 export function recordDeclined(source: string, family: string, reason: DeclineReason) {
   try {

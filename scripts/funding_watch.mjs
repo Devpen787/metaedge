@@ -10,6 +10,8 @@
  *
  * Usage: node scripts/funding_watch.mjs
  */
+import { fundingAprPercent } from '../server/units.mjs';
+
 const THRESHOLD_HOURLY = 0.0001; // 0.01%/hr ≈ 87% APR — harvest territory
 
 const res = await fetch('https://api.hyperliquid.xyz/info', {
@@ -26,7 +28,7 @@ for (const sym of ['ETH', 'BTC', 'SOL']) {
   const ctx = ctxs[idx[sym]];
   if (!ctx) continue;
   const hourly = Number(ctx.funding);
-  const apr = hourly * 24 * 365 * 100;
+  const apr = fundingAprPercent(hourly) ?? 0;
   const flag = Math.abs(hourly) >= THRESHOLD_HOURLY;
   if (flag) fired = true;
   console.log(`  ${sym.padEnd(4)} funding ${(hourly * 100).toFixed(5)}%/hr  ≈ ${apr.toFixed(1)}% APR  ${flag ? (hourly > 0 ? '🔥 HARVEST: short perp + hold spot' : '🔥 HARVEST (inverse): long perp + short spot') : '· baseline, no trade'}`);

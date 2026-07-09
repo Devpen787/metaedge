@@ -2,7 +2,9 @@
 
 Rule: **No strategy code may be written until a card exists using this
 template.** Cards live in `docs/edgeops/cards/<slug>-vN.md`. A card missing any
-section is invalid. Unknowns are marked `UNKNOWN`, never guessed.
+section is invalid. Unknowns are marked `UNKNOWN`, never guessed. Sections must
+be filled IN ORDER (participant map → data → WHERE/WHEN → HOW → sizing): a
+filled Entry/exit above an empty WHERE/WHEN selector is an invalid card.
 
 ```markdown
 # Research Card: <slug>-vN

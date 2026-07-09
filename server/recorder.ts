@@ -113,6 +113,13 @@ export function getHourlyCloses(sym: string): number[] {
   return (hourly[sym] || []).map((h) => h.close);
 }
 
+// Same series, timestamped, for charting. The rule that governs strategies
+// governs the UI too: render what was recorded, never interpolate across the
+// gap before the recorder started.
+export function getHourlySeries(sym: string): { t: number; close: number }[] {
+  return (hourly[sym] || []).map((h) => ({ t: h.hour * 3_600_000, close: h.close }));
+}
+
 // In-memory ring of recent ticks so strategy brains can use SHORT-window
 // signals (e.g. 1h change) without touching disk on the hot path.
 const ring: Record<string, { t: number; px: number }[]> = {};

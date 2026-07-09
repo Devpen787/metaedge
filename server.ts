@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import { authRouter, sessionMiddleware } from './server/auth.js';
 import { readDatabase } from './server/storage.js';
 import { pricesRouter } from './server/prices.js';
+import { historyRouter } from './server/history.js';
 import { roomsRouter } from './server/rooms.js';
 import { agentsRouter } from './server/agents.js';
 import { tradesRouter } from './server/trades.js';
@@ -87,6 +88,7 @@ app.get('/how-to', (_req, res) => {
 
 app.use(authRouter);
 app.use(pricesRouter);
+app.use(historyRouter);
 app.use(roomsRouter);
 app.use(agentsRouter);
 app.use(tradesRouter);

@@ -38,6 +38,36 @@ app.use((_req, res, next) => {
   next();
 });
 
+// CORS, deny-by-default. MetaEdge is same-origin in production (Caddy serves the
+// SPA and the API from one host), so no browser needs this. It exists for the
+// agent-facing API, and it is opt-in via CORS_ALLOWED_ORIGINS (comma-separated).
+//
+// An unconfigured origin list authorizes NOBODY, never everybody — the same rule
+// the live-execution allowlist follows. `Access-Control-Allow-Origin: *` here
+// would be worse than no CORS at all: it invites credentialed cross-origin reads
+// against session-cookie-authenticated endpoints.
+const CORS_ALLOWED_ORIGINS = new Set(
+  (process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean)
+);
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && CORS_ALLOWED_ORIGINS.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Max-Age', '600');
+  }
+  // Vary regardless: the response body differs by Origin, and a cache that
+  // misses this will serve one origin's allowance to another.
+  res.setHeader('Vary', 'Origin');
+  if (req.method === 'OPTIONS') { res.sendStatus(origin && CORS_ALLOWED_ORIGINS.has(origin) ? 204 : 403); return; }
+  next();
+});
+
 app.use(express.json({ limit: '256kb' }));
 
 // No fallback cookie secret. A hardcoded default means every session cookie is
@@ -76,15 +106,31 @@ app.get('/api/health', (_req, res) => {
 
 // Agent-facing guide at the /llms.txt convention (AI agents look here first),
 // plus the human quickstart. Served before the SPA catch-all.
+//
+// Read once at boot, not per request. These are immutable build artifacts, and
+// readFileSync inside a handler blocks the event loop for every caller — on a
+// shared e2-micro that is the whole server, not just this route. A missing file
+// also threw from inside the handler, turning a packaging mistake into a 500.
 import fsDocs from 'fs';
-app.get(['/llms.txt', '/agents.md'], (_req, res) => {
-  res.type('text/plain; charset=utf-8');
-  res.send(fsDocs.readFileSync(path.join(process.cwd(), 'docs', 'AGENTS.md'), 'utf8'));
-});
-app.get('/how-to', (_req, res) => {
-  res.type('text/plain; charset=utf-8');
-  res.send(fsDocs.readFileSync(path.join(process.cwd(), 'docs', 'HOW_TO.md'), 'utf8'));
-});
+function loadDoc(name: string): string {
+  try {
+    return fsDocs.readFileSync(path.join(process.cwd(), 'docs', name), 'utf8');
+  } catch {
+    console.warn(`[docs] ${name} missing — its route will report so rather than throw`);
+    return '';
+  }
+}
+const DOC_AGENTS = loadDoc('AGENTS.md');
+const DOC_HOWTO = loadDoc('HOW_TO.md');
+
+function serveDoc(body: string) {
+  return (_req: express.Request, res: express.Response) => {
+    if (!body) { res.status(404).type('text/plain').send('Not available in this build.'); return; }
+    res.type('text/plain; charset=utf-8').send(body);
+  };
+}
+app.get(['/llms.txt', '/agents.md'], serveDoc(DOC_AGENTS));
+app.get('/how-to', serveDoc(DOC_HOWTO));
 
 app.use(authRouter);
 app.use(pricesRouter);
@@ -105,19 +151,30 @@ app.use(researchRouter);
 import fs from 'fs';
 async function startServer() {
   const distPath = path.join(process.cwd(), 'dist');
-  const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(distPath, 'index.html'));
+
+  // NODE_ENV is the ONLY thing that decides the mode. The old condition also
+  // flipped to prod whenever `dist/index.html` merely existed, so any developer
+  // who had ever run `npm run build` got a stale bundle served silently over
+  // their live source, with no Vite and no HMR — the mode depended on a file's
+  // presence rather than on intent. (Observed: an explicit NODE_ENV=development
+  // boot served static assets and never started Vite.)
+  const isProd = process.env.NODE_ENV === 'production';
 
   if (!isProd) {
-    try {
-      const vite = await createViteServer({
-        server: { middlewareMode: true },
-        appType: 'spa',
-      });
-      app.use(vite.middlewares);
-    } catch (err) {
-      console.error('Failed to start Vite middleware:', err);
-    }
+    // A dev server that cannot build cannot serve. Logging and continuing left
+    // Express answering every SPA route with a 404 while claiming it had
+    // started — the same fail-open shape as the Tier-0 handlers we replaced.
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
   } else {
+    // In prod the bundle is the product. Missing means the deploy is broken;
+    // say so at boot rather than 404 on every page load.
+    if (!fs.existsSync(path.join(distPath, 'index.html'))) {
+      throw new Error(`NODE_ENV=production but ${distPath}/index.html is missing — run \`npm run build\` before starting.`);
+    }
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

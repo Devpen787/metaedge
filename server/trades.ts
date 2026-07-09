@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId } from './storage.js';
-import type { PaperTrade, TradingAgent } from '../src/types';
+import type { PaperTrade, TradingAgent, TradeReview } from '../src/types';
 import { createOrderIntent, executeOrderIntent } from '../src/secure-core/trading/intents.js';
 import { evaluateOrderRisk } from '../src/secure-core/trading/risk-engine.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
@@ -260,17 +260,21 @@ tradesRouter.post('/api/trades', (req: any, res) => {
 // failure / regime / behavior. Owner-only, closed (realized) trades only.
 tradesRouter.post('/api/trades/:id/review', (req: any, res) => {
   const db = readDatabase();
-  const trade = db.trades.find((t: any) => t.id === req.params.id);
+  const trade: PaperTrade | undefined = db.trades.find((t: PaperTrade) => t.id === req.params.id);
   if (!trade || trade.userId !== req.userId) { res.status(404).json({ error: 'Trade not found.' }); return; }
   if (typeof trade.pnl !== 'number') { res.status(400).json({ error: 'Only closed trades (realized P&L) can be reviewed.' }); return; }
   const b = req.body || {};
-  const DRIVERS = ['signal', 'execution', 'regime', 'liquidity', 'behavior'];
-  const DECISIONS = ['keep_testing', 'modify', 'kill', 'promote_paper_only'];
+  // Derived from the type, not retyped alongside it. `review` is declared on
+  // PaperTrade, so the `as any` these lines used to carry bought nothing and
+  // silently exempted the payload from the very union it was validating against.
+  // Widen TradeReview and tsc now fails here until the validator agrees.
+  const DRIVERS: TradeReview['outcomeDriver'][] = ['signal', 'execution', 'regime', 'liquidity', 'behavior'];
+  const DECISIONS: TradeReview['nextDecision'][] = ['keep_testing', 'modify', 'kill', 'promote_paper_only'];
   if (!DRIVERS.includes(b.outcomeDriver) || !DECISIONS.includes(b.nextDecision)) {
     res.status(400).json({ error: `outcomeDriver must be one of ${DRIVERS.join('/')}; nextDecision one of ${DECISIONS.join('/')}.` });
     return;
   }
-  (trade as any).review = {
+  const review: TradeReview = {
     thesisFollowed: !!b.thesisFollowed,
     invalidationHit: !!b.invalidationHit,
     outcomeDriver: b.outcomeDriver,
@@ -278,8 +282,9 @@ tradesRouter.post('/api/trades/:id/review', (req: any, res) => {
     nextDecision: b.nextDecision,
     reviewedAt: Date.now()
   };
+  trade.review = review;
   writeDatabase(db);
-  res.json({ success: true, review: (trade as any).review });
+  res.json({ success: true, review });
 });
 
 tradesRouter.get('/api/trades', (req: any, res) => {

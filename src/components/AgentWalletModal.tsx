@@ -51,6 +51,10 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   const [connected, setConnected] = useState(false);
   const [connectedAddress, setConnectedAddress] = useState<string | undefined>(undefined);
   const [connectPolling, setConnectPolling] = useState(false);
+  // Cancels the 5-minute connect poll. Held in a ref because startConnect() runs
+  // outside React's render cycle and must reach the live controller, not a stale
+  // closure over one.
+  const pollAbortRef = useRef<AbortController | null>(null);
   const [loginUrl, setLoginUrl] = useState<string | undefined>(undefined);
   const [tokenInput, setTokenInput] = useState('');
   const [showChecklist, setShowChecklist] = useState(false);
@@ -82,10 +86,22 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
     }
   }
 
-  async function checkStatus() {
+  // A sleep that wakes early when the poll is cancelled, so closing the modal
+  // stops it now rather than up to six seconds later.
+  function sleep(ms: number, signal: AbortSignal) {
+    return new Promise<void>((resolve) => {
+      if (signal.aborted) return resolve();
+      const done = () => { clearTimeout(t); signal.removeEventListener('abort', done); resolve(); };
+      const t = setTimeout(done, ms);
+      signal.addEventListener('abort', done, { once: true });
+    });
+  }
+
+  async function checkStatus(signal?: AbortSignal) {
     try {
-      const res = await apiFetch('/api/mm/connect/status');
+      const res = await apiFetch('/api/mm/connect/status', signal ? { signal } : undefined);
       const s = await safeJson(res);
+      if (signal?.aborted) return false;
       setConnected(!!s.connected);
       setConnectedAddress(s.address || undefined);
       return !!s.connected;
@@ -98,29 +114,47 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
   // user clicks themselves (popup blockers eat window.open after an await). The
   // sign-in page hands them a CLI token; pasting it below completes the login.
   async function startConnect() {
+    // This loop ran for five minutes with no way to stop it. Closing the modal
+    // left it polling /api/mm/connect/status — which spawns a CLI process on the
+    // server — 50 times, then calling finishConnect() and setState on a component
+    // the user had walked away from. Now the modal's close and unmount both abort
+    // it. (Since the wallet rate limiter actually works again, an orphaned poll
+    // would also spend the user's own /api/mm/* budget and 429 their next action.)
+    pollAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    pollAbortRef.current = ctrl;
+    const { signal } = ctrl;
+
     try {
       setLoading(true);
       setMessage('');
-      const res = await apiFetch('/api/mm/connect/start', { method: 'POST' });
+      const res = await apiFetch('/api/mm/connect/start', { method: 'POST', signal });
       const data = await safeJson(res);
+      if (signal.aborted) return;
       if (!res.ok || !data.loginUrl) throw new Error(data.message || 'Could not start MetaMask login. Try again in a few seconds.');
       setLoginUrl(data.loginUrl);
       setConnectPolling(true);
       // Some sign-in methods complete the server session directly; poll quietly
       // in case they do, but the token paste below is the reliable completion.
-      for (let i = 0; i < 50; i++) {
-        await new Promise((r) => setTimeout(r, 6000));
-        if (await checkStatus()) {
+      for (let i = 0; i < 50 && !signal.aborted; i++) {
+        await sleep(6000, signal);
+        if (signal.aborted) return;
+        if (await checkStatus(signal)) {
+          if (signal.aborted) return;
           setLoginUrl(undefined);
           await finishConnect();
           return;
         }
       }
     } catch (error: any) {
+      if (signal.aborted || error?.name === 'AbortError') return;
       setMessage(error.message || 'Could not start MetaMask login.');
     } finally {
-      setConnectPolling(false);
-      setLoading(false);
+      // Never write state for a poll the user already dismissed.
+      if (!signal.aborted) {
+        setConnectPolling(false);
+        setLoading(false);
+      }
     }
   }
 
@@ -226,8 +260,17 @@ export default function AgentWalletModal({ isOpen, onClose }: AgentWalletModalPr
       setMessage('');
       checkStatus();
       loadReadiness();
+    } else {
+      // Closed mid-poll: stop immediately. `isOpen` false returns null below, so
+      // the component stays mounted and the loop would otherwise keep running.
+      pollAbortRef.current?.abort();
+      setConnectPolling(false);
+      setLoading(false);
     }
   }, [isOpen]);
+
+  // Unmount is the other exit the loop never had.
+  useEffect(() => () => pollAbortRef.current?.abort(), []);
 
   if (!isOpen) return null;
 

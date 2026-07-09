@@ -139,6 +139,10 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const [boardMeta, setBoardMeta] = useState<{ name: string; endsAt: number } | null>(null);
   const [celebration, setCelebration] = useState<string | null>(null);
   const prevRankRef = useRef<{ leagueId: string | 'global'; rank: number } | null>(null);
+  // Mirrors activeLeagueId so an in-flight response can ask "am I still the
+  // league on screen?" without closing over the value it started with.
+  const activeLeagueIdRef = useRef<string | 'global'>(activeLeagueId);
+  activeLeagueIdRef.current = activeLeagueId;
 
   // Auto-dismiss celebration toasts.
   useEffect(() => {
@@ -157,19 +161,32 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     }
   }, []);
 
-  const loadPositions = React.useCallback(async () => {
+  const loadPositions = React.useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await apiFetch('/api/arena/positions');
+      const res = await apiFetch('/api/arena/positions', signal ? { signal } : undefined);
+      if (signal?.aborted) return;
       if (res.ok) setPositions((await safeJson(res)).positions || []);
-    } catch (e) { console.warn('[arena] loadPositions failed; keeping last good state', e); }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
+      console.warn('[arena] loadPositions failed; keeping last good state', e);
+    }
   }, []);
 
-  const loadArena = React.useCallback(async () => {
+  // Switching leagues fires a new request while the previous is still in flight,
+  // and the slower response wins the setState race — so league A's board could
+  // overwrite league B's, with a rank-up celebration computed by comparing ranks
+  // across two different boards. The signal aborts the stale request; the id
+  // check backs it up, since a response already resolved cannot be aborted.
+  const loadArena = React.useCallback(async (signal?: AbortSignal) => {
+    const requestedLeagueId = activeLeagueId;
+    const isStale = () => !!signal?.aborted || requestedLeagueId !== activeLeagueIdRef.current;
     try {
+      const init = signal ? { signal } : undefined;
       const [lgRes, lbRes] = await Promise.all([
-        apiFetch('/api/arena/leagues'),
-        apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(activeLeagueId)}`),
+        apiFetch('/api/arena/leagues', init),
+        apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(requestedLeagueId)}`, init),
       ]);
+      if (isStale()) return;
       if (lgRes.ok) {
         const data = await safeJson(lgRes);
         const mapped = (data.leagues || []).map((l: any) => ({
@@ -182,19 +199,22 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
       }
       if (lbRes.ok) {
         const data = await safeJson(lbRes);
+        if (isStale()) return;
         const rows = data.leaderboard || [];
         setLeaderboard(rows);
         if (data.board) setBoardMeta(data.board);
-        // Celebrate a genuine rank-up on the same board.
+        // Celebrate a genuine rank-up on the same board. Compare against the
+        // league this response is FOR, not whichever league is selected now.
         const mine = rows.find((p: any) => p.userId === user.id);
         const prev = prevRankRef.current;
-        if (mine && prev && prev.leagueId === activeLeagueId && mine.rank < prev.rank) {
+        if (mine && prev && prev.leagueId === requestedLeagueId && mine.rank < prev.rank) {
           setCelebration(`🚀 Rank up! #${prev.rank} → #${mine.rank}`);
           burst('rankup');
         }
-        prevRankRef.current = mine ? { leagueId: activeLeagueId, rank: mine.rank } : null;
+        prevRankRef.current = mine ? { leagueId: requestedLeagueId, rank: mine.rank } : null;
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return;
       console.warn('[arena] loadArena failed; keeping last good state', e);
     }
   }, [activeLeagueId, user.id]);
@@ -218,13 +238,28 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     }
   };
 
-  useEffect(() => { loadArena(); }, [loadArena]);
+  useEffect(() => {
+    const ctrl = new AbortController();
+    loadArena(ctrl.signal);
+    // Switching leagues (or unmounting) cancels the request for the old one
+    // before it can land on the new board.
+    return () => ctrl.abort();
+  }, [loadArena]);
 
   // Refresh open positions periodically so their live P&L keeps ticking.
   useEffect(() => {
-    loadPositions();
-    const t = setInterval(loadPositions, 5000);
-    return () => clearInterval(t);
+    const ctrl = new AbortController();
+    let inFlight = false;
+    const tick = async () => {
+      // A 5s interval against a slower response would stack requests and let an
+      // older one resolve last. Skip the tick instead of racing ourselves.
+      if (inFlight) return;
+      inFlight = true;
+      try { await loadPositions(ctrl.signal); } finally { inFlight = false; }
+    };
+    tick();
+    const t = setInterval(tick, 5000);
+    return () => { clearInterval(t); ctrl.abort(); };
   }, [loadPositions]);
 
   // Real, computed arena stats derived from the live leaderboard (never faked).

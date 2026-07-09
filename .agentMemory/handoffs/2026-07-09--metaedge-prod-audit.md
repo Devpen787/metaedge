@@ -44,9 +44,15 @@ MetaEdge is a production-deployed React 19 + Express monolith (AI trading simula
 
 All items cataloged in this handoff. Each maps to a detailed section below. Cross-reference for effort and owning component.
 
+> **STATUS (2026-07-09):** This table is a lookup only and carries **no status**. Live status lives in the
+> [Master Execution Checklist](#master-execution-checklist) at the bottom. Tier 0 and Tier 1 are **done**
+> (`29b20d1`, `2a70bb0`): 22 implemented, 5 left out with cause, 2 deferred (0.2, 1.4).
+> **Four IDs in this table point at files that do not exist** — I2 (`server/intents.ts`), SW1
+> (`server/swarm.ts`), C2 (`server/chart.ts`), P2 (`server/predictionMarkets.ts`). See the checklist notes.
+
 | ID | Brief | Tier | Effort | Owning Component(s) | Tab Source |
 |---|---|---|---|---|---|
-| **0.1** | HMAC pepper fallback + timing leak | Tier 0 | 10m | `server/secure-core/crypto/secrets.ts` | — |
+| **0.1** | HMAC pepper fallback + timing leak | Tier 0 | 10m | `src/secure-core/crypto/secrets.ts` (path corrected; **no importers** — latent, not active) | — |
 | **0.2** | JSON DB no concurrent write lock | Tier 0 | 2-4h | `server/storage.ts` (all callers) | — |
 | **DA2** | Cookie secret hardcoded fallback | Tier 0 | 2m | `server.ts:40` | Deep Audit |
 | **1.1** | `res.json()` before `res.ok` (17+ sites) | Tier 1 | 30m | `App.tsx` + all components | — |
@@ -2443,40 +2449,40 @@ trade execution fail rate > 10% → ERROR
 
 | ID | Description | Effort | Reviewed | Decide | Status | Notes |
 |---|---|---|---|---|---|---|
-| **0.1** | HMAC pepper fallback + timing leak | 10m | [ ] | [ ] | [ ] | `secrets.ts:24` Remove fallback, crash on missing, use timingSafeEqual |
-| **0.2** | JSON DB no concurrent write lock | 2-4h | [ ] | [ ] | [ ] | `storage.ts` + 11 callers. Mutex must wrap entire read-mutate-write cycle. Sync→async audit needed. |
-| **DA2** | Cookie secret hardcoded fallback | 2m | [ ] | [ ] | [ ] | `server.ts:40` Crash at startup if COOKIE_SECRET unset |
+| **0.1** | HMAC pepper fallback + timing leak | 10m | [x] | [x] | [x] Implemented | `29b20d1`. Fallback existed in **TWO** places (`:24` AND `:47`) — doc lists only `:24`. Both now route through one `systemPepper()` accessor that throws. `===` → `timingSafeEqual` behind a length guard. **Scope correction:** `secrets.ts` has **no importers** — threat was latent, not active. The doc's verify step ("start without SYSTEM_PEPPER → crash") does NOT fire: the throw is inside an uncalled function. |
+| **0.2** | JSON DB no concurrent write lock | 2-4h | [x] | [x] | [ ] **DEFERRED** | **Premise not reproducible.** Scanned every `readDatabase()`→`writeDatabase()` block in `server/*.ts`: **0 async windows** (no `await` between read and write). Node's single thread makes each cycle atomic, so a promise mutex is a no-op against current code. It also cannot serialise the REAL exposure: separate `.mjs` processes writing the same files (see R1). Worth adding as insurance before any `await` enters a critical section. Invariant is load-bearing and unguarded. |
+| **DA2** | Cookie secret hardcoded fallback | 2m | [x] | [x] | [x] Implemented | `29b20d1`. Confirmed live on the request path at `server.ts:41`. Deploy-safe: verified `gcp_setup.sh:49` generates `COOKIE_SECRET` into `.env.production`, loaded by systemd `EnvironmentFile`. Also fixed `startServer().catch`, which logged fatal startup errors but left a zombie process — that would have silently defeated this crash-on-missing-secret behaviour. |
 
 ### Tier 1 — Fix This Week (Production bugs)
 
 | ID | Description | Effort | Reviewed | Decide | Status | Notes |
 |---|---|---|---|---|---|---|
-| **1.1** | `res.json()` before `res.ok` (17+ sites) | 30m | [ ] | [ ] | [ ] | App.tsx + WalletsPanel + AgentWalletModal + tradeParse. Grep target provided. |
-| **1.2** | Uncaught mutation errors → white screen | 35m | [ ] | [ ] | [ ] | Wire ErrorBoundary + `safeHandler()` wrapper. Watch for `setState(undefined)` on failure. |
-| **1.3** | tradeParse.ts missing `await` on fetch | 5m | [ ] | [ ] | [ ] | Trades silently never execute. Two-line fix. |
-| **1.4** | Server routes: no input validation, session rotation | 1-2d | [ ] | [ ] | [ ] | Create `server/validate.ts`, apply to 10 files. Add session rotation on re-auth. |
-| **D1** | Profile save silently closes modal | 5m | [ ] | [ ] | [ ] | `App.tsx:200-202` Add `throw err` in catch |
-| **D12** | Profile edit resets on parent re-render | 5m | [ ] | [ ] | [ ] | `Dashboard.tsx:83-90` Gate useEffect with `!isEditingProfile` |
-| **W1** | `switchTo()` fires `wallet-connected` on failure | 5m | [ ] | [ ] | [ ] | `WalletCenter.tsx:34-44` Read API response before firing event |
-| **W2** | Stale data — key bump never implemented | 10m | [ ] | [ ] | [ ] | `WalletCenter.tsx:39-40,68,129` + `WalletsPanel.tsx:82-85` |
-| **W4** | `disconnectWallet()` ignores API response | 5m | [ ] | [ ] | [ ] | `AgentWalletModal.tsx:160-172` Read response before clearing state |
-| **R1** | `declined-daily.json` non-atomic write race | 15m | [ ] | [ ] | [ ] | `server/declined.ts` + `server/research.ts` |
-| **R2** | ResearchFleet silent API failure (no else) | 5m | [ ] | [ ] | [ ] | Add error state + user feedback |
-| **T1** | TradingRoom race on rapid room switch | 15m | [ ] | [ ] | [ ] | AbortController on room switch |
-| **T2** | Silent error swallowing — stale room data | 5m | [ ] | [ ] | [ ] | Error propagation |
-| **A1** | `rsi_meanrev` missing from type + form | 15m | [ ] | [ ] | [ ] | `types.ts` + `AgentWorkshop.tsx` |
-| **A2** | Price auto-update overwrites user edits | 10m | [ ] | [ ] | [ ] | Local state isolation |
-| **C2** | Server empty catch blocks on feed failure | 15m | [ ] | [ ] | [ ] | `server/chart.ts` |
-| **P1** | Empty catch block | 5m | [ ] | [ ] | [ ] | `PredictionMarkets.tsx` |
-| **P2** | Malformed `outcomePrices` swallowed | 5m | [ ] | [ ] | [ ] | `server/predictionMarkets.ts` |
-| **P3** | TOCTOU balance check | 5m | [ ] | [ ] | [ ] | `server/predictionMarkets.ts` |
-| **Q2** | `res.json` before `res.ok` in quant routes | 5m | [ ] | [ ] | [ ] | `server/quant.ts` |
-| **Q3** | Silent catch with comment admitting error gap | 5m | [ ] | [ ] | [ ] | `server/quant.ts` |
-| **I2** | `res.json` before `res.ok` in intent routes | 5m | [ ] | [ ] | [ ] | `server/intents.ts` |
-| **SW1** | `res.json` before `res.ok` in swarm routes | 5m | [ ] | [ ] | [ ] | `server/swarm.ts` (Tab 15) |
-| **AR1** | 6 empty catch blocks in AgentArena | 15m | [ ] | [ ] | [ ] | `AgentArena.tsx` |
-| **M1** | Check `res.ok` before `.json()` | 5m | [ ] | [ ] | [ ] | `MetaedgeAnalytics.tsx` |
-| **S1-DA** | `uncaughtException` handler doesn't exit | 5m | [ ] | [ ] | [ ] | `server.ts:156` Log → cleanup → `process.exit(1)` |
+| **1.1** | `res.json()` before `res.ok` (17+ sites) | 30m | [x] | [x] | [x] Implemented | `2a70bb0`. **Real count: 44 sites / 18 files**, incl. `ActingAsChip.tsx` (missed by the doc). **28 of them already checked `res.ok` — just after parsing.** So the fix is not "add a check": added `safeJson()` (`src/lib/api.ts`) that never throws, then let each existing `if (!res.ok)` run. Control flow and `data.error` messages preserved exactly. Migrated by codemod. Absorbs Q2/I2/SW1/M1. |
+| **1.2** | Uncaught mutation errors → white screen | 35m | [x] | [x] | [x] Implemented | `2a70bb0`. **(a) was already done** — `main.tsx` already wraps `<App/>` in `ErrorBoundary`. But it only catches **render** errors, never a rejected promise from an event handler. Added a global `unhandledrejection` listener + dismissible banner rather than hand-wrapping 22 handlers: the symptom ("clicked, nothing happened") can originate anywhere. |
+| **1.3** | tradeParse.ts missing `await` on fetch | 5m | [x] | [x] | [x] **Left Out** | **STALE.** `await fetch(` is already present at `tradeParse.ts:39`. Its `res.json`-before-`res.ok` half was covered by 1.1. |
+| **1.4** | Server routes: no input validation, session rotation | 1-2d | [x] | [x] | [ ] **DEFERRED** | Largest item in the queue. **Carve-out worth pulling forward (~20m):** `resolveMarket` has no ownership check — that is an authz hole, not a validation nicety. The one remaining `tsc` error (`metamask.ts:1366` `req.userId`) belongs to this item. |
+| **D1** | Profile save silently closes modal | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. `Dashboard.tsx:100-105` **already** catches, keeps the modal open and renders the message. App.tsx swallowed the error so the promise resolved and the modal closed as if saved. Rethrowing is the entire fix. |
+| **D12** | Profile edit resets on parent re-render | 5m | [x] | [x] | [x] **Left Out** | **ALREADY FIXED.** `Dashboard.tsx:83` is already gated on `!isEditingProfile`. Verified, no change needed. |
+| **W1** | `switchTo()` fires `wallet-connected` on failure | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. A rejected switch still fired the event, so the app re-read balances as the NEW wallet while the server still acted as the old one. Now reads the response first; added `switchError` surface. |
+| **W2** | Stale data — key bump never implemented | 10m | [x] | [x] | [x] Implemented | `2a70bb0`. Implemented as a **`refreshKey` prop**, not a React `key`: a literal `key` fails to typecheck against `WalletsPanel`'s inline props type and flashes the panel on remount. `WalletsPanel` now refetches when `refreshKey` changes. |
+| **W4** | `disconnectWallet()` ignores API response | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. A failed disconnect still cleared local state — UI read "disconnected" while the server stayed attached. |
+| **R1** | `declined-daily.json` non-atomic write race | 15m | [x] | [x] | [x] Implemented | `2a70bb0`. **NOT blocked by 0.2** — different file, and one reader (`scripts/edgeops_report.mjs`) is a **separate process**, which a per-process mutex cannot serialise. Fixed with temp+rename. **Measured: 26 torn reads / 3,555 with the old truncating write; 0 / 15,045 after.** |
+| **R2** | ResearchFleet silent API failure (no else) | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. Added error state ("showing the last successful snapshot, which may be stale"). Also fixed its **3 live `tsc` errors**: `data?.declined \|\| {}` widened to `{}`, so `Object.entries` yielded `unknown`. |
+| **T1** | TradingRoom race on rapid room switch | 15m | [x] | [x] | [x] Implemented | `2a70bb0`. AbortController on switch/unmount; `AbortError` is not treated as a failure and must not clobber the new room's state. |
+| **T2** | Silent error swallowing — stale room data | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. A failed load left the PREVIOUS room's details on screen — the desk showed one room while acting on another. |
+| **A1** | `rsi_meanrev` missing from type + form | 15m | [x] | [x] | [x] Implemented | `2a70bb0`. Corroborated by a **live compile error** at `autotrader.ts:136`. Added to the `types.ts` union + AgentWorkshop `<select>`. `server/agents.ts:46` already whitelisted it. |
+| **A2** | Price auto-update overwrites user edits | 10m | [x] | [x] | [x] Implemented | `2a70bb0`. Root cause was a **dependency-array bug**: the sim-price effect listed `realPrices`, so every `/api/prices` poll overwrote the typed value. Now seeded on agent/asset change only, reading prices via a ref. |
+| **C2** | Server empty catch blocks on feed failure | 15m | [x] | [x] | [x] **Left Out** | **MIS-SCOPED.** `server/chart.ts` does not exist. The client-side equivalent (`TokenMarketChart.tsx:112`) was covered by the 1.1 codemod. |
+| **P1** | Empty catch block | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. Error state is deliberately **source-agnostic** — per Research 5 this endpoint becomes a Polymarket→Kalshi→local proxy, so naming a provider would start lying the day the proxy lands. Malformed `outcomePrices` now warns instead of silently rendering a blank market. |
+| **P2** | Malformed `outcomePrices` swallowed | 5m | [x] | [x] | [x] **Left Out** | **File does not exist.** `server/predictionMarkets.ts` is absent; markets live in `server/predictions.ts`. Research 5 explains why: the intended module is a *future* `server/market-proxy.ts`, and this fix belongs in its `normalizePolymarket()`. Cannot be actioned today. |
+| **P3** | TOCTOU balance check | 5m | [x] | [x] | [x] **Left Out** | **No TOCTOU.** `predictions.ts` reads the balance (`:45`) and deducts (`:51`) synchronously with **no `await` between**, so the event loop cannot interleave. Same false premise as 0.2. |
+| **Q2** | `res.json` before `res.ok` in quant routes | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. Folded into the 1.1 codemod (client-side `QuantEngine.tsx:48`). |
+| **Q3** | Silent catch with comment admitting error gap | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. Kept non-fatal (commentary is optional) but now logs — it was hiding a revoked API key or exhausted quota indefinitely. |
+| **I2** | `res.json` before `res.ok` in intent routes | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. **Mis-scoped path**: `server/intents.ts` does not exist. Defect is client-side (`IntentSolver.tsx:51`); fixed by the 1.1 codemod. |
+| **SW1** | `res.json` before `res.ok` in swarm routes | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. **Mis-scoped path**: `server/swarm.ts` does not exist. Defect is client-side (`SwarmCopilot.tsx:64`); fixed by the 1.1 codemod. |
+| **AR1** | 6 empty catch blocks in AgentArena | 15m | [x] | [x] | [x] Implemented | `2a70bb0`. All six now log a reason. No error UI exists in this component and inventing one was out of scope — the goal was "no failure is silent". |
+| **M1** | Check `res.ok` before `.json()` | 5m | [x] | [x] | [x] Implemented | `2a70bb0`. Folded into the 1.1 codemod. |
+| **S1-DA** | `uncaughtException` handler doesn't exit | 5m | [x] | [x] | [x] Implemented | `29b20d1` (done with Tier 0 at the user's request; filed under Tier 1 here). Logs → `process.exit(1)`; systemd `Restart=always` brings it back clean. `unhandledRejection` still only logs (deliberate). **Note:** when Sentry lands, a bare `exit(1)` drops buffered events — see `docs/observability_retcon.md`. |
 
 ### Tier 2 — Fix This Month
 
@@ -2595,15 +2601,44 @@ trade execution fail rate > 10% → ERROR
 
 ### Summary
 
+Updated 2026-07-09. Commits: **`29b20d1`** (Tier 0) · **`2a70bb0`** (Tier 1). Not yet pushed.
+
 | Category | Total Items | Reviewed | Decided | Implemented | Left Out | Remaining |
 |---|---|---|---|---|---|---|
-| Tier 0 | 3 | — | — | — | — | — |
-| Tier 1 | 27 | — | — | — | — | — |
-| Tier 2 | 44 | — | — | — | — | — |
-| Batch Patterns | 6 | — | — | — | — | — |
-| Deep Audit | 12 | — | — | — | — | — |
-| Code Size | 5 | — | — | — | — | — |
-| Optimization | 4 | — | — | — | — | — |
-| Test Coverage | 6 | — | — | — | — | — |
-| Research | 7 | — | — | — | — | — |
-| **Total** | **114** | **0** | **0** | **0** | **0** | **114** |
+| Tier 0 | 3 | 3 | 3 | 2 | 0 | 1 (0.2 deferred) |
+| Tier 1 | 26 † | 26 | 26 | 20 | 5 | 1 (1.4 deferred) |
+| Tier 2 | 44 | 0 | 0 | 0 | 0 | 44 |
+| Batch Patterns | 6 | 2 | 2 | 1 | 0 | 5 |
+| Deep Audit | 12 | 3 | 3 | 2 ‡ | 0 | 10 |
+| Code Size | 5 | 0 | 0 | 0 | 0 | 5 |
+| Optimization | 4 | 0 | 0 | 0 | 0 | 4 |
+| Test Coverage | 6 | 0 | 0 | 0 | 0 | 6 |
+| Research | 7 | 2 | — | — | — | 5 |
+| **Total** | **113 †** | **36** | **34** | **22 ‡** | **5** | **81** |
+
+† The header claimed **27** Tier-1 items; the table contains **26** rows. Total corrected 114 → 113.
+‡ DA2 and DA1/S1-DA are counted once (in Tier 0 / Tier 1) to avoid double-counting; the Deep Audit row records them for traceability only.
+
+**Batch Patterns status:** Pattern 1 (`res.json()` before `res.ok`) is **done** — 44 sites, all of `src/`. Pattern 3 (empty/silent catch blocks) is **partial**: fixed in `AgentArena`, `PredictionMarkets`, `quant.ts`, `recorder.ts`; 8 further silent catches exist in the new `server/opportunity/*` modules, which postdate this audit. Patterns 2, 4, 5, 6 untouched.
+
+### Session log — 2026-07-09
+
+**Tier 0 (`29b20d1`)** — 0.1, DA2, S1-DA implemented. 0.2 deferred.
+Verified by driving it, not typechecking: boot without `COOKIE_SECRET` → exit 1; with it → serves. `generateApiKey` without `SYSTEM_PEPPER` → throws. Wrong secret rejected via constant-time compare; length mismatch handled. Uncaught exception → exit 1.
+
+**Tier 1 (`2a70bb0`)** — 20 implemented, 5 left out, 1 deferred. 24 files.
+`tsc` **5 → 1 error** (the survivor, `metamask.ts:1366`, belongs to deferred 1.4). `npm run build` green. Server boots; `/api/prices`, `/api/graph`, `/api/arena/leaderboard`, `/api/research-fleet` all 200.
+
+**Corrections this session made to the audit itself:**
+1. `server/intents.ts`, `server/swarm.ts`, `server/chart.ts`, `server/predictionMarkets.ts` **do not exist** — items I2, SW1, C2, P2 were mis-scoped.
+2. 1.3's `await` is **already present**; the finding is stale.
+3. D12 is **already fixed**.
+4. 1.2(a) is **already done** — `ErrorBoundary` is wired in `main.tsx`.
+5. 0.2 and P3 rest on the **same false premise**: Node's single thread makes a synchronous read-modify-write atomic. Zero async race windows exist.
+6. 0.1's fallback exists in **two** places, not one; and `secrets.ts` has **no importers**.
+7. 1.1 is **44 sites / 18 files**, not "17+"; **28 already checked `res.ok`**, just after parsing.
+8. R1's racing reader is a **separate process**, so 0.2's mutex was never a prerequisite. Measured: 26 torn reads / 3,555 before, 0 / 15,045 after.
+
+**Cross-references added:** `docs/observability_retcon.md` — which handlers need `logger`/Sentry when pino lands, the Sentry-flush hazard in the new `exit(1)` paths, and the rule that shared `.mjs` modules stay logger-free (scripts have no pino instance).
+
+**Recommended next:** 1.4's `resolveMarket` ownership check (~20m authz hole), pulled out of the 1–2d item.

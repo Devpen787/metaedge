@@ -40,21 +40,39 @@ function createAnonymousUser(userId: string): User {
   };
 }
 
-function attachNewSession(db: DatabaseState, userId: string, res: any) {
-  const now = Date.now();
-  const token = createSessionToken();
-  const tokenHash = hashSessionToken(token);
-  db.sessions ||= {};
-  db.sessions[tokenHash] = {
-    id: 'ses_' + generateId(),
-    tokenHash,
-    userId,
-    createdAt: now,
-    lastSeenAt: now,
-    expiresAt: now + SESSION_TTL_MS
-  };
-  res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
-  return tokenHash;
+// Anonymous sessions live in memory until the user does something worth saving.
+//
+// The old middleware wrote a user row + two login events + a session, and rewrote
+// the WHOLE of db.json, on every request that lacked a valid cookie. readDatabase()
+// parses the entire file and writeDatabase() re-serializes and fsyncs it (there is
+// no cache), so a cookieless flood was an O(n^2) disk DoS on a shared e2-micro:
+// each minted user made every later request slower, and an attacker just omits the
+// cookie. This is the abuse vector left open when the rate-limiter fix landed.
+//
+// Now a cookieless request gets an in-memory ephemeral session. A cookie is still
+// set, so a real browser keeps a stable identity, but nothing touches disk. The
+// row is persisted only when the user first MUTATES (persistEphemeralOnMutation),
+// so a curl loop that never mutates costs zero writes and strictly bounded memory.
+type EphemeralSession = { userId: string; user: User; tokenHash: string; createdAt: number; lastSeen: number };
+const ephemeralSessions = new Map<string, EphemeralSession>();
+const EPHEMERAL_TTL_MS = 30 * 60 * 1000;   // read-only browsing keeps its identity this long
+const EPHEMERAL_MAX = 10_000;              // hard ceiling: memory stays bounded under flood
+
+function sweepEphemeral(now: number) {
+  for (const [hash, s] of ephemeralSessions) {
+    if (now - s.createdAt > EPHEMERAL_TTL_MS) ephemeralSessions.delete(hash);
+  }
+}
+setInterval(() => sweepEphemeral(Date.now()), 5 * 60 * 1000).unref?.();
+
+function putEphemeral(s: EphemeralSession) {
+  // Map iterates in insertion order, so the first key is the oldest. Evicting it
+  // when full means an attacker can churn this cache but never grow it past the cap.
+  if (ephemeralSessions.size >= EPHEMERAL_MAX) {
+    const oldest = ephemeralSessions.keys().next().value;
+    if (oldest !== undefined) ephemeralSessions.delete(oldest);
+  }
+  ephemeralSessions.set(s.tokenHash, s);
 }
 
 function recordLoginEvents(db: DatabaseState, user: User, req: any) {
@@ -90,21 +108,36 @@ function pruneExpiredSessions(db: DatabaseState, now: number) {
 
 // Middleware to resolve or create anonymous session.
 export const sessionMiddleware = (req: any, res: any, next: any) => {
-  const db = readDatabase();
-  db.sessions ||= {};
   const now = Date.now();
   const cookieToken = typeof req.cookies?.[SESSION_COOKIE] === 'string' ? req.cookies[SESSION_COOKIE] : '';
-  let userId: string | undefined;
 
   if (cookieToken && cookieToken.startsWith('mes_')) {
     const tokenHash = hashSessionToken(cookieToken);
+
+    // Ephemeral returner: resolved entirely from memory — a cookieless flood
+    // never reaches disk, and a returning browser keeps its identity for free.
+    const eph = ephemeralSessions.get(tokenHash);
+    if (eph && now - eph.createdAt < EPHEMERAL_TTL_MS) {
+      eph.lastSeen = now;
+      req.userId = eph.userId;
+      req.currentUser = eph.user;
+      req.ephemeral = true;
+      req.ephemeralTokenHash = tokenHash;
+      return next();
+    }
+
+    // Persisted (logged-in, or previously-mutated) user. This is the only branch
+    // that reads the db, which is unavoidable — an authenticated request needs
+    // its own record — and it is gated behind presenting a valid cookie.
+    const db = readDatabase();
+    db.sessions ||= {};
     const session = db.sessions[tokenHash];
     if (session && session.expiresAt > now && db.users[session.userId]) {
-      userId = session.userId;
+      const userId = session.userId;
       req.userId = userId;
-      // This request PRESENTED a session that resolved. The anonymous branch below
-      // mints a brand-new userId instead, which is why rate limiters must not read
-      // `req.userId` as an identity the caller had to earn. See rateLimitKey().
+      req.currentUser = db.users[userId];
+      // This request PRESENTED a session that resolved. Rate limiters must not
+      // read `req.userId` as an identity a caller had to earn — see rateLimitKey().
       req.sessionAuthenticated = true;
       // Throttle the session touch: rewriting the whole db on EVERY request just
       // to bump lastSeenAt is huge write amplification under polling. Renew at
@@ -120,26 +153,64 @@ export const sessionMiddleware = (req: any, res: any, next: any) => {
       }
       return next();
     }
+    // Cookie present but unknown or expired: fall through and mint a fresh one.
   }
 
-  if (!userId) {
-    userId = 'usr_' + generateId();
-    const newUser = createAnonymousUser(userId);
-    db.users[userId] = newUser;
-    recordLoginEvents(db, newUser, req);
-  }
-
-  attachNewSession(db, userId, res);
-  writeDatabase(db);
+  // Mint an ephemeral session. No db read, no db write — the whole point.
+  const userId = 'usr_' + generateId();
+  const user = createAnonymousUser(userId);
+  const token = createSessionToken();
+  const tokenHash = hashSessionToken(token);
+  putEphemeral({ userId, user, tokenHash, createdAt: now, lastSeen: now });
+  res.cookie(SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
   req.userId = userId;
+  req.currentUser = user;
+  req.ephemeral = true;
+  req.ephemeralTokenHash = tokenHash;
   next();
 };
+
+// Promote an ephemeral session to a persisted one on the user's first mutating
+// request. Mounted after the rate limiter (so a 429'd flood never persists) and
+// before the routers — so any handler that reads db.users[req.userId] finds the
+// row already written. Read-only browsing never reaches this, which is the whole
+// defense: you become real by doing something, not by loading a page.
+export function persistEphemeralOnMutation(req: any, _res: any, next: any) {
+  const m = req.method;
+  if (m === 'GET' || m === 'HEAD' || m === 'OPTIONS') return next();
+  if (!req.ephemeral) return next();
+
+  const db = readDatabase();
+  if (!db.users[req.userId]) {
+    const now = Date.now();
+    db.users[req.userId] = req.currentUser;
+    db.sessions ||= {};
+    db.sessions[req.ephemeralTokenHash] = {
+      id: 'ses_' + generateId(),
+      tokenHash: req.ephemeralTokenHash,
+      userId: req.userId,
+      createdAt: now,
+      lastSeenAt: now,
+      expiresAt: now + SESSION_TTL_MS
+    };
+    recordLoginEvents(db, req.currentUser, req);
+    pruneExpiredSessions(db, now);
+    writeDatabase(db);
+  }
+  ephemeralSessions.delete(req.ephemeralTokenHash);
+  req.ephemeral = false;
+  req.sessionAuthenticated = true; // it is now a presented session that resolves
+  next();
+}
 
 // --- SESSION ENDPOINT ---
 authRouter.get('/api/session', (req: any, res) => {
   const userId = req.userId;
   const db = readDatabase();
-  const user = db.users[userId];
+  // An ephemeral (not-yet-persisted) user has no db row; sessionMiddleware put the
+  // in-memory user on req.currentUser. Without this fallback a first-time visitor's
+  // session endpoint returned { user: undefined } and the app rendered logged-out.
+  const user = db.users[userId] || req.currentUser;
   res.json({ user, session: { mode: 'anonymous', expiresInMs: SESSION_TTL_MS } });
 });
 

@@ -3,7 +3,7 @@ import path from 'path';
 import cookieParser from 'cookie-parser';
 import { createServer as createViteServer } from 'vite';
 
-import { authRouter, sessionMiddleware } from './server/auth.js';
+import { authRouter, sessionMiddleware, persistEphemeralOnMutation } from './server/auth.js';
 import { readDatabase } from './server/storage.js';
 import { pricesRouter } from './server/prices.js';
 import { historyRouter } from './server/history.js';
@@ -82,6 +82,11 @@ app.use(sessionMiddleware);
 
 // Abuse guard: cap mutating requests per user (after session so we key by userId).
 app.use(mutationLimiter());
+
+// Persist an anonymous user only when they first mutate — after the rate limiter,
+// so a throttled flood never writes. Read-only traffic stays in-memory (see
+// sessionMiddleware), which is what closes the cookieless-flood DB DoS.
+app.use(persistEphemeralOnMutation);
 
 // --- HEALTH ENDPOINT (honest: actually probes the DB) ---
 const START_TIME = Date.now();

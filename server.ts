@@ -1,7 +1,13 @@
 import express from 'express';
 import path from 'path';
 import cookieParser from 'cookie-parser';
-import { createServer as createViteServer } from 'vite';
+// NOTE: `vite` is a BUILD tool and a devDependency. It must NOT be imported at
+// the top level — esbuild externalizes it, so a static import makes the bundled
+// production server `require('vite')` at startup, and if devDeps aren't installed
+// (NODE_ENV=production prunes them) the live site crash-loops on boot with
+// "Cannot find module 'vite'" — which is exactly what took prod down on
+// 2026-07-15. It is loaded via dynamic import() inside the dev-only branch below,
+// so production never touches it.
 
 import { authRouter, sessionMiddleware, persistEphemeralOnMutation } from './server/auth.js';
 import { readDatabase } from './server/storage.js';
@@ -24,6 +30,8 @@ import { researchRouter } from './server/research.js';
 import { startJanitor } from './server/janitor.js';
 import { startKillGuard } from './server/killguard.js';
 import { startDecisionRuntime } from './server/decision/runtime.js';
+import { discoveryRouter } from './server/discovery/router.js';
+import { startOpportunityFactory } from './server/discovery/runtime.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -153,6 +161,7 @@ app.use(quantRouter);
 app.use(arenaRouter);
 app.use(platformRouter);
 app.use(researchRouter);
+app.use(discoveryRouter);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
 import fs from 'fs';
@@ -171,6 +180,8 @@ async function startServer() {
     // A dev server that cannot build cannot serve. Logging and continuing left
     // Express answering every SPA route with a 404 while claiming it had
     // started — the same fail-open shape as the Tier-0 handlers we replaced.
+    // Dynamic import so production never loads the build tool (see note at top).
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -201,6 +212,7 @@ async function startServer() {
     startRecorder();
     startPredictionScout();
     startDecisionRuntime();
+    startOpportunityFactory();
     startJanitor();
     startKillGuard();
 

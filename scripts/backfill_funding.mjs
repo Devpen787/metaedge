@@ -4,15 +4,15 @@
  * AND premium (perp-vs-oracle basis) from Hyperliquid's public API. The premium
  * series is what lets a carry study model basis risk instead of hand-waving it.
  *
- * Usage: node scripts/backfill_funding.mjs [--coins ETH,BTC,SOL] [--days 730]
+ * Usage: node scripts/backfill_funding.mjs (--coins A,B | --universe-file PATH) [--days 730]
  * Output: data/market/funding-hist-<COIN>.jsonl
  */
 import fs from 'node:fs';
+import { explicitUniverse, flag } from './lib/universe.mjs';
 
 const args = process.argv.slice(2);
-const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
-const COINS = flag('coins', 'ETH,BTC,SOL').split(',');
-const DAYS = Number(flag('days', 730));
+const COINS = explicitUniverse(args, 'coins');
+const DAYS = Number(flag(args, 'days', 730));
 
 fs.mkdirSync('data/market', { recursive: true });
 

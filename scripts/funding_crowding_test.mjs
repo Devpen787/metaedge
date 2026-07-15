@@ -12,9 +12,10 @@
  * Secondary horizons are EXPLORATORY and may not be promoted to a claim.
  */
 import fs from 'node:fs';
+import { explicitUniverse } from './lib/universe.mjs';
 import { fundingAprPercent } from '../server/units.mjs';
 
-const COINS = ['AVAX', 'BTC', 'DOGE', 'ETH', 'SOL']; // funding history ∩ price bars
+const COINS = explicitUniverse(process.argv.slice(2), 'coins');
 const TRAIL_H = 24;          // trailing window for the crowding feature
 const PRIMARY_HORIZON = 48;  // hours, chosen a priori
 const COST_BPS = 20;         // round-trip economic threshold

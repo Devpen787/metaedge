@@ -69,7 +69,10 @@ export function readDatabase(): DatabaseState {
         arenaLeagues: defaultLeagues,
         arenaMembers: [],
         arenaBadges: [],
-        arenaRankSnapshots: {}
+        arenaRankSnapshots: {},
+        decisionRuntime: {
+          strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
+        }
       };
       
       const dir = path.dirname(DB_FILE);
@@ -99,6 +102,13 @@ export function readDatabase(): DatabaseState {
     if (!parsed.arenaRankSnapshots) {
       parsed.arenaRankSnapshots = {};
     }
+    if (!parsed.decisionRuntime) {
+      parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
+    }
+    if (!parsed.decisionRuntime.strategySpecs) parsed.decisionRuntime.strategySpecs = {};
+    if (!parsed.decisionRuntime.validations) parsed.decisionRuntime.validations = {};
+    if (!parsed.decisionRuntime.decisions) parsed.decisionRuntime.decisions = [];
+    if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
     return parsed;
   } catch (error) {
     console.error('Error reading database:', error);
@@ -126,7 +136,8 @@ export function readDatabase(): DatabaseState {
     return {
       users: {}, sessions: {}, rooms: {}, agents: {}, strategies: {}, trades: [],
       vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {},
-      arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {}
+      arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {},
+      decisionRuntime: { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} }
     };
   }
 }

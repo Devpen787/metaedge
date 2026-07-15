@@ -23,9 +23,9 @@
  */
 import fs from 'node:fs';
 import { fundingAprPercent, annualizedReturnPercent, HOURS_PER_YEAR } from '../server/units.mjs';
+import { explicitUniverse } from './lib/universe.mjs';
 
-const cflag = process.argv.indexOf('--coins');
-const COINS = cflag >= 0 ? process.argv[cflag + 1].split(',') : ['ETH', 'BTC', 'SOL'];
+const COINS = explicitUniverse(process.argv.slice(2), 'coins');
 const COST_EPISODE = 0.004;             // 40bps round trip, 4 legs
 const registry = fs.createWriteStream('data/edgeops/hypothesis-registry.jsonl', { flags: 'a' });
 const dstr = new Date().toISOString().slice(0, 10);

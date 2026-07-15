@@ -23,7 +23,7 @@ export interface FeedRow {
 }
 
 export interface FeedExclusion { symbol: string; reason: string; }
-export interface ResearchFeed { t: number; included: FeedRow[]; excluded: FeedExclusion[]; }
+export interface ResearchFeed { t: number; included: FeedRow[]; excluded: FeedExclusion[]; stale?: boolean; }
 
 const CACHE_FILE = path.join(SCANNER_DIR, 'universe-feed.json');
 const CACHE_TTL_MS = 10 * 60 * 1000;
@@ -59,12 +59,19 @@ function excludeReason(r: FeedRow): string | null {
   return null;
 }
 
-function readCache(): ResearchFeed | null {
+function readCache(allowStale = false): ResearchFeed | null {
   try {
     const feed = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8')) as ResearchFeed;
-    if (Date.now() - feed.t < CACHE_TTL_MS) return feed;
+    const stale = Date.now() - feed.t >= CACHE_TTL_MS;
+    if (!stale || allowStale) return { ...feed, stale };
   } catch { /* no usable cache */ }
   return null;
+}
+
+// A stale cache may be used only to produce explicit STALE declines and runtime
+// diagnostics. It is never silently treated as current membership.
+export function readCachedResearchUniverse(): ResearchFeed | null {
+  return readCache(true);
 }
 
 function writeCache(feed: ResearchFeed) {

@@ -2,6 +2,8 @@
  * MetaEdge V1 Schema and Types Definition
  */
 
+import type { FrozenStrategySpec, LayeredDecision, ValidationRecord } from '../server/decision/types';
+
 export interface Profile {
   displayName: string;
   avatarUrl: string;
@@ -67,9 +69,9 @@ export interface TradingAgent {
   roomId?: string; // Optional room scope
   assetSymbol: string; // e.g., 'BTC', 'ETH', 'SOL'
   tradeType: 'token' | 'perp';
-  // rsi_meanrev is a LIVE strategy (server/autotrader.ts decideRsiMeanrev). Omitting
-  // it here made `agent.strategyType === 'rsi_meanrev'` a compile error and hid the
-  // strategy from the AgentWorkshop form.
+  // Strategy labels map to deterministic plugins in server/decision/plugins.ts.
+  // A label alone never authorizes execution; the frozen plugin hash must pass
+  // validation and every layered runtime gate.
   strategyType: 'momentum' | 'grid' | 'mean_reversion' | 'custom_ai' | 'rsi_meanrev';
   leverage: number; // For perps (1x to 20x)
   status: AgentStatus;
@@ -102,6 +104,8 @@ export interface PaperStrategy {
 // trigger, invalidation) are present — no invalidation, no confidence.
 export interface TradeThesis {
   cardId?: string;          // research card this trade tests (e.g. 'momentum-24h-v1')
+  decisionId?: string;      // layered decision that authorized this paper candidate
+  strategyHash?: string;    // immutable strategy specification used for the decision
   signalFamily: string;     // momentum | mean_reversion | grid | custom_ai | manual | ...
   setup: string;            // the condition that existed
   trigger: string;          // what fired now
@@ -264,4 +268,21 @@ export interface DatabaseState {
   arenaMembers?: ArenaMember[];
   arenaBadges?: ArenaBadge[];
   arenaRankSnapshots?: { [boardId: string]: ArenaRankSnapshot };
+  decisionRuntime?: {
+    strategySpecs: { [hash: string]: FrozenStrategySpec };
+    validations: { [id: string]: ValidationRecord };
+    decisions: LayeredDecision[];
+    executedDecisionIds: { [decisionId: string]: string };
+    lastCycle?: {
+      cycleId: string;
+      startedAt: number;
+      completedAt: number;
+      evaluated: number;
+      declines: number;
+      hypotheses: number;
+      paperCandidates: number;
+      routed: number;
+      error?: string;
+    };
+  };
 }

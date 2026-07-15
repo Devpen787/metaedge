@@ -89,7 +89,7 @@ export function readFundingSeries(symbol: string, sinceMs = 0): FundingSeriesRow
   return rows.sort((a, b) => a.t - b.t);
 }
 
-// Latest funding from the recorder's own capture (ETH/BTC/SOL only today).
+// Latest funding from the recorder's wide Hyperliquid capture.
 //
 // Unit conversions are NOT performed here — they live in server/units.mjs, the
 // single place they may be derived. A record missing markPx is INCOMPLETE, not
@@ -110,7 +110,7 @@ export function readLatestFunding(symbol: string): FundingSnapshot {
           const e = JSON.parse(lines[j]);
           if (e.sym !== symbol || typeof e.fundingHourly !== 'number') continue;
           return {
-            t,
+            t: typeof e.t === 'number' ? e.t : t,
             symbol,
             fundingHourly: e.fundingHourly,
             fundingApr: fundingAprPercent(e.fundingHourly),

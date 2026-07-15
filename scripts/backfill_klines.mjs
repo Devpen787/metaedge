@@ -10,22 +10,34 @@
  *   - exchange candles ≠ our feed; fills/slippage are not in this data
  *   - run locally (Binance is geo-blocked from the GCP VM)
  *
- * Usage: node scripts/backfill_klines.mjs [--interval 1h] [--days 730]
+ * Usage: node scripts/backfill_klines.mjs (--symbols A,B | --universe-file PATH) [--interval 1h] [--days 730]
  * Output: data/market/backfill-<SYM>-<interval>.jsonl
  */
 import fs from 'node:fs';
+import { explicitUniverse, flag } from './lib/universe.mjs';
 
 const args = process.argv.slice(2);
-const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
-const INTERVAL = flag('interval', '1h');
-const DAYS = Number(flag('days', 730));
+const INTERVAL = flag(args, 'interval', '1h');
+const DAYS = Number(flag(args, 'days', 730));
+const REQUESTED_SYMBOLS = explicitUniverse(args, 'symbols');
 
-const SYMBOLS = { BTC: 'BTCUSDT', ETH: 'ETHUSDT', SOL: 'SOLUSDT', LINK: 'LINKUSDT', DOGE: 'DOGEUSDT', BNB: 'BNBUSDT', XRP: 'XRPUSDT', ADA: 'ADAUSDT', AVAX: 'AVAXUSDT', DOT: 'DOTUSDT', MATIC: 'MATICUSDT' };
+const exchangeInfoRes = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+if (!exchangeInfoRes.ok) throw new Error(`Binance exchangeInfo HTTP ${exchangeInfoRes.status}`);
+const exchangeInfo = await exchangeInfoRes.json();
+const spotPairs = new Map(
+  (exchangeInfo.symbols || [])
+    .filter((item) => item.status === 'TRADING' && item.quoteAsset === 'USDT' && item.isSpotTradingAllowed !== false)
+    .map((item) => [String(item.baseAsset).toUpperCase(), String(item.symbol)])
+);
+const SYMBOLS = REQUESTED_SYMBOLS.map((symbol) => [symbol, spotPairs.get(symbol)]).filter((entry) => entry[1]);
+const unsupported = REQUESTED_SYMBOLS.filter((symbol) => !spotPairs.has(symbol));
+if (unsupported.length) console.log(`  unsupported Binance spot symbols (skipped): ${unsupported.join(',')}`);
+if (!SYMBOLS.length) throw new Error('No requested universe members have a Binance USDT spot market');
 
 fs.mkdirSync('data/market', { recursive: true });
 const startMs = Date.now() - DAYS * 86_400_000;
 
-for (const [sym, pair] of Object.entries(SYMBOLS)) {
+for (const [sym, pair] of SYMBOLS) {
   const out = `data/market/backfill-${sym}-${INTERVAL}.jsonl`;
   const lines = [];
   let from = startMs;

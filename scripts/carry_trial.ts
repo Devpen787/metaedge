@@ -8,9 +8,13 @@
  *
  * Usage: npx tsx scripts/carry_trial.ts
  */
-import { computeCarryTrial, projectAprOnCapital } from '../server/opportunity/carry_trial.js';
+import fs from 'node:fs';
+import { computeCarryTrial, projectAprOnCapital, type CarryTrialConfig } from '../server/opportunity/carry_trial.js';
 
-const trial = computeCarryTrial();
+const configFlag = process.argv.indexOf('--config');
+const configPath = configFlag >= 0 ? process.argv[configFlag + 1] : 'config/research/carry-trial-v2.json';
+const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as CarryTrialConfig;
+const trial = computeCarryTrial(config);
 
 console.log(`\nfunding-basis-v2 variant B — forward paper trial`);
 console.log(`day ${trial.daysElapsed.toFixed(1)} of ${trial.trialDays} · $100 notional/coin · capital = 2x notional (both legs funded)`);
@@ -65,7 +69,7 @@ console.log(`\n  Projection at day ${trial.trialDays}, by sustained funding rate
 console.log('  ' + 'funding APR (notional)'.padEnd(26) + 'trial APR on capital'.padStart(22) + '   verdict');
 console.log('  ' + '-'.repeat(60));
 for (const f of [8, 10, 10.95, 12, 14, 16, 20]) {
-  const apr = projectAprOnCapital(f);
+  const apr = projectAprOnCapital(f, config);
   const v = apr < trial.killFloorAprOnCapital ? 'KILL' : 'survives';
   const tag = Math.abs(f - 10.95) < 0.01 ? '  <- current' : '';
   console.log('  ' + `${f.toFixed(2)}%`.padEnd(26) + `${apr.toFixed(2)}%`.padStart(22) + `   ${v}${tag}`);

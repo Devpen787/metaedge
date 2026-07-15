@@ -14,14 +14,15 @@
  * Long-only v1 (honest limit: short dynamics differ; shorts need their own card).
  * Survivors are CANDIDATES for paper forward-testing — never tradable edges.
  *
- * Usage: node scripts/backtest_sweep.mjs [--symbols BTC,ETH] [--interval 1h]
+ * Usage: node scripts/backtest_sweep.mjs (--symbols A,B | --universe-file PATH) [--interval 1h]
  */
 import fs from 'node:fs';
+import { explicitUniverse, flag } from './lib/universe.mjs';
+import { simpleMovingAverageSeries, wilderRsiSeries } from '../server/feature_math.mjs';
 
 const args = process.argv.slice(2);
-const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
-const INTERVAL = flag('interval', '1h');
-const SYMBOLS = flag('symbols', 'BTC,ETH,SOL,LINK,DOGE,BNB,XRP,ADA,AVAX,DOT').split(',');
+const INTERVAL = flag(args, 'interval', '1h');
+const SYMBOLS = explicitUniverse(args, 'symbols');
 const COST = 0.001;               // 10bps per side, as in paper fills
 const TRAIN = 4320, TEST = 1440;  // ~6mo train → ~2mo test (1h bars)
 const EMBARGO = 48;               // 2-day gap so positions can't leak across the split
@@ -30,30 +31,23 @@ const dstr = new Date().toISOString().slice(0, 10);
 // ---------- causal features (bar i uses bars ≤ i only) ----------
 function computeFeatures(bars) {
   const n = bars.length;
-  const rsi = new Array(n).fill(null), atr = new Array(n).fill(null);
+  const rsi = wilderRsiSeries(bars.map((bar) => bar.c), 14), atr = new Array(n).fill(null);
   const volR = new Array(n).fill(null), sma200 = new Array(n).fill(null);
-  let gain = 0, loss = 0;
-  for (let i = 1; i < n; i++) {
-    const ch = bars[i].c - bars[i - 1].c;
-    if (i <= 14) { gain += Math.max(ch, 0); loss += Math.max(-ch, 0); if (i === 14) rsi[i] = 100 - 100 / (1 + (gain / 14) / ((loss / 14) || 1e-9)); }
-    else { gain = (gain * 13 + Math.max(ch, 0)) / 14; loss = (loss * 13 + Math.max(-ch, 0)) / 14; rsi[i] = 100 - 100 / (1 + gain / (loss || 1e-9)); }
-  }
   let trSum = 0;
   for (let i = 1; i < n; i++) {
     const tr = Math.max(bars[i].h - bars[i].l, Math.abs(bars[i].h - bars[i - 1].c), Math.abs(bars[i].l - bars[i - 1].c));
     if (i <= 14) { trSum += tr; if (i === 14) atr[i] = trSum / 14; }
     else atr[i] = (atr[i - 1] * 13 + tr) / 14;
   }
-  let volSum = 0, closeSum = 0;
+  let volSum = 0;
   for (let i = 0; i < n; i++) {
     volSum += bars[i].v; if (i >= 20) volSum -= bars[i - 20].v;
     if (i >= 19) volR[i] = bars[i].v / ((volSum / 20) || 1e-9);
-    closeSum += bars[i].c; if (i >= 200) closeSum -= bars[i - 200].c;
-    if (i >= 199) sma200[i] = closeSum / 200;
   }
   // rolling max of the PRIOR N closes (excludes current bar → causal breakout)
   const rollMax = (N) => { const out = new Array(n).fill(null); for (let i = N; i < n; i++) { let m = -Infinity; for (let j = i - N; j < i; j++) m = Math.max(m, bars[j].c); out[i] = m; } return out; };
-  const sma = (N) => { const out = new Array(n).fill(null); let s2 = 0; for (let i = 0; i < n; i++) { s2 += bars[i].c; if (i >= N) s2 -= bars[i - N].c; if (i >= N - 1) out[i] = s2 / N; } return out; };
+  const closes = bars.map((bar) => bar.c);
+  const sma = (period) => simpleMovingAverageSeries(closes, period);
   // ATR% percentile rank over the trailing 240 bars — low rank = volatility
   // compression (the coiled spring); causal by construction.
   const atrPct = atr.map((a, i) => (a != null ? a / bars[i].c : null));
@@ -64,7 +58,7 @@ function computeFeatures(bars) {
     for (let j = i - 240; j < i; j++) if (atrPct[j] != null) { cnt++; if (atrPct[j] < atrPct[i]) below++; }
     if (cnt > 100) atrRank[i] = below / cnt;
   }
-  return { rsi, atr, volR, sma200, sma72: sma(72), sma168: sma(168), atrRank, rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
+  return { rsi, atr, volR, sma200: sma(200), sma72: sma(72), sma168: sma(168), atrRank, rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
 }
 
 // ---------- strategy templates (signal on bar i → entry at OPEN of i+1) ----------

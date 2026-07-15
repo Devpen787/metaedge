@@ -1,0 +1,11 @@
+{
+  "id": "funding-basis-v2-forward-paper",
+  "coins": ["ETH", "BTC"],
+  "notionalUsdPerCoin": 100,
+  "capitalMultiple": 2,
+  "roundTripCostFraction": 0.004,
+  "killFloorAprOnCapital": 5,
+  "trialDays": 60,
+  "trialStart": "2026-07-08T00:00:00Z",
+  "minimumCaptureCoverage": 0.9
+}

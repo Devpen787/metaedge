@@ -2,8 +2,13 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { readDatabase } from './storage.js';
+import { decisionRuntimeSnapshot } from './decision/store.js';
 
 export const researchRouter = Router();
+
+researchRouter.get('/api/decision-runtime', (req: any, res) => {
+  res.json(decisionRuntimeSnapshot(req.userId));
+});
 
 // Read-only window into the edge factory: every thesis-tagged trade grouped by
 // signal family, plus the declined-opportunity counters. Transparency is the

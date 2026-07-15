@@ -85,7 +85,7 @@ function positionBefore(trades: any[], userId: string, agentId: string, asset: s
 // EdgeOps: sanitize an optional client/agent-supplied thesis into a bounded,
 // known-fields-only object, and decide whether the trade counts as complete.
 // Core rule from the operating loop: no invalidation → no confidence.
-const THESIS_STR_FIELDS = ['cardId', 'signalFamily', 'setup', 'trigger', 'invalidation', 'holdingWindow', 'regime', 'benchmark'] as const;
+const THESIS_STR_FIELDS = ['cardId', 'decisionId', 'strategyHash', 'signalFamily', 'setup', 'trigger', 'invalidation', 'holdingWindow', 'regime', 'benchmark'] as const;
 function sanitizeThesis(raw: unknown): { thesis?: PaperTrade['thesis']; tag: 'complete' | 'thesis_missing' } {
   if (!raw || typeof raw !== 'object') return { tag: 'thesis_missing' };
   const t: any = {};

@@ -59,6 +59,7 @@ const CLIP_NOTIONAL_USD = 250;
 const MAX_OPEN_NOTIONAL_USD = 2_500;
 const MIN_BALANCE_FLOOR = 100;
 const DISABLED = process.env.AUTOTRADER_DISABLED === 'true';
+const LAYERED_RUNTIME_ENABLED = process.env.DECISION_RUNTIME_DISABLED !== 'true';
 
 type Decision = 'buy' | 'sell' | null;
 
@@ -115,6 +116,10 @@ async function tick() {
 
   const autoAgents = Object.values(db.agents).filter(
     (a) => a.autopilot && a.status === 'active'
+      // The layered decision runtime is authoritative for validated RSI
+      // mean-reversion. Keeping this agent in the legacy loop would create two
+      // independent decision/execution paths for the same strategy.
+      && !(LAYERED_RUNTIME_ENABLED && a.strategyType === 'rsi_meanrev')
   );
   if (autoAgents.length === 0) return;
 
@@ -191,6 +196,10 @@ async function tick() {
 }
 
 export function startAutotrader() {
+  if (LAYERED_RUNTIME_ENABLED) {
+    console.log('[autotrader] legacy execution disabled — all agent strategies route through layered decision runtime');
+    return;
+  }
   if (DISABLED) {
     console.log('[autotrader] disabled via AUTOTRADER_DISABLED');
     return;

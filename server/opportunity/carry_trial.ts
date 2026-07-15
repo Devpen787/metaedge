@@ -15,18 +15,17 @@ import { annualizedReturnPercent } from '../units.mjs';
 // on RETURN ON DEPLOYED CAPITAL — the stricter, capital-honest reading. Choosing
 // the looser denominator after seeing the numbers would be post-hoc selection.
 
-const NOTIONAL_USD = 100;                  // per coin, per leg
-const CAPITAL_MULTIPLE = 2;                // long spot + short perp, both funded
-const COST_ROUND_TRIP_FRACTION = 0.004;    // 40bps, 4 legs (card cost model)
-const KILL_FLOOR_APR_ON_CAPITAL = 5;       // card falsifier: < 5% APR over 60 days
-const TRIAL_DAYS = 60;
-const TRIAL_START_MS = Date.parse('2026-07-08T00:00:00Z'); // card pre-commitment date
-export const TRIAL_COINS = ['ETH', 'BTC'];
-
-// A recorder outage costs us accrued hours. Since a missing hour simply does not
-// accrue, gaps UNDERSTATE carry — so an outage could falsely KILL a working
-// strategy. Below this coverage the trial refuses to render a verdict at all.
-const MIN_CAPTURE_COVERAGE = 0.9;
+export interface CarryTrialConfig {
+  id: string;
+  coins: string[];
+  notionalUsdPerCoin: number;
+  capitalMultiple: number;
+  roundTripCostFraction: number;
+  killFloorAprOnCapital: number;
+  trialDays: number;
+  trialStart: string;
+  minimumCaptureCoverage: number;
+}
 
 export interface CarryLeg {
   symbol: string;
@@ -55,14 +54,15 @@ export interface CarryTrial {
   reason: string;
 }
 
-function computeLeg(symbol: string, now: number): CarryLeg | null {
-  const rows = readFundingSeries(symbol, TRIAL_START_MS);
+function computeLeg(symbol: string, config: CarryTrialConfig, now: number): CarryLeg | null {
+  const trialStartMs = Date.parse(config.trialStart);
+  const rows = readFundingSeries(symbol, trialStartMs);
   if (rows.length < 2) return null;
 
   // Each captured row represents one hour of funding. Recorder gaps simply do
   // not accrue — this UNDERSTATES carry rather than inventing hours we didn't see.
   const hoursAccrued = rows.length;
-  const hoursElapsed = Math.max(1, (now - TRIAL_START_MS) / 3_600_000);
+  const hoursElapsed = Math.max(1, (now - trialStartMs) / 3_600_000);
   const captureCoverage = Math.min(1, hoursAccrued / hoursElapsed);
   const accruedFundingFraction = rows.reduce((s, r) => s + r.fundingHourly, 0);
 
@@ -72,11 +72,11 @@ function computeLeg(symbol: string, now: number): CarryLeg | null {
   const basisMeasured = pIn !== null && pNow !== null;
   const basisPnlFraction = basisMeasured ? (pIn as number) - (pNow as number) : null;
 
-  const netFraction = accruedFundingFraction + (basisPnlFraction ?? 0) - COST_ROUND_TRIP_FRACTION;
+  const netFraction = accruedFundingFraction + (basisPnlFraction ?? 0) - config.roundTripCostFraction;
 
   // How many hours of carry, at the CURRENT hourly rate, merely repay the round trip?
   const latestHourly = rows[rows.length - 1].fundingHourly;
-  const breakevenHours = latestHourly > 0 ? COST_ROUND_TRIP_FRACTION / latestHourly : null;
+  const breakevenHours = latestHourly > 0 ? config.roundTripCostFraction / latestHourly : null;
 
   return {
     symbol,
@@ -87,23 +87,23 @@ function computeLeg(symbol: string, now: number): CarryLeg | null {
     basisPnlFraction,
     basisMeasured,
     netFraction,
-    netUsd: netFraction * NOTIONAL_USD,
+    netUsd: netFraction * config.notionalUsdPerCoin,
     aprOnNotional: annualizedReturnPercent(netFraction, hoursAccrued),
-    aprOnCapital: annualizedReturnPercent(netFraction / CAPITAL_MULTIPLE, hoursAccrued),
+    aprOnCapital: annualizedReturnPercent(netFraction / config.capitalMultiple, hoursAccrued),
     breakevenHours,
   };
 }
 
-export function computeCarryTrial(now = Date.now()): CarryTrial {
-  const daysElapsed = (now - TRIAL_START_MS) / 86_400_000;
-  const legs = TRIAL_COINS.map((c) => computeLeg(c, now)).filter((l): l is CarryLeg => l !== null);
+export function computeCarryTrial(config: CarryTrialConfig, now = Date.now()): CarryTrial {
+  const daysElapsed = (now - Date.parse(config.trialStart)) / 86_400_000;
+  const legs = config.coins.map((coin) => computeLeg(coin, config, now)).filter((leg): leg is CarryLeg => leg !== null);
   const minCoverage = legs.length ? Math.min(...legs.map((l) => l.captureCoverage)) : 0;
 
   const base: Omit<CarryTrial, 'verdict' | 'reason'> = {
     t: now,
     daysElapsed,
-    trialDays: TRIAL_DAYS,
-    killFloorAprOnCapital: KILL_FLOOR_APR_ON_CAPITAL,
+    trialDays: config.trialDays,
+    killFloorAprOnCapital: config.killFloorAprOnCapital,
     minCaptureCoverage: minCoverage,
     legs,
     portfolioAprOnCapital: legs.length ? legs.reduce((s, l) => s + l.aprOnCapital, 0) / legs.length : null,
@@ -112,32 +112,32 @@ export function computeCarryTrial(now = Date.now()): CarryTrial {
   if (legs.length === 0) {
     return { ...base, verdict: 'INSUFFICIENT_DATA', reason: 'no captured funding rows since the trial start date' };
   }
-  if (daysElapsed < TRIAL_DAYS) {
+  if (daysElapsed < config.trialDays) {
     return {
       ...base,
       verdict: 'ACCRUING',
-      reason: `day ${daysElapsed.toFixed(1)} of ${TRIAL_DAYS} — the falsifier is evaluated at day ${TRIAL_DAYS}, not before`,
+      reason: `day ${daysElapsed.toFixed(1)} of ${config.trialDays} — the falsifier is evaluated at day ${config.trialDays}, not before`,
     };
   }
   // Gaps understate carry, so a recorder outage must never be allowed to look
   // like a failed strategy. Refuse the verdict instead of rendering a false KILL.
-  if (minCoverage < MIN_CAPTURE_COVERAGE) {
+  if (minCoverage < config.minimumCaptureCoverage) {
     return {
       ...base,
       verdict: 'INSUFFICIENT_DATA',
-      reason: `capture coverage ${(minCoverage * 100).toFixed(1)}% < ${MIN_CAPTURE_COVERAGE * 100}% — missing hours understate carry; a recorder outage cannot be read as a kill`,
+      reason: `capture coverage ${(minCoverage * 100).toFixed(1)}% < ${config.minimumCaptureCoverage * 100}% — missing hours understate carry; a recorder outage cannot be read as a kill`,
     };
   }
   const apr = base.portfolioAprOnCapital as number;
-  return apr < KILL_FLOOR_APR_ON_CAPITAL
-    ? { ...base, verdict: 'KILL', reason: `${apr.toFixed(2)}% APR on capital < ${KILL_FLOOR_APR_ON_CAPITAL}% floor over ${TRIAL_DAYS} days` }
-    : { ...base, verdict: 'HOLD', reason: `${apr.toFixed(2)}% APR on capital clears the ${KILL_FLOOR_APR_ON_CAPITAL}% floor (survival, not proof)` };
+  return apr < config.killFloorAprOnCapital
+    ? { ...base, verdict: 'KILL', reason: `${apr.toFixed(2)}% APR on capital < ${config.killFloorAprOnCapital}% floor over ${config.trialDays} days` }
+    : { ...base, verdict: 'HOLD', reason: `${apr.toFixed(2)}% APR on capital clears the ${config.killFloorAprOnCapital}% floor (survival, not proof)` };
 }
 
 /** What the trial WILL yield at a given sustained funding APR, given the card's cost model. */
-export function projectAprOnCapital(fundingAprOnNotional: number, days = TRIAL_DAYS): number {
-  const hours = days * 24;
+export function projectAprOnCapital(fundingAprOnNotional: number, config: CarryTrialConfig): number {
+  const hours = config.trialDays * 24;
   const hourly = fundingAprOnNotional / 100 / (24 * 365);
-  const netFraction = hourly * hours - COST_ROUND_TRIP_FRACTION;
-  return annualizedReturnPercent(netFraction / CAPITAL_MULTIPLE, hours);
+  const netFraction = hourly * hours - config.roundTripCostFraction;
+  return annualizedReturnPercent(netFraction / config.capitalMultiple, hours);
 }

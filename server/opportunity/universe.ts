@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { serverPrices } from '../prices.js';
-import { fetchResearchUniverse, SCANNER_DIR, type FeedRow } from './feed.js';
+import { fetchResearchUniverse, readCachedResearchUniverse, SCANNER_DIR, type FeedRow } from './feed.js';
 import type { Tier, UniverseMember } from './types.js';
 
 export { SCANNER_DIR };
@@ -20,6 +20,8 @@ export { SCANNER_DIR };
 export interface ResolvedUniverse {
   members: UniverseMember[];
   rows: FeedRow[];
+  observedAt: number;
+  stale: boolean;
 }
 
 function catalogRow(symbol: string): FeedRow {
@@ -35,11 +37,13 @@ function catalogRow(symbol: string): FeedRow {
   };
 }
 
-export async function resolveUniverse(tier: Tier): Promise<ResolvedUniverse> {
+export async function resolveUniverse(tier: Tier, options: { allowStaleForDeclines?: boolean } = {}): Promise<ResolvedUniverse> {
   if (tier === 0) {
     const rows = Object.keys(serverPrices).map(catalogRow);
     return {
       rows,
+      observedAt: Date.now(),
+      stale: false,
       members: rows.map((r) => ({
         symbol: r.symbol, tier: 0 as Tier, included: true,
         reason: 'product catalog (baseline, not criterion-selected)',
@@ -48,9 +52,9 @@ export async function resolveUniverse(tier: Tier): Promise<ResolvedUniverse> {
   }
 
   if (tier === 1) {
-    const feed = await fetchResearchUniverse();
+    const feed = await fetchResearchUniverse() || (options.allowStaleForDeclines ? readCachedResearchUniverse() : null);
     // Feed unavailable → EMPTY, never a silent fallback to the product catalog.
-    if (!feed) return { members: [], rows: [] };
+    if (!feed) return { members: [], rows: [], observedAt: 0, stale: false };
 
     const members: UniverseMember[] = [
       ...feed.included.map((r) => ({
@@ -62,13 +66,13 @@ export async function resolveUniverse(tier: Tier): Promise<ResolvedUniverse> {
         symbol: e.symbol, tier: 1 as Tier, included: false, reason: e.reason,
       })),
     ];
-    return { members, rows: feed.included };
+    return { members, rows: feed.included, observedAt: feed.t, stale: feed.stale === true };
   }
 
-  // Tiers 2-3 are DEFINED in universe_policy.md but UNPOPULATED: Tier 2 needs
-  // per-coin funding capture that does not exist yet. Returning [] is honest;
-  // a stub list would recreate the convenience-universe failure.
-  return { members: [], rows: [] };
+  // Tiers 2-3 remain separate policy surfaces. Wide funding capture now exists,
+  // but membership still needs its own criterion evaluator; capture breadth is
+  // evidence availability, not automatic universe membership.
+  return { members: [], rows: [], observedAt: 0, stale: false };
 }
 
 export function writeMembershipSnapshot(members: UniverseMember[]) {

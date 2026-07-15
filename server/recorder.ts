@@ -5,11 +5,23 @@ import { serverPrices } from './prices.js';
 // Market-data recorder — the evidence foundation. Strategies and research
 // cards can only test hypotheses against data we actually captured, so this
 // persists a longitudinal record of the SAME feed the fleet trades on:
-//   - every minute: price / 24h change / volume / range for every symbol
-//   - every hour: Hyperliquid funding for ETH/BTC/SOL
+//   - every minute: price / 24h change / volume / range for every product symbol
+//   - every hour: Hyperliquid funding for EVERY perp in the venue universe
 //
-// Storage: one JSONL file per day under data/market/, ~2MB/day, 30-day
-// retention. Recording must never break trading — all failures are swallowed.
+// The funding capture used to hard-code ['ETH','BTC','SOL'] and discard the other
+// ~197 perps that the SAME single API call already returns. Research was therefore
+// blindfolded to ~5% of the market it could see for free, which is the binding
+// constraint on finding a funding-carry edge (breadth ≈ 2.8x smaller detectable
+// effect, per the power analysis). We now record the whole universe and apply the
+// liquidity/quality criterion at ANALYSIS time (server/opportunity/feed.ts), not
+// at capture — you can filter a wide record down later, but you cannot recover a
+// name you threw away. `dayNtlVlm` (24h notional volume) is captured so the
+// liquidity floor stays applyable point-in-time.
+//
+// Storage: one JSONL file per day under data/market/. Funding grows from 3 to
+// ~200 rows/hour (~a few hundred KB/day), 30-day retention. Recording must never
+// break trading — all failures are swallowed, and the criterion is NOT fetched
+// here (that would put CoinGecko on the recorder's hot path).
 
 const DIR = path.join(process.cwd(), 'data', 'market');
 const KEEP_DAYS = 30;
@@ -45,21 +57,29 @@ async function recordFunding() {
     // instead — a recorded gap is honest; a fabricated row is not.
     if (!res.ok) return;
     const [meta, ctxs] = await res.json() as any[];
+    if (!meta?.universe || !Array.isArray(ctxs)) return; // malformed venue reply → honest gap
     const t = Date.now();
     const lines: string[] = [];
     meta.universe.forEach((u: any, i: number) => {
-      if (['ETH', 'BTC', 'SOL'].includes(u.name) && ctxs[i]) {
-        // `premium` (perp-vs-oracle basis, a FRACTION) is captured because the
-        // hedged-carry card's cost model needs basis drift. It was previously
-        // discarded, which made basis unmeasurable on our own live feed.
-        lines.push(JSON.stringify({
-          t, sym: u.name,
-          fundingHourly: Number(ctxs[i].funding),
-          premium: Number(ctxs[i].premium ?? 0),
-          openInterest: Number(ctxs[i].openInterest || 0),
-          markPx: Number(ctxs[i].markPx || 0),
-        }));
-      }
+      const c = ctxs[i];
+      if (!c) return;
+      const funding = Number(c.funding);
+      // Record every perp with a real funding number. A missing/NaN funding is a
+      // gap, not a zero — skip it rather than fabricate a row (same rule the
+      // scanner and units functions enforce everywhere else).
+      if (!Number.isFinite(funding)) return;
+      lines.push(JSON.stringify({
+        t, sym: u.name,
+        fundingHourly: funding,
+        // `premium` (perp-vs-oracle basis, a FRACTION) feeds the hedged-carry
+        // cost model's basis-drift term.
+        premium: Number(c.premium ?? 0),
+        openInterest: Number(c.openInterest || 0),
+        markPx: Number(c.markPx || 0),
+        // 24h notional volume — lets the liquidity floor be applied at analysis
+        // time instead of curating the universe at capture.
+        dayNtlVlm: Number(c.dayNtlVlm || 0),
+      }));
     });
     if (lines.length) appendLines(dayFile('funding'), lines);
   } catch { /* funding capture is best-effort */ }
@@ -153,5 +173,5 @@ export function startRecorder() {
   setInterval(rotate, 6 * 60 * 60 * 1000).unref();
   recordFunding();
   rotate();
-  console.log(`[recorder] capturing ${Object.keys(serverPrices).length} symbols every ${TICK_MS / 1000}s + hourly funding → data/market/ (${KEEP_DAYS}d retention)`);
+  console.log(`[recorder] capturing ${Object.keys(serverPrices).length} product symbols every ${TICK_MS / 1000}s + hourly funding for the FULL Hyperliquid perp universe → data/market/ (${KEEP_DAYS}d retention)`);
 }

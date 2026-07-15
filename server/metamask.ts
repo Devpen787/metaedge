@@ -1324,7 +1324,7 @@ Respond ONLY with a raw JSON object (no markdown, no quotes) with the following 
 const AUTOPILOT_MAX_BUDGET_USD = 1_000_000;
 const AUTOPILOT_RISK_PROFILES = ['low', 'medium', 'high'];
 
-metamaskRouter.post('/api/mm/autopilot/execute', async (req, res) => {
+metamaskRouter.post('/api/mm/autopilot/execute', async (req: any, res) => {
   try {
     // MetaEdge-side hard limits, enforced independent of Guard.
     const budget = Number(req.body?.budget);

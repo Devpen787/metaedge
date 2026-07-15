@@ -185,9 +185,9 @@ INVALID until every term's unit and transform is declared here.
 - Cadence: hourly (matches funding capture). Source: recorder + HL metaAndAssetCtxs.
 - **COST CORRECTION (2026-07-09).** Two endpoints, previously conflated:
   - `metaAndAssetCtxs` (LIVE): **ONE call returns all 231 perps**, each with
-    funding + openInterest + markPx. `recorder.ts:47` filters to `['ETH','BTC','SOL']`
-    and DISCARDS 228 coins already fetched. Widening live capture costs ZERO
-    additional API calls — the constraint was a hardcoded `if`, never cost.
+    funding + openInterest + markPx. Since 2026-07-14 the recorder persists all
+    well-formed rows returned by this call; there is no coin allowlist in the
+    capture path. The widening added zero API calls.
   - `fundingHistory` (HISTORICAL backfill): genuinely per-coin and paginated.
     This is where linear cost lives (7 coins × ~2,500 rows = 17,519 rows).
   Claiming "funding is per-coin" without naming the endpoint is a cost-model error.

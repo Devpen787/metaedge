@@ -1,0 +1,93 @@
+import { readDatabase, writeDatabase } from '../storage.js';
+import type { FrozenStrategySpec, LayeredDecision, ValidationRecord } from './types.js';
+
+const MAX_DECISIONS = 2_000;
+const MAX_EXECUTED_IDS = 5_000;
+
+function runtime(db: ReturnType<typeof readDatabase>) {
+  return (db.decisionRuntime ||= { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} });
+}
+
+export function persistStrategySpec(spec: FrozenStrategySpec): FrozenStrategySpec {
+  const db = readDatabase();
+  const state = runtime(db);
+  const existing = state.strategySpecs[spec.hash];
+  if (existing) return existing;
+  state.strategySpecs[spec.hash] = spec;
+  writeDatabase(db);
+  return spec;
+}
+
+export function persistValidation(validation: ValidationRecord): ValidationRecord {
+  const db = readDatabase();
+  const state = runtime(db);
+  const spec = state.strategySpecs[validation.strategyHash];
+  if (!spec) throw new Error(`Unknown strategy hash: ${validation.strategyHash}`);
+  if (validation.status === 'forward_paper_candidate' && !validation.symbols?.length) {
+    throw new Error('Forward-paper validation must name its authorized symbols');
+  }
+  state.validations[validation.id] = validation;
+  writeDatabase(db);
+  return validation;
+}
+
+export function latestValidation(strategyHash: string): ValidationRecord | undefined {
+  const db = readDatabase();
+  return Object.values(runtime(db).validations)
+    .filter((record) => record.strategyHash === strategyHash)
+    .sort((a, b) => b.validatedAt - a.validatedAt)[0];
+}
+
+export function persistDecision(decision: LayeredDecision): LayeredDecision {
+  const db = readDatabase();
+  const state = runtime(db);
+  const index = state.decisions.findIndex((item) => item.id === decision.id);
+  if (index >= 0) state.decisions[index] = decision;
+  else state.decisions.push(decision);
+  if (state.decisions.length > MAX_DECISIONS) state.decisions.splice(0, state.decisions.length - MAX_DECISIONS);
+  writeDatabase(db);
+  return decision;
+}
+
+export function markDecisionRouted(decisionId: string, tradeId: string): LayeredDecision | undefined {
+  const db = readDatabase();
+  const state = runtime(db);
+  const decision = state.decisions.find((item) => item.id === decisionId);
+  if (!decision) return undefined;
+  decision.queueStatus = 'routed';
+  decision.routedTradeId = tradeId;
+  state.executedDecisionIds[decisionId] = tradeId;
+  const ids = Object.keys(state.executedDecisionIds);
+  if (ids.length > MAX_EXECUTED_IDS) {
+    for (const id of ids.slice(0, ids.length - MAX_EXECUTED_IDS)) delete state.executedDecisionIds[id];
+  }
+  writeDatabase(db);
+  return decision;
+}
+
+export function decisionWasExecuted(decisionId: string): string | undefined {
+  const db = readDatabase();
+  return runtime(db).executedDecisionIds[decisionId]
+    || db.trades.find((trade) => trade.thesis?.decisionId === decisionId)?.id;
+}
+
+export function persistCycleSummary(summary: NonNullable<ReturnType<typeof readDatabase>['decisionRuntime']>['lastCycle']) {
+  const db = readDatabase();
+  runtime(db).lastCycle = summary;
+  writeDatabase(db);
+}
+
+export function decisionRuntimeSnapshot(viewerId?: string) {
+  const db = readDatabase();
+  const state = runtime(db);
+  const visibleDecision = (decision: LayeredDecision) => decision.ownerId && decision.ownerId !== viewerId
+    ? { ...decision, ownerId: undefined, agentId: undefined, routedTradeId: undefined }
+    : decision;
+  return {
+    strategySpecs: Object.values(state.strategySpecs),
+    validations: Object.values(state.validations),
+    recentDecisions: state.decisions.slice(-100).reverse().map(visibleDecision),
+    queued: state.decisions.filter((decision) => decision.queueStatus === 'queued').slice(-100).map(visibleDecision),
+    lastCycle: state.lastCycle || null,
+  };
+}

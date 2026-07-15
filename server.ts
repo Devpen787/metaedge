@@ -22,6 +22,7 @@ import { platformRouter } from './server/platform.js';
 import { researchRouter } from './server/research.js';
 import { startJanitor } from './server/janitor.js';
 import { startKillGuard } from './server/killguard.js';
+import { startDecisionRuntime } from './server/decision/runtime.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -197,6 +198,7 @@ async function startServer() {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
     startRecorder();
+    startDecisionRuntime();
     startJanitor();
     startKillGuard();
 

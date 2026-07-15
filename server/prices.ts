@@ -34,6 +34,10 @@ const COINBASE_PRODUCTS: Record<string, string> = {
 let lastGoodFetch = 0;
 let lastSource = 'seed';
 
+export function getPriceFeedState() {
+  return { source: lastSource, observedAt: lastGoodFetch, stale: !lastGoodFetch || Date.now() - lastGoodFetch > 120_000 };
+}
+
 // Apply a price update behind an OUTLIER GUARD: after we have a real baseline,
 // reject any single update that jumps >25% from the last-known value. Real
 // prices don't move that fast in ~12s, so such a jump is a feed blip/bad datum,
@@ -109,7 +113,7 @@ setInterval(async () => {
     serverPrices[symbol].high24h = Math.max(serverPrices[symbol].high24h, next);
     serverPrices[symbol].low24h = Math.min(serverPrices[symbol].low24h, next);
   }
-}, 3000);
+}, 3000).unref();
 
 // Wrapped/native aliases map onto the arena's spot price universe so a swap into
 // WETH is scored as ETH, etc. Anything not here (e.g. stablecoins) has no spot

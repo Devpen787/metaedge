@@ -165,33 +165,19 @@ export const gridDeviationV1: StrategyPlugin = {
   },
 };
 
-export const deterministicCompositeV1: StrategyPlugin = {
-  id: 'deterministic_composite', version: '1.0.0', mechanism: 'combine trend and oversold evidence with a deterministic score', instrument: 'spot',
-  requiredFeatures: [FEATURE_VERSIONS.price, FEATURE_VERSIONS.volume24h, FEATURE_VERSIONS.rsi14, FEATURE_VERSIONS.sma200, FEATURE_VERSIONS.realizedVol],
-  parameters: { entryScore: 2, exitRsi: 55, maximumVolPctPerHour: 4 }, benchmark: 'buy_hold_same_symbol_same_window',
-  falsifier: 'post-cost walk-forward expectancy <= 0 or feature ablation removes the edge',
-  expectedFailureRegimes: ['volatility_shock', 'persistent_downtrend', 'correlated_feature_failure'],
-  regimeGate(context) {
-    const vol = Number(context.features[FEATURE_VERSIONS.realizedVol]?.value);
-    const eligible = Number.isFinite(vol) && vol <= Number(this.parameters.maximumVolPctPerHour);
-    return { eligible, reason: eligible ? 'COMPOSITE_VOL_REGIME' : 'COMPOSITE_VOL_REJECTED' };
-  },
-  generateSignal(context) {
-    const price = Number(context.features[FEATURE_VERSIONS.price]?.value);
-    const sma = Number(context.features[FEATURE_VERSIONS.sma200]?.value);
-    const rsi = Number(context.features[FEATURE_VERSIONS.rsi14]?.value);
-    const score = Number(price > sma) + Number(rsi <= 40);
-    if (!context.position.holding && score >= Number(this.parameters.entryScore)) return { action: 'buy', strength: score / 2, setup: `deterministic score ${score}/2`, trigger: 'trend plus oversold score passed', invalidation: `RSI >= ${this.parameters.exitRsi} or trend failure`, regime: 'composite_entry' };
-    if (context.position.holding && (rsi >= Number(this.parameters.exitRsi) || price < sma)) return { action: 'sell', strength: 1, setup: 'open composite position', trigger: 'frozen exit score', invalidation: 'position closed by frozen rule', regime: 'composite_exit' };
-    return { action: 'hold', strength: 0, setup: `deterministic score ${score}/2`, trigger: 'score not met', invalidation: 'none', regime: 'composite_no_signal' };
-  },
-};
+// REMOVED: deterministicCompositeV1. It traded a blended score
+// `(price>sma) + (rsi<=40)`, which is two things at once: a violation of the
+// decision record's R3 ("SHALL NOT trade a generic composite score"), and a
+// re-expression of rsiMeanReversionV1's own ingredients — so if both fired we
+// would be double-counting one exposure as two strategies. A "mechanism" that
+// reads "combine evidence with a score" describes a method, not a market edge.
+// The custom_ai agent family (its only consumer) has no honest mechanism and is
+// intentionally left unmapped: it evaluates to nothing rather than to theatre.
 
 export const STRATEGY_PLUGINS: StrategyPlugin[] = [
   rsiMeanReversionV1,
   momentum24hV1,
   meanReversion24hV1,
   gridDeviationV1,
-  deterministicCompositeV1,
   fundingCarryV1,
 ];

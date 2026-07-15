@@ -25,6 +25,7 @@
     "edgeops:report": "node scripts/edgeops_report.mjs",
     "decision:cycle": "tsx scripts/decision_cycle.ts",
     "decision:validate": "tsx scripts/validate_strategy.ts",
+    "scoreboard": "node scripts/scoreboard.mjs",
     "test:decision": "tsx --test tests/decision/*.test.ts"
   },
   "dependencies": {

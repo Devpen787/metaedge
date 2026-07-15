@@ -1,0 +1,54 @@
+{
+  "contractVersion": "opportunity-math-v1",
+  "tolerance": 3e-8,
+  "netReturnCases": [
+    {
+      "id": "asset-outperforms-after-cost",
+      "entry": 100,
+      "exit": 105,
+      "benchmarkEntry": 200,
+      "benchmarkExit": 202,
+      "roundTripCostBps": 20,
+      "expectedNetRelativeBps": 380
+    },
+    {
+      "id": "asset-underperforms-after-cost",
+      "entry": 50,
+      "exit": 48,
+      "benchmarkEntry": 100,
+      "benchmarkExit": 101,
+      "roundTripCostBps": 30,
+      "expectedNetRelativeBps": -530
+    }
+  ],
+  "statisticsCases": [
+    {
+      "id": "single-trial-lcb",
+      "valuesBps": [100, 120, 80, 110, 90],
+      "alpha": 0.05,
+      "trials": 1,
+      "expected": {
+        "n": 5,
+        "mean": 100,
+        "sample_std": 15.811388300841896,
+        "se": 7.071067811865475,
+        "critical_z": 1.6448536269514715,
+        "lcb": 88.36912846323327
+      }
+    },
+    {
+      "id": "ten-trial-bonferroni-lcb",
+      "valuesBps": [100, 120, 80, 110, 90],
+      "alpha": 0.05,
+      "trials": 10,
+      "expected": {
+        "n": 5,
+        "mean": 100,
+        "sample_std": 15.811388300841896,
+        "se": 7.071067811865475,
+        "critical_z": 2.5758293035489,
+        "lcb": 81.78613632281551
+      }
+    }
+  ]
+}

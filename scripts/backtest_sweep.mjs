@@ -23,9 +23,16 @@ import { simpleMovingAverageSeries, wilderRsiSeries } from '../server/feature_ma
 const args = process.argv.slice(2);
 const INTERVAL = flag(args, 'interval', '1h');
 const SYMBOLS = explicitUniverse(args, 'symbols');
-const COST = 0.001;               // 10bps per side, as in paper fills
-const TRAIN = 4320, TEST = 1440;  // ~6mo train → ~2mo test (1h bars)
-const EMBARGO = 48;               // 2-day gap so positions can't leak across the split
+// Market-agnostic: the same walk-forward engine runs crypto (hourly) or stocks
+// (daily) — only the bar-count windows differ. Defaults are the hourly-crypto
+// values; `--train --test --embargo --cost --market` retune it for another
+// asset class WITHOUT forking a second, drift-prone sweep.
+//   Stocks (daily): --interval 1d --train 500 --test 120 --embargo 3
+const COST = Number(flag(args, 'cost', '0.001'));       // per side (10bps default)
+const TRAIN = Number(flag(args, 'train', '4320'));      // ~6mo of 1h bars
+const TEST = Number(flag(args, 'test', '1440'));        // ~2mo of 1h bars
+const EMBARGO = Number(flag(args, 'embargo', '48'));    // gap so positions can't leak the split
+const MARKET = flag(args, 'market', 'crypto');          // label for the report only
 const dstr = new Date().toISOString().slice(0, 10);
 
 // ---------- causal features (bar i uses bars ≤ i only) ----------
@@ -175,9 +182,9 @@ const out = [];
 const p = (s = '') => out.push(s);
 let totalHypotheses = 0;
 
-p(`# Backtest Sweep — ${dstr}`);
+p(`# Backtest Sweep (${MARKET}) — ${dstr}`);
 p();
-p(`Walk-forward: train ${TRAIN} bars (~6mo) → embargo ${EMBARGO} → test ${TEST} bars (~2mo), rolling. Costs ${COST * 1e4}bps/side. Long-only v1.`);
+p(`Market: ${MARKET} · ${INTERVAL} bars. Walk-forward: train ${TRAIN} → embargo ${EMBARGO} → test ${TEST} bars, rolling. Costs ${COST * 1e4}bps/side. Long-only v1.`);
 p();
 p(`| Symbol | Family | Best params (per-fold) | OOS trades | OOS win% | OOS expectancy | OOS PF | OOS maxDD | +folds | Verdict |`);
 p(`|---|---|---|---|---|---|---|---|---|---|`);
@@ -283,7 +290,7 @@ p(`- Hypotheses evaluated this run: **${totalHypotheses}** (all logged to \`data
 p(`- With this many trials, chance alone produces impressive-looking losers. The survivor bar (PF≥1.1, n≥30, ≥55% positive folds, t≥2 on OUT-OF-SAMPLE trades only) is deliberately strict — and still not proof.`);
 p();
 p(`## Honest limits`);
-p(`- Long-only, one position per symbol, 1h bars, exchange candles (not our live feed).`);
+p(`- Long-only, one position per symbol, ${INTERVAL} bars (not our live feed).`);
 p(`- Candidates are HYPOTHESES for the paper fleet to forward-verify on our real feed with real cost realism. Nothing here is a tradable edge.`);
 p(`- Regime caveat: 2 years ≈ one macro regime. Survivors may be regime artifacts.`);
 p();
@@ -292,7 +299,7 @@ if (survivors.length) for (const s of survivors) p(`- **${s.sym} / ${s.family}**
 else p(`- **None survived.** That is a valid, useful result: these simple templates have no detectable edge after costs on this universe/period. The factory's baselines remain benchmarks, and the next hypotheses need richer features — not looser standards.`);
 
 registry.end();
-const outPath = `data/edgeops/backtest-report-${dstr}.md`;
+const outPath = `data/edgeops/backtest-report-${MARKET}-${dstr}.md`;
 fs.writeFileSync(outPath, out.join('\n'));
 console.log('\n' + out.join('\n'));
 console.log(`\nWritten to ${outPath}`);

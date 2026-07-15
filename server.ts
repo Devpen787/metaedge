@@ -18,6 +18,7 @@ import { quantRouter } from './server/quant.js';
 import { arenaRouter } from './server/arena.js';
 import { startAutotrader } from './server/autotrader.js';
 import { startRecorder } from './server/recorder.js';
+import { startPredictionScout } from './server/scouts.js';
 import { platformRouter } from './server/platform.js';
 import { researchRouter } from './server/research.js';
 import { startJanitor } from './server/janitor.js';
@@ -198,6 +199,7 @@ async function startServer() {
     console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
     startRecorder();
+    startPredictionScout();
     startDecisionRuntime();
     startJanitor();
     startKillGuard();

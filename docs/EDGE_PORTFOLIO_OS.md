@@ -41,26 +41,31 @@ locked and not imported here. Status: `GET /api/decision-runtime`.
 This is the factory. It runs now. What it needs is **tenants** (validated
 strategies) and **somewhere to route** (paper agents). That is the work below.
 
-## The five lanes — honest status (2026-07-14)
+## Parallel scouts — turn on every market at once (updated 2026-07-15)
 
-Each lane keeps its OWN mechanism and proof standard. A lane is not "real" until
-it records its own data, validates on its own terms, and routes to its own paper
-ledger. Data has lead time; strategy code does not — so recorders start long
-before strategies.
+The circle was caused by doing markets sequentially. The fix: a **data scout for
+every market runs in parallel from now**, because data has lead time and nothing
+can be researched until it is recorded. "Scouting a market" (recording its data)
+is cheap and parallelizable today; "making money from it" (a validated strategy)
+is earned per market and cannot be rushed. Do all the scouting now; let strategies
+emerge from whichever scout's data proves an edge.
 
-| Lane | Status today | First result comes from |
+| Lane | Scout (recording) | Strategy status |
 |---|---|---|
-| **1. Spot / tokens** | **Live, has candidates.** 3 survivors from the 37-coin sweep. | Encode + validate + route the 3 survivors. Days. |
-| **2. Perps** | Data live (232 mkts). No tenant — carry killed twice. | A NEW perp hypothesis that clears the bar. Not yet. |
-| **3. Predictions** | Feed exists (Polymarket), **not recorded**. | Start the odds recorder now → calibration scan in weeks. |
-| **4. Cross-chain arb** | Quote path exists, **nothing recorded**. | Start the quote recorder now → net-of-cost scan in weeks. |
-| **5. Quant / meta** | Embryonic (registry + sweep). | Downstream — needs ≥2 lanes producing candidates. |
+| **1. Crypto spot / memecoins** | ✅ live (recorder + 37-coin backfill) | 3 sweep candidates; need faithful encoding + forward paper |
+| **2. Crypto perps** | ✅ live (232 HL markets: funding/OI) | No tenant — carry killed twice; awaiting a new hypothesis |
+| **3. Stocks / ETFs** | ✅ live (Yahoo, 25 names × 10y daily) | Swept 2026-07-15 → **none survived** (efficient market; simple templates find nothing after costs) |
+| **4. Prediction markets** | ✅ live (Polymarket hourly scout) | Needs weeks of odds history → calibration/mispricing study |
+| **5. Cross-chain arbitrage** | ⏸ blocked: executable quotes need wallet/venue access | Deferred until a quote source exists (not a candle backtest) |
+| **6. Options** | ⏸ blocked: no cheap quality feed (chains/IV/greeks) | Deferred — recording it would be theatre |
+| **7. Quant / meta** | derived from lanes 1–4 | Downstream — needs ≥2 lanes producing candidates |
 
-The trap to avoid is building five platforms. We build five **minimal vertical
-slices**, and only Lane 1 can produce a trading result soon. Lanes 3–4 produce
-their first result only after their recorders have run for weeks — which is
-exactly why they start recording **now**, in parallel, even though their
-strategies come later.
+Honest calibration: five of seven lanes are recording or verdicted **today**.
+Cross-chain and options are paused for a *stated data reason*, not neglect — the
+moment a free/authorized quote or options feed exists, they follow the same
+scout-then-strategy pattern. Stocks producing "no survivors" is itself a result:
+we ran a new asset class at full rigor and it honestly said "no edge with these
+tools yet," which is the machine working.
 
 ## The scoreboard (the machine is legible or it isn't)
 

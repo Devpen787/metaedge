@@ -101,15 +101,29 @@ function rotate() {
 // minute. Strategies that need more history than exists must DECLINE, never
 // fake a lookback from another feed.
 const HOURLY_MAX = 400;
-const hourly: Record<string, { hour: number; close: number }[]> = {};
+// OHLC, not just close. Keeping only the close made two of our three screened
+// candidates physically unexpressible live: ZEC/meanrev_stab needs "close above
+// the prior bar's HIGH" and a stop at the lowest LOW of 6 bars; PAXG/vol_squeeze
+// needs an ATR rank. Every tick already carries the price — the highs and lows
+// were simply being thrown away.
+//
+// HONESTY LIMIT: these are SAMPLED extremes (one tick per 60s), not true
+// exchange OHLC. A real bar's high/low can exceed what we sampled, so a backtest
+// on exchange klines will trigger stops/targets this feed can miss. Any strategy
+// using high/low must be judged on FORWARD paper from THIS feed — never assume
+// kline-backtest fills are reproducible here.
+const hourly: Record<string, { hour: number; open: number; high: number; low: number; close: number }[]> = {};
 
 function pushHourly(sym: string, t: number, px: number) {
   const hour = Math.floor(t / 3_600_000);
   const arr = (hourly[sym] ||= []);
   const last = arr[arr.length - 1];
-  if (last && last.hour === hour) last.close = px;
-  else {
-    arr.push({ hour, close: px });
+  if (last && last.hour === hour) {
+    last.close = px;
+    if (px > last.high) last.high = px;
+    if (px < last.low) last.low = px;
+  } else {
+    arr.push({ hour, open: px, high: px, low: px, close: px });
     if (arr.length > HOURLY_MAX) arr.splice(0, arr.length - HOURLY_MAX);
   }
 }
@@ -138,6 +152,15 @@ export function getHourlyCloses(sym: string): number[] {
 // gap before the recorder started.
 export function getHourlySeries(sym: string): { t: number; close: number }[] {
   return (hourly[sym] || []).map((h) => ({ t: h.hour * 3_600_000, close: h.close }));
+}
+
+// Full sampled OHLC bars — required by any strategy that references highs, lows,
+// or true range (ATR). Read the honesty limit on `hourly` above: these extremes
+// are sampled at the tick cadence, not the exchange's true bar extremes.
+export function getHourlyBars(sym: string): { t: number; o: number; h: number; l: number; c: number }[] {
+  return (hourly[sym] || []).map((bar) => ({
+    t: bar.hour * 3_600_000, o: bar.open, h: bar.high, l: bar.low, c: bar.close,
+  }));
 }
 
 // In-memory ring of recent ticks so strategy brains can use SHORT-window

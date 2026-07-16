@@ -33,6 +33,14 @@ const TRAIN = Number(flag(args, 'train', '4320'));      // ~6mo of 1h bars
 const TEST = Number(flag(args, 'test', '1440'));        // ~2mo of 1h bars
 const EMBARGO = Number(flag(args, 'embargo', '48'));    // gap so positions can't leak the split
 const MARKET = flag(args, 'market', 'crypto');          // label for the report only
+// --frozen '{"rsiBuy":35,...}' evaluates ONE precommitted param set across every
+// fold instead of re-picking the best per fold. Use it to ask whether a sweep
+// "survivor" is a real edge or an artifact of hindsight parameter selection.
+const FROZEN = flag(args, 'frozen', '') ? JSON.parse(flag(args, 'frozen', '')) : null;
+const ALL_FAMILIES = ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab', 'vol_squeeze', 'volume_surge'];
+const ONLY_FAMILY = flag(args, 'family', '');
+const FAMILIES = ONLY_FAMILY ? [ONLY_FAMILY] : ALL_FAMILIES;
+if (FROZEN && !ONLY_FAMILY) throw new Error('--frozen requires --family (params belong to exactly one family)');
 const dstr = new Date().toISOString().slice(0, 10);
 
 // ---------- causal features (bar i uses bars ≤ i only) ----------
@@ -197,7 +205,7 @@ for (const sym of SYMBOLS) {
   if (bars.length < TRAIN + TEST + 200) { console.log(`  ${sym}: too little history (${bars.length}), skipping`); continue; }
   const F = computeFeatures(bars);
 
-  for (const family of ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab', 'vol_squeeze', 'volume_surge']) {
+  for (const family of FAMILIES) {
     const oosTrades = [];
     const chosen = [];
     let posFolds = 0, folds = 0;
@@ -205,11 +213,21 @@ for (const sym of SYMBOLS) {
       folds++;
       // pick best on TRAIN by profit factor (min 10 trades)
       let best = null;
-      for (const h of GRID.filter((g) => g.family === family)) {
-        totalHypotheses++;
-        const m = metrics(runStrategy(family, h.p, bars, F, start, start + TRAIN));
-        registry.write(JSON.stringify({ t: Date.now(), sym, family, params: h.p, phase: 'train', foldStart: start, ...m }) + '\n');
-        if (m.n >= 10 && (best == null || (m.profitFactor > best.m.profitFactor))) best = { h, m };
+      if (FROZEN) {
+        // FROZEN mode: use ONE precommitted param set for every fold — no
+        // per-fold re-selection. This is the honest question: you cannot re-pick
+        // parameters with hindsight in live trading, you must freeze them and
+        // trade them forward. Re-picking per fold (the default below) lets the
+        // strategy adapt using information it would not have had, which inflates
+        // OOS metrics and can manufacture a "survivor" out of noise.
+        best = { h: { family, p: FROZEN }, m: null };
+      } else {
+        for (const h of GRID.filter((g) => g.family === family)) {
+          totalHypotheses++;
+          const m = metrics(runStrategy(family, h.p, bars, F, start, start + TRAIN));
+          registry.write(JSON.stringify({ t: Date.now(), sym, family, params: h.p, phase: 'train', foldStart: start, ...m }) + '\n');
+          if (m.n >= 10 && (best == null || (m.profitFactor > best.m.profitFactor))) best = { h, m };
+        }
       }
       if (!best) continue;
       // judge on unseen TEST (after embargo)

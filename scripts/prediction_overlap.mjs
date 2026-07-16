@@ -96,6 +96,19 @@ console.log(`\n=== Cross-venue overlap probe ===`);
 console.log(`  Kalshi markets (two-sided):  ${ks.length}`);
 console.log(`  Polymarket markets recorded: ${pm.length}\n`);
 
+// An empty side makes overlap ZERO by arithmetic — that is NOT evidence about the
+// venues. v1 of this probe printed a confident "this category closes" verdict off
+// zero Kalshi markets: a conclusion with no data behind it, which is exactly the
+// failure this repo exists to prevent. "No overlap" and "no data" must never
+// render as the same sentence. Refuse to conclude.
+if (!ks.length) {
+  console.error('  ABORT: zero Kalshi markets returned — this proves NOTHING about overlap.');
+  console.error('  Comparing against an empty set is arithmetic, not a finding.');
+  console.error('  Diagnose the fetch (status filter? response shape? quote fields?)');
+  console.error('  before drawing any conclusion about this category.\n');
+  process.exit(2);
+}
+
 const pmTok = pm.map((r) => ({ ...r, tok: norm(r.question) }));
 const pairs = [];
 for (const k of ks) {

@@ -1,23 +1,18 @@
 #!/usr/bin/env node
 /**
- * H1 DECOMPOSITION + LIQUIDITY REALITY CHECK.
+ * FIND KALSHI'S REAL MARKETS. The parlay hypotheses are DEAD (mispricing ~1 tick,
+ * every orderbook empty). But that only condemns the auto-generated parlay
+ * firehose — which is all the default /markets ordering ever showed us. We have
+ * been rummaging in the junk drawer.
  *
- * The legs decompose cleanly and are INDEPENDENT (different MLB games / different
- * tennis matches), so fair value really is the product of the legs — the
- * correlation objection does not apply to cross-event parlays. So we can price the
- * parlay from its own components and see if the market agrees.
- *
- * BUT the list endpoint shows yes_ask=100c and yes_bid=0 on parlays with 11k+
- * volume. An ask of $1.00 is not a price — it is an EMPTY BOOK (ask defaults to
- * max with no offers). So before any mispricing means anything, ask the question
- * that kills most "edges": COULD YOU GET FILLED? We pull the real orderbook.
- *
- * An edge you cannot transact is not an edge. Liquidity first, cleverness second.
+ * Kalshi's actual business is elections / Fed / CPI / weather, and those plausibly
+ * have real books. Query EVENTS (not the market firehose) to find them, then check
+ * whether their books are fillable. If these are empty too, Kalshi is dead as a
+ * venue for us and we stop.
  */
 const D = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const B = 'https://api.elections.kalshi.com/trade-api/v2';
-
 async function get(url) {
   for (let i = 0; i < 5; i++) {
     const r = await fetch(url, { headers: { 'User-Agent': 'MetaEdge/1.0', Accept: 'application/json' } });
@@ -28,54 +23,42 @@ async function get(url) {
   return null;
 }
 
-// find volume-bearing parlays
-let cursor; const parlays = [];
-for (let page = 0; page < 8 && parlays.length < 6; page++) {
-  const u = new URL(`${B}/markets`);
+// Series = Kalshi's product families. Non-KXMVE* = real markets, not parlays.
+let cursor; const fams = {};
+for (let page = 0; page < 10; page++) {
+  const u = new URL(`${B}/events`);
   u.searchParams.set('limit', '200'); u.searchParams.set('status', 'open');
   if (cursor) u.searchParams.set('cursor', cursor);
   const j = await get(u.toString()); if (!j) break;
-  for (const m of j.markets || []) {
-    if (D(m.volume_fp) > 0 && Array.isArray(m.mve_selected_legs) && m.mve_selected_legs.length >= 3) parlays.push(m);
+  const evs = j.events || []; if (!evs.length) break;
+  for (const e of evs) {
+    const fam = String(e.series_ticker || e.event_ticker || '').split('-')[0];
+    (fams[fam] ||= { n: 0, sample: e.title, tickers: [] });
+    fams[fam].n++;
+    if (fams[fam].tickers.length < 2) fams[fam].tickers.push(e.event_ticker);
   }
   cursor = j.cursor; if (!cursor) break;
   await sleep(300);
 }
-parlays.sort((a, b) => D(b.volume_fp) - D(a.volume_fp));
-
-console.log(`\nDecomposing ${Math.min(4, parlays.length)} highest-volume parlays\n`);
-
-for (const p of parlays.slice(0, 4)) {
-  const legs = p.mve_selected_legs;
-  console.log(`PARLAY ${p.ticker.slice(-11)}  vol=${Math.round(D(p.volume_fp))}  legs=${legs.length}`);
-  console.log(`  quoted: last=${(D(p.last_price_dollars)*100).toFixed(1)}c  bid=${(D(p.yes_bid_dollars)*100).toFixed(1)}c  ask=${(D(p.yes_ask_dollars)*100).toFixed(1)}c`);
-
-  // real book for the parlay — the fill question
-  const ob = await get(`${B}/markets/${p.ticker}/orderbook?depth=3`);
-  const book = ob?.orderbook;
-  const yesLvls = book?.yes?.length ?? 0, noLvls = book?.no?.length ?? 0;
-  console.log(`  ORDERBOOK: yes levels=${yesLvls}  no levels=${noLvls}  ${(!yesLvls && !noLvls) ? '← EMPTY: untradable' : ''}`);
-  if (yesLvls || noLvls) console.log(`    raw: ${JSON.stringify(book).slice(0, 220)}`);
-  await sleep(300);
-
-  // price the legs -> product = fair value (legs are independent events)
-  let product = 1, priced = 0;
-  for (const leg of legs) {
-    const lm = await get(`${B}/markets/${leg.market_ticker}`);
-    const m = lm?.market; if (!m) continue;
-    // use last traded price as the leg's probability estimate
-    const px = D(m.last_price_dollars);
-    if (px > 0) { product *= px; priced++; }
-    await sleep(250);
-  }
-  if (priced === legs.length && priced > 0) {
-    const fair = product * 100;
-    const mkt = D(p.last_price_dollars) * 100;
-    console.log(`  FAIR (product of ${priced} legs) = ${fair.toFixed(2)}c   vs   MARKET last = ${mkt.toFixed(1)}c`);
-    console.log(`  → ${mkt > fair ? 'parlay OVERpriced by' : 'parlay UNDERpriced by'} ${Math.abs(mkt - fair).toFixed(2)}c`);
-  } else {
-    console.log(`  FAIR: could not price all legs (${priced}/${legs.length} had a last price)`);
-  }
-  console.log('');
+const ranked = Object.entries(fams).sort((a, b) => b[1].n - a[1].n);
+console.log(`\n--- Kalshi EVENT families (${ranked.length} distinct) ---`);
+for (const [k, v] of ranked.slice(0, 20)) {
+  const junk = k.startsWith('KXMVE') ? '  ← parlay junk' : '';
+  console.log(`  ${String(v.n).padStart(4)}  ${k.padEnd(28)} ${String(v.sample).slice(0, 40)}${junk}`);
 }
-console.log('Reminder: a mispricing with an empty book is not an edge. Fill first, math second.\n');
+
+// Take the biggest NON-parlay families and ask the only question that matters:
+// is there a real book?
+const real = ranked.filter(([k]) => !k.startsWith('KXMVE')).slice(0, 6);
+console.log(`\n--- Do REAL (non-parlay) markets have fillable books? ---`);
+for (const [fam, v] of real) {
+  const ev = await get(`${B}/events/${v.tickers[0]}`); await sleep(250);
+  const mkts = ev?.markets || [];
+  if (!mkts.length) { console.log(`  ${fam}: no markets`); continue; }
+  const m = mkts.sort((a, b) => D(b.volume_fp) - D(a.volume_fp))[0];
+  const ob = await get(`${B}/markets/${m.ticker}/orderbook?depth=3`); await sleep(250);
+  const yes = ob?.orderbook?.yes?.length ?? 0, no = ob?.orderbook?.no?.length ?? 0;
+  console.log(`  ${fam.padEnd(24)} vol=${String(Math.round(D(m.volume_fp))).padStart(7)} bid=${(D(m.yes_bid_dollars)*100).toFixed(0).padStart(3)}c ask=${(D(m.yes_ask_dollars)*100).toFixed(0).padStart(3)}c | BOOK yes=${yes} no=${no} ${(yes||no) ? '✅ TRADABLE' : '← empty'}`);
+  console.log(`      ${String(m.title).slice(0, 70)}`);
+}
+console.log('');

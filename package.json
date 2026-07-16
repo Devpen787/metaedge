@@ -44,7 +44,8 @@
     "discovery:reference": "python3 scripts/reference/opportunity_math.py tests/fixtures/opportunity_math_golden.json",
     "scoreboard": "node scripts/scoreboard.mjs",
     "test:decision": "tsx --test tests/decision/*.test.ts",
-    "forward:paper": "node scripts/forward_paper.mjs"
+    "forward:paper": "node scripts/forward_paper.mjs",
+    "scout:kalshi": "node scripts/record_kalshi.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

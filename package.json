@@ -45,7 +45,8 @@
     "scoreboard": "node scripts/scoreboard.mjs",
     "test:decision": "tsx --test tests/decision/*.test.ts",
     "forward:paper": "node scripts/forward_paper.mjs",
-    "scout:kalshi": "node scripts/record_kalshi.mjs"
+    "scout:kalshi": "node scripts/record_kalshi.mjs",
+    "predict:overlap": "node scripts/prediction_overlap.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

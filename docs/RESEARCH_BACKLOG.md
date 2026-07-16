@@ -15,15 +15,35 @@ time. Sorted accordingly, not by effort.
 
 ## Tier 1 — untested edge categories (where the money plausibly is)
 
-**1. Cross-venue prediction-market spread — DO THIS FIRST**
-The same event is priced on Polymarket, Kalshi, Betfair, Smarkets
-(venue list courtesy of CloddsBot). If one says 70% and another 64%, the gap is
-*arithmetic, not a forecast*. No prediction, no wallet, no exchange integration —
-Kalshi has a public API and we already record Polymarket odds + resolutions
-(`server/scouts.ts`). Hits two untested categories at once (stale odds,
-cross-venue discrepancy) and fits the "too small for big firms to care" profile
-that is our only structural advantage.
-*Next step:* add a Kalshi odds scout; join on event; log the spread over time.
+**1. Cross-venue prediction-market spread — INCONCLUSIVE, PARKED (2026-07-16)**
+Tested. Kalshi is reachable (HTTP 200, no auth) from a US network — Devin's Swiss
+ISP hijacks the DNS, so it must be probed from the GCP VM in Iowa, never the Mac.
+What we found by scanning 2,400 live Kalshi markets:
+- 209 had real volume; **every one was a multi-leg parlay**
+  (184 `KXMVESPORTSMULTIGAMEEXTENDED`, 25 `KXMVECROSSCATEGORY`), e.g.
+  "yes New York M, yes Reg Time: France, yes Kylian Mbappe: 2+, ...".
+- A parlay is structurally un-arbitrageable against a Polymarket single: no
+  Polymarket contract exists for that *combination*, so there is nothing to price
+  against. Not a data gap — a structural mismatch.
+- The `/markets` LIST endpoint does not carry live books (3,000 scanned -> only 2
+  two-sided quotes). Real quotes need `/markets/{ticker}/orderbook` per market.
+
+**Honest limit on this verdict:** we scanned the first ~2.4k markets by the API's
+default order, which is dominated by machine-generated parlays. Kalshi certainly
+lists liquid singles (elections, Fed/CPI). We have NOT proven those do not overlap
+Polymarket — only that they are not reachable by paging the default list. Parked,
+not killed. To resume: query specific series/events (e.g. the election and
+economics series) rather than the firehose, then compare titles.
+
+**Do not record "the venues do not overlap" as a finding.** An earlier version of
+the probe printed exactly that from ZERO fetched markets — a conclusion with no
+evidence, caused by filtering on the wrong field names (`yes_bid` vs
+`yes_bid_dollars`) and the wrong status value. It has since been fixed to abort
+when either side is empty.
+
+**Units, for whoever resumes:** Kalshi quotes DOLLARS as STRINGS
+(`yes_bid_dollars: "0.6400"`), Polymarket quotes decimal probability. That is the
+fifth units mismatch in this codebase — normalise once, on the way in.
 
 **2. Prediction-market calibration**
 When the crowd says 70%, does it happen 70% of the time? A systematic bias in any

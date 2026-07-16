@@ -1,81 +1,81 @@
 #!/usr/bin/env node
 /**
- * PARLAY MISPRICING PROBE — the first non-arbitrage Kalshi edge test.
+ * H1 DECOMPOSITION + LIQUIDITY REALITY CHECK.
  *
- * TWO HYPOTHESES, neither requiring a prediction:
- *  H1 (combinatorial): a parlay of independent legs should cost ~= the PRODUCT of
- *     its legs. Kalshi lists the legs separately and names them in
- *     `mve_selected_legs`, so the parlay's fair value is computable from its own
- *     components. A persistent premium over that = a structural mispricing.
- *  H2 (favorite-longshot bias): retail overpays for lottery tickets. Nearly every
- *     volume-bearing Kalshi market prices 0-8c. If those resolve YES less often
- *     than their price implies, SELLING them is the edge. Kalshi is an EXCHANGE,
- *     so unlike a sportsbook you can take that side.
+ * The legs decompose cleanly and are INDEPENDENT (different MLB games / different
+ * tennis matches), so fair value really is the product of the legs — the
+ * correlation objection does not apply to cross-event parlays. So we can price the
+ * parlay from its own components and see if the market agrees.
  *
- * H1 is testable from a SNAPSHOT (no resolutions, no waiting). H2 needs recorded
- * odds + outcomes over time — this dumps the price distribution to start that clock.
+ * BUT the list endpoint shows yes_ask=100c and yes_bid=0 on parlays with 11k+
+ * volume. An ask of $1.00 is not a price — it is an EMPTY BOOK (ask defaults to
+ * max with no offers). So before any mispricing means anything, ask the question
+ * that kills most "edges": COULD YOU GET FILLED? We pull the real orderbook.
  *
- * WHY THIS MIGHT BE NOTHING (state it up front, test it anyway):
- *  - Legs in one parlay are often CORRELATED (same game). Then product != fair
- *    value and an apparent "premium" is just correlation. We only trust
- *    cross-event parlays (different games) for H1.
- *  - Market makers may already arb it. If so the premium is ~0 and H1 dies cheap.
- *  - Liquidity: sample parlays showed liquidity_dollars = 0. An edge you cannot
- *    get filled on is not an edge.
- * This probe MEASURES. It concludes nothing.
+ * An edge you cannot transact is not an edge. Liquidity first, cleverness second.
  */
 const D = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const B = 'https://api.elections.kalshi.com/trade-api/v2';
 
 async function get(url) {
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const r = await fetch(url, { headers: { 'User-Agent': 'MetaEdge/1.0', Accept: 'application/json' } });
-    if (r.status === 429) { await sleep(1500); continue; }
+    if (r.status === 429) { await sleep(1200); continue; }
     if (!r.ok) return null;
     return r.json();
   }
   return null;
 }
 
-// 1) collect volume-bearing parlays
-let cursor; const parlays = []; let scanned = 0; const priceHist = {};
-for (let page = 0; page < 10; page++) {
-  const u = new URL('https://api.elections.kalshi.com/trade-api/v2/markets');
+// find volume-bearing parlays
+let cursor; const parlays = [];
+for (let page = 0; page < 8 && parlays.length < 6; page++) {
+  const u = new URL(`${B}/markets`);
   u.searchParams.set('limit', '200'); u.searchParams.set('status', 'open');
   if (cursor) u.searchParams.set('cursor', cursor);
   const j = await get(u.toString()); if (!j) break;
-  const ms = j.markets || []; if (!ms.length) break;
-  for (const m of ms) {
-    scanned++;
-    const vol = D(m.volume_fp); if (vol <= 0) continue;
-    // H2 evidence: where do traded prices cluster?
-    const c = Math.round(D(m.last_price_dollars) * 100);
-    priceHist[c] = (priceHist[c] || 0) + 1;
-    if (m.mve_selected_legs) parlays.push(m);
+  for (const m of j.markets || []) {
+    if (D(m.volume_fp) > 0 && Array.isArray(m.mve_selected_legs) && m.mve_selected_legs.length >= 3) parlays.push(m);
   }
   cursor = j.cursor; if (!cursor) break;
   await sleep(300);
 }
+parlays.sort((a, b) => D(b.volume_fp) - D(a.volume_fp));
 
-console.log(`\nscanned ${scanned} | volume-bearing: ${Object.values(priceHist).reduce((a,b)=>a+b,0)} | with legs field: ${parlays.length}`);
+console.log(`\nDecomposing ${Math.min(4, parlays.length)} highest-volume parlays\n`);
 
-console.log(`\n--- H2: where traded prices cluster (favorite-longshot test) ---`);
-const buckets = { '0-5c': 0, '6-15c': 0, '16-40c': 0, '41-60c': 0, '61-85c': 0, '86-100c': 0 };
-for (const [c, n] of Object.entries(priceHist)) {
-  const p = Number(c);
-  if (p <= 5) buckets['0-5c'] += n; else if (p <= 15) buckets['6-15c'] += n;
-  else if (p <= 40) buckets['16-40c'] += n; else if (p <= 60) buckets['41-60c'] += n;
-  else if (p <= 85) buckets['61-85c'] += n; else buckets['86-100c'] += n;
+for (const p of parlays.slice(0, 4)) {
+  const legs = p.mve_selected_legs;
+  console.log(`PARLAY ${p.ticker.slice(-11)}  vol=${Math.round(D(p.volume_fp))}  legs=${legs.length}`);
+  console.log(`  quoted: last=${(D(p.last_price_dollars)*100).toFixed(1)}c  bid=${(D(p.yes_bid_dollars)*100).toFixed(1)}c  ask=${(D(p.yes_ask_dollars)*100).toFixed(1)}c`);
+
+  // real book for the parlay — the fill question
+  const ob = await get(`${B}/markets/${p.ticker}/orderbook?depth=3`);
+  const book = ob?.orderbook;
+  const yesLvls = book?.yes?.length ?? 0, noLvls = book?.no?.length ?? 0;
+  console.log(`  ORDERBOOK: yes levels=${yesLvls}  no levels=${noLvls}  ${(!yesLvls && !noLvls) ? '← EMPTY: untradable' : ''}`);
+  if (yesLvls || noLvls) console.log(`    raw: ${JSON.stringify(book).slice(0, 220)}`);
+  await sleep(300);
+
+  // price the legs -> product = fair value (legs are independent events)
+  let product = 1, priced = 0;
+  for (const leg of legs) {
+    const lm = await get(`${B}/markets/${leg.market_ticker}`);
+    const m = lm?.market; if (!m) continue;
+    // use last traded price as the leg's probability estimate
+    const px = D(m.last_price_dollars);
+    if (px > 0) { product *= px; priced++; }
+    await sleep(250);
+  }
+  if (priced === legs.length && priced > 0) {
+    const fair = product * 100;
+    const mkt = D(p.last_price_dollars) * 100;
+    console.log(`  FAIR (product of ${priced} legs) = ${fair.toFixed(2)}c   vs   MARKET last = ${mkt.toFixed(1)}c`);
+    console.log(`  → ${mkt > fair ? 'parlay OVERpriced by' : 'parlay UNDERpriced by'} ${Math.abs(mkt - fair).toFixed(2)}c`);
+  } else {
+    console.log(`  FAIR: could not price all legs (${priced}/${legs.length} had a last price)`);
+  }
+  console.log('');
 }
-for (const [k, n] of Object.entries(buckets)) console.log(`  ${k.padEnd(8)} ${String(n).padStart(4)} ${'█'.repeat(Math.min(50, n))}`);
-console.log(`  → heavy mass at 0-15c = lottery tickets. Do they pay off that often? (needs resolutions)`);
-
-console.log(`\n--- H1: what a parlay's legs look like (fair value = product of legs) ---`);
-if (!parlays.length) { console.log('  no mve_selected_legs found — cannot decompose'); process.exit(0); }
-const sample = parlays.sort((a, b) => D(b.volume_fp) - D(a.volume_fp)).slice(0, 3);
-for (const m of sample) {
-  console.log(`\n  PARLAY vol=${Math.round(D(m.volume_fp))} last=${(D(m.last_price_dollars)*100).toFixed(0)}c yes_ask=${(D(m.yes_ask_dollars)*100).toFixed(0)}c`);
-  console.log(`    ticker: ${m.ticker}`);
-  console.log(`    title:  ${String(m.title).slice(0, 90)}`);
-  console.log(`    legs (raw): ${JSON.stringify(m.mve_selected_legs).slice(0, 500)}`);
-}
+console.log('Reminder: a mispricing with an empty book is not an edge. Fill first, math second.\n');

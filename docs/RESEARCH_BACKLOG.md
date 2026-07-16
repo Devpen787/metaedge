@@ -45,6 +45,36 @@ when either side is empty.
 (`yes_bid_dollars: "0.6400"`), Polymarket quotes decimal probability. That is the
 fifth units mismatch in this codebase — normalise once, on the way in.
 
+**1b. KALSHI CRYPTO BINARIES — strongest live lead (2026-07-16)**
+253 [Crypto] series with real books, real volume, very wide spreads
+(KXSOLMAXY-190: 7c/24c on 24k vol; KXHYPEMAXMON-7750: 4c/95c). First lane where
+our 2y of real candles is a WEAPON: a crypto binary is a DERIVATIVE — priceable
+from spot + realized vol — not a direction guess (the category exhausted 29,435
+times). 15-minute series exist (KXBTC15M, KXETH15M, KXSOL15M, KXDOGE15M, KXZEC15M,
+KXADA15M, KXXRP15M, KXBNB15M, KXHYPE15M, KXTON15M, KXNEAR15M, KXBCH15M) →
+capital recycles ~96x/day, killing the lockup objection.
+
+**THE TRAP:** MAX/MIN series are ONE-TOUCH BARRIER options — rules_primary reads
+"if the spot price is EVER above $X between ..." with early-close on touch.
+P(ever touches) >> P(finishes above) (~2x ATM, reflection principle). Pricing them
+as terminal binaries would undervalue every strike and manufacture a fake "sell
+everything" edge. Naming tell: MAXY/MINY/MAXMON/MAXW/MAXD = barrier; *D
+(Above/below) and 15M = terminal. Always classify from rules_primary before pricing.
+
+Bound on ambition: near-the-money terminal quotes are ALREADY efficient
+(hand-check: fair 53.4% vs quoted 53%). Edge, if any, lives at FAR strikes and
+SHORTEST expiries.
+
+API facts (5 parse bugs paid for these): query status=open (market status FIELD
+says "active" — different vocabulary); quotes are yes_bid_dollars/yes_ask_dollars
+STRINGS in dollars (5th units mismatch — Polymarket uses decimal probability);
+books are orderbook_fp.yes_dollars/no_dollars as [price,size] arrays; find crypto
+via /series category=="Crypto" (an /ETH/i regex matches "togETHer",
+"NETHerlands", "Ethan"); the default /markets firehose is ~2,400 auto-generated
+parlays (KXMVE*) with empty books — real markets only via series_ticker queries.
+Parlay hypotheses tested and KILLED: mispricing ~1 tick (price floor artifact),
+books genuinely empty.
+
 **2. Prediction-market calibration**
 When the crowd says 70%, does it happen 70% of the time? A systematic bias in any
 slice (long-dated, low-liquidity, specific categories) is an edge that needs no

@@ -17,6 +17,7 @@
  * Usage: node scripts/backtest_sweep.mjs (--symbols A,B | --universe-file PATH) [--interval 1h]
  */
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import { explicitUniverse, flag } from './lib/universe.mjs';
 // Strategy rules live in ONE place so the sweep and the live forward trial can
 // never drift apart — that shared definition is what makes a forward paper
@@ -194,6 +195,40 @@ p();
 p(`## Candidates for forward testing`);
 if (survivors.length) for (const s of survivors) p(`- **${s.sym} / ${s.family}** ${JSON.stringify(s.params)} — OOS n=${s.agg.n}, PF ${s.agg.profitFactor.toFixed(2)}, expectancy ${s.agg.expectancyPct.toFixed(3)}%/trade → write a research card before encoding.`);
 else p(`- **None survived.** That is a valid, useful result: these simple templates have no detectable edge after costs on this universe/period. The factory's baselines remain benchmarks, and the next hypotheses need richer features — not looser standards.`);
+
+// Survivors as a RECORD, not prose. Until now the only output was the markdown
+// bullet above, which meant the pipeline's last step was "a human reads this
+// sentence and retypes the params into the forward runner." That human was the
+// bottleneck: ~30k hypotheses have been screened and exactly zero ever reached a
+// forward trial without being hand-carried. A machine-readable survivor closes
+// the loop — scripts/forward_paper.mjs picks these up on its own.
+//
+// Append-only and content-addressed: re-running the sweep re-emits the same id
+// for the same (symbol, family, params), so the forward runner de-duplicates
+// rather than arming a strategy twice. A params change is a NEW id, i.e. a new
+// trial — which is correct, because it is a different strategy.
+if (survivors.length) {
+  fs.mkdirSync('data/edgeops', { recursive: true });
+  const rows = survivors.map((s) => {
+    const key = `${s.sym}:${s.family}:${JSON.stringify(s.params)}`;
+    const id = `${s.sym}:${s.family}:${createHash('sha256').update(key).digest('hex').slice(0, 8)}`;
+    return JSON.stringify({
+      id, t: Date.now(), symbol: s.sym, family: s.family, params: s.params,
+      interval: INTERVAL, market: MARKET, costPerSide: COST,
+      screened: {
+        n: s.agg.n, profitFactor: +s.agg.profitFactor.toFixed(3),
+        expectancyPct: +s.agg.expectancyPct.toFixed(3),
+        winRatePct: +(s.agg.winRate * 100).toFixed(1),
+        maxDrawdownPct: +s.agg.maxDrawdownPct.toFixed(2),
+        tstat: +(s.agg.tstat || 0).toFixed(2),
+      },
+      // Screened ≠ real. This flag is what the forward trial exists to settle.
+      status: 'screened_candidate',
+    });
+  });
+  fs.appendFileSync('data/edgeops/survivors.jsonl', rows.join('\n') + '\n');
+  console.log(`\n  → ${survivors.length} survivor(s) recorded to data/edgeops/survivors.jsonl (forward runner picks these up automatically)`);
+}
 
 registry.end();
 const outPath = `data/edgeops/backtest-report-${MARKET}-${dstr}.md`;

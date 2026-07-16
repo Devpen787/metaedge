@@ -36,17 +36,36 @@ const LIMIT = Number(flag(args, 'limit', '1000'));  // exchange max per request
 const AS_JSON = args.includes('--json');
 const OUT_DIR = path.join(process.cwd(), 'data', 'edgeops', 'forward');
 
-// The precommitted trials. These are EXACTLY the params that survived the frozen
-// walk-forward — writing them here freezes them: any later edit is a new trial,
-// not a better result. (docs/EDGE_PORTFOLIO_OS.md lifecycle.)
-const TRIALS = [
-  { symbol: 'DOT', family: 'rsi_meanrev', params: { rsiBuy: 35, stop: 0.03, maxHold: 48 },
-    screened: { n: 41, pf: 2.13, expectancyPct: 0.786 } },
-  { symbol: 'ZEC', family: 'meanrev_stab', params: { dropPct: 0.08, maxHold: 72 },
-    screened: { n: 56, pf: 2.26, expectancyPct: 3.157 } },
-  { symbol: 'PAXG', family: 'vol_squeeze', params: { rankMax: 0.25, breakN: 72, maxHold: 72 },
-    screened: { n: 37, pf: 2.73, expectancyPct: 0.655 } },
-];
+// Trials are QUERIED from the sweep's survivor ledger — never hand-listed.
+//
+// This list used to be hardcoded, and that single fact was the pipeline's real
+// bottleneck: ~30k hypotheses have been screened and not one ever reached a
+// forward trial without a human reading a markdown table and retyping the params
+// here. A pipeline whose last step is "Claude types it in" does not scale past
+// Claude. The sweep now emits data/edgeops/survivors.jsonl and this reads it, so
+// the next survivor arms itself with nobody in the loop.
+//
+// De-duplicated by content-addressed id (symbol+family+params), keeping the most
+// recent row. Re-running the sweep therefore cannot arm the same strategy twice,
+// while changed params produce a new id — correctly a NEW trial, because it is a
+// different strategy.
+const SURVIVORS_FILE = path.join(process.cwd(), 'data', 'edgeops', 'survivors.jsonl');
+
+function loadTrials() {
+  if (!fs.existsSync(SURVIVORS_FILE)) return [];
+  const byId = new Map();
+  for (const line of fs.readFileSync(SURVIVORS_FILE, 'utf8').split('\n').filter(Boolean)) {
+    try {
+      const row = JSON.parse(line);
+      if (!row.id || !row.symbol || !row.family || !row.params) continue;
+      const prev = byId.get(row.id);
+      if (!prev || (row.t || 0) >= (prev.t || 0)) byId.set(row.id, row);
+    } catch { /* a malformed row must not blank the ledger */ }
+  }
+  return [...byId.values()];
+}
+
+const TRIALS = loadTrials();
 
 async function realCandles(symbol) {
   const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=1h&limit=${LIMIT}`;
@@ -99,6 +118,11 @@ fs.writeFileSync(path.join(OUT_DIR, `forward-${stamp}.json`),
 if (AS_JSON) { console.log(JSON.stringify(report, null, 2)); process.exit(0); }
 
 console.log(`\n=== Forward paper trials — evidence from ${SINCE} onward (real exchange candles) ===\n`);
+if (!TRIALS.length) {
+  console.log('  No survivors in data/edgeops/survivors.jsonl — run the sweep first.');
+  console.log('  (Nothing is hand-listed here on purpose: trials arm themselves from the sweep.)\n');
+  process.exit(0);
+}
 for (const r of report) {
   if (r.status !== 'RUNNING') { console.log(`  ${r.symbol.padEnd(5)} ${r.family.padEnd(13)} ${r.status}`); continue; }
   const f = r.forward;
@@ -106,7 +130,9 @@ for (const r of report) {
     ? `${String(f.trades).padStart(2)} trades · ${f.winRatePct}% win · ${f.expectancyPct > 0 ? '+' : ''}${f.expectancyPct}%/trade · PF ${f.profitFactor ?? '∞'} · maxDD ${f.maxDrawdownPct}%`
     : 'no signal yet (conditions not met)';
   console.log(`  ${r.symbol.padEnd(5)} ${r.family.padEnd(13)} ${String(r.forwardBars).padStart(3)}h forward | ${line}`);
-  console.log(`        screened: ${r.screened.n} trades, PF ${r.screened.pf}, ${r.screened.expectancyPct}%/trade  ← what forward must reproduce`);
+  const s = r.screened || {};
+  console.log(`        screened: ${s.n ?? '?'} trades, PF ${s.profitFactor ?? '?'}, ${s.expectancyPct ?? '?'}%/trade  ← what forward must reproduce`);
 }
+console.log(`\n  ${TRIALS.length} trial(s) armed automatically from the sweep's survivor ledger — none hand-listed.`);
 console.log(`\n  Paper only. Forward samples are tiny at first — a handful of trades proves nothing.`);
 console.log(`  Written to data/edgeops/forward/forward-${stamp}.json\n`);

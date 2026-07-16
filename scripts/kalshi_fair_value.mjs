@@ -35,10 +35,12 @@ const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[
 const SERIES = flag('series', 'KXBTC15M,KXETH15M,KXSOL15M,KXDOGE15M,KXXRP15M').split(',');
 const DAYS = Number(flag('days', '30'));
 
-// Kalshi series -> Binance underlying
-const UNDERLYING = { KXBTC15M: 'BTCUSDT', KXETH15M: 'ETHUSDT', KXSOL15M: 'SOLUSDT',
-  KXDOGE15M: 'DOGEUSDT', KXXRP15M: 'XRPUSDT', KXBNB15M: 'BNBUSDT', KXZEC15M: 'ZECUSDT',
-  KXADA15M: 'ADAUSDT', KXNEAR15M: 'NEARUSDT', KXBCH15M: 'BCHUSDT' };
+// Kalshi series -> COINBASE product. Binance geo-blocks US IPs and the pricing
+// box is US-hosted (same reason this repo uses CoinGecko, not Binance, for live
+// prices). Coinbase is US-legal and serves 1-minute candles.
+const UNDERLYING = { KXBTC15M: 'BTC-USD', KXETH15M: 'ETH-USD', KXSOL15M: 'SOL-USD',
+  KXDOGE15M: 'DOGE-USD', KXXRP15M: 'XRP-USD', KXBNB15M: null /* not on Coinbase */,
+  KXZEC15M: 'ZEC-USD', KXADA15M: 'ADA-USD', KXNEAR15M: 'NEAR-USD', KXBCH15M: 'BCH-USD' };
 
 async function kalshiGet(u) {
   for (let i = 0; i < 5; i++) {
@@ -50,21 +52,26 @@ async function kalshiGet(u) {
   return { __err: 'retries' };
 }
 
-// ~DAYS of 1-minute closes from Binance (paginated, 1000/req)
-async function minuteCloses(pair) {
+// ~DAYS of 1-minute closes from COINBASE (US-reachable). Coinbase caps each
+// /candles request at 300 rows [time, low, high, open, close, volume], so page
+// backwards by 300-minute windows.
+async function minuteCloses(product) {
   const out = [];
-  let end = Date.now();
-  const reqs = Math.ceil((DAYS * 1440) / 1000);
-  for (let i = 0; i < reqs; i++) {
-    const u = `https://api.binance.com/api/v3/klines?symbol=${pair}&interval=1m&limit=1000&endTime=${end}`;
-    const r = await fetch(u); if (!r.ok) break;
-    const rows = await r.json(); if (!rows.length) break;
-    for (let j = rows.length - 1; j >= 0; j--) out.push({ t: Number(rows[j][0]), c: Number(rows[j][4]) });
-    end = Number(rows[0][0]) - 1;
-    await sleep(120);
+  let end = Math.floor(Date.now() / 1000);
+  const windows = Math.ceil((DAYS * 1440) / 300);
+  for (let i = 0; i < windows; i++) {
+    const start = end - 300 * 60;
+    const u = `https://api.exchange.coinbase.com/products/${product}/candles?granularity=60&start=${new Date(start * 1000).toISOString()}&end=${new Date(end * 1000).toISOString()}`;
+    const r = await fetch(u, { headers: { 'User-Agent': 'MetaEdge/1.0' } });
+    if (!r.ok) { if (r.status === 429) { await sleep(1000); continue; } break; }
+    const rows = await r.json();
+    if (!Array.isArray(rows) || !rows.length) break;
+    for (const row of rows) out.push({ t: Number(row[0]) * 1000, c: Number(row[4]) }); // [time,low,high,open,close,vol]
+    end = start;
+    await sleep(200);   // Coinbase public rate limit is strict
   }
-  out.sort((a, b) => a.t - b.t);
-  return out;
+  const seen = new Set();
+  return out.filter((x) => !seen.has(x.t) && seen.add(x.t)).sort((a, b) => a.t - b.t);
 }
 
 // Counted probability that price is >= strike after `mins` minutes, given spot now.

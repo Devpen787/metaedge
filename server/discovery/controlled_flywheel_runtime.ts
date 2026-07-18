@@ -7,6 +7,9 @@ import { CouncilStore } from './council_store.js';
 import { DataWorldStore } from './data_world_store.js';
 import { FlywheelLedger } from './flywheel_store.js';
 import { ForwardLearningStore } from './forward_learning_store.js';
+import { EconomicOperationStore } from './economic_store.js';
+import { FastPerpEvidenceStore } from './fast_perp_store.js';
+import { runControlledFastPerpCycle } from './fast_perp_controlled_runtime.js';
 import { LaneSignalStore } from './lane_signal_store.js';
 import { PortfolioOperationStore } from './portfolio_operation_store.js';
 import { runFlywheelCycle } from './flywheel_runtime.js';
@@ -65,6 +68,10 @@ export async function runControlledFlywheelCycle(options: {
         itemsFound: baseline.observations + Number(dataAudit.output.records ?? 0), actionsTaken: 0,
         newEvidence: sourceBefore !== sourceAfter };
     } });
+
+  const fastPerps = await runControlledFastPerpCycle({ controlStore, now: clock });
+  results.fast_event_research = fastPerps.research;
+  results.fast_event_shadow = fastPerps.shadow;
 
   const laneBefore = new LaneSignalStore().snapshot();
   const gaps = [...new Set(laneBefore.current.flatMap((packet) => packet.blockers))].sort();
@@ -146,7 +153,8 @@ export async function runControlledFlywheelCycle(options: {
   const governanceSnapshots = { dataWorld: new DataWorldStore().snapshot(), world: new WorldStore().snapshot(),
     signals: new SignalResearchStore().snapshot(), lanes: new LaneSignalStore().snapshot(),
     council: new CouncilStore().snapshot(), validation: new ValidationStore().snapshot(),
-    portfolio: new PortfolioOperationStore().snapshot(), forward: new ForwardLearningStore().snapshot() };
+    portfolio: new PortfolioOperationStore().snapshot(), forward: new ForwardLearningStore().snapshot(),
+    economics: new EconomicOperationStore().snapshot(), fastPerps: new FastPerpEvidenceStore().snapshot(clock()) };
   const governanceFailures = Object.entries(governanceSnapshots).flatMap(([stageName, snapshot]) =>
     integrityFailures(snapshot as { integrity: Record<string, unknown> }).map((failure) => `${stageName}:${failure}`));
   const governanceWarnings = Object.entries(governanceSnapshots).flatMap(([stageName, snapshot]) =>
@@ -174,6 +182,7 @@ export async function runControlledFlywheelCycle(options: {
     stageSnapshots: { dataWorld: new DataWorldStore().snapshot(), world: new WorldStore().snapshot(),
       signals: new SignalResearchStore().snapshot(), lanes: new LaneSignalStore().snapshot(),
       council: new CouncilStore().snapshot(), validation: new ValidationStore().snapshot(),
-      portfolio: new PortfolioOperationStore().snapshot(), forward: new ForwardLearningStore().snapshot() },
+      portfolio: new PortfolioOperationStore().snapshot(), forward: new ForwardLearningStore().snapshot(),
+      economics: new EconomicOperationStore().snapshot(), fastPerps: new FastPerpEvidenceStore().snapshot(clock()) },
     control: controlPlaneSnapshot(controlStore, config, clock()), liveExecution: 'locked' as const };
 }

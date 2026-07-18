@@ -22,9 +22,10 @@ import {
   markDecisionRouted,
   persistCycleSummary,
   persistDecision,
+  persistDecisions,
   persistStrategySpec,
 } from './store.js';
-import type { DecisionContext, FrozenStrategySpec, LayeredDecision, StrategyPlugin } from './types.js';
+import type { DecisionContext, FrozenStrategySpec, LayeredDecision, StrategyPlugin, ValidationRecord } from './types.js';
 import type { FeedRow } from '../opportunity/feed.js';
 import type { TradingAgent } from '../../src/types.js';
 
@@ -66,8 +67,9 @@ function buildContext(
     : { size: 0, avgEntry: 0 };
   const holding = position.size > 0.000001;
   const openNotionalUsd = holding ? position.size * price : 0;
-  const db = readDatabase();
-  const ownerBalance = routing ? db.users[routing.ownerId]?.paperBalance || 0 : PAPER_NOTIONAL_USD;
+  // Research-only evaluations do not need user state. Reading the entire flat
+  // database for every symbol/plugin pair pinned the event loop for ~1 minute.
+  const ownerBalance = routing ? readDatabase().users[routing.ownerId]?.paperBalance || 0 : PAPER_NOTIONAL_USD;
   const marketObservedAt = livePrice != null && priceFeed.observedAt ? priceFeed.observedAt : observedAt;
   const features = buildVersionedFeatures({
     symbol: row.symbol,
@@ -120,9 +122,8 @@ function buildContext(
   };
 }
 
-function evaluate(context: DecisionContext, plugin: StrategyPlugin, spec: FrozenStrategySpec): LayeredDecision {
-  const decision = evaluateLayeredDecision(context, plugin, spec, latestValidation(spec.hash));
-  return persistDecision(decision);
+function evaluate(context: DecisionContext, plugin: StrategyPlugin, spec: FrozenStrategySpec, validation?: ValidationRecord): LayeredDecision {
+  return evaluateLayeredDecision(context, plugin, spec, validation);
 }
 
 export function routePaperDecision(decision: LayeredDecision, context: DecisionContext): boolean {
@@ -178,16 +179,20 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
     const resolved = await resolveUniverse(1, { allowStaleForDeclines: true });
     if (resolved.rows.length === 0) throw new Error('UNIVERSE_UNAVAILABLE');
     const rowsBySymbol = new Map(resolved.rows.map((row) => [row.symbol, row]));
+    const researchDecisions: LayeredDecision[] = [];
     for (const plugin of STRATEGY_PLUGINS) {
       const spec = persistStrategySpec(compileFrozenStrategy(plugin));
+      const validation = latestValidation(spec.hash);
       for (const row of resolved.rows) {
-        const decision = evaluate(buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale), plugin, spec);
+        const decision = evaluate(buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale), plugin, spec, validation);
+        researchDecisions.push(decision);
         evaluated++;
         if (decision.outcome === 'decline') declines++;
         else if (decision.outcome === 'research_hypothesis') hypotheses++;
         else paperCandidates++;
       }
     }
+    persistDecisions(researchDecisions);
 
     const db = readDatabase();
     const agents = Object.values(db.agents).filter((agent) => agent.autopilot && agent.status === 'active');
@@ -197,7 +202,7 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       if (!plugin || !row) continue;
       const spec = persistStrategySpec(compileFrozenStrategy(plugin));
       const context = buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale, { ownerId: agent.ownerId, agent });
-      const decision = evaluate(context, plugin, spec);
+      const decision = persistDecision(evaluate(context, plugin, spec, latestValidation(spec.hash)));
       evaluated++;
       if (decision.outcome === 'decline') declines++;
       else if (decision.outcome === 'research_hypothesis') hypotheses++;

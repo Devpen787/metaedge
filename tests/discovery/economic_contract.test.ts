@@ -17,6 +17,7 @@ function contract(overrides: Partial<Parameters<typeof buildPaperTradeContract>[
     candidateId: 'candidate_fast_perp', strategyFamilyId: 'liquidation_rebound_v1', lane: 'perpetuals',
     speedTier: 'fast_event', mechanism: 'forced selling temporarily exhausts executable bids',
     trigger: 'liquidation burst followed by bid-depth recovery', instrument: 'SOL-PERP', venue: 'hyperliquid', side: 'long',
+    executionPolicy: 'taker_market',
     decisionAt: 1_000, evidenceCutoffAt: 999, edgeHalfLifeMs: 60_000,
     entryRule: 'enter on first recovery frame', exitRule: 'exit at 20bps, -15bps, or 45 seconds', expiresAt: 46_000,
     predictedGrossEdgeBps: 16,
@@ -60,10 +61,23 @@ test('contract makes costs, provenance, expiry, capacity, and immutable kill rul
   assert.throws(() => contract({ killRule: { ...row.killRule, immutable: false as true } }), /KILL_RULE_NOT_IMMUTABLE/);
 });
 
+test('zero-valued placeholder tail and drawdown penalties are not promotion eligible', () => {
+  const row = contract({ tailRiskPenaltyUsdPerDay: 0, drawdownPenaltyUsdPerDay: 0 });
+  assert.ok(row.lifecycleBlockers.includes('TAIL_RISK_PENALTY_UNMEASURED'));
+  assert.ok(row.lifecycleBlockers.includes('DRAWDOWN_PENALTY_UNMEASURED'));
+  const event = evaluatePaperLifecycle({ contract: row, currentState: 'research_candidate', requestedState: 'shadow_paper',
+    evidence: { historicalSamples: 60, untouchedForwardSamples: 0, fundedPaperSamples: 0,
+      forwardNetEdgeLowerBoundBps: null, costStressedNetEdgeLowerBoundBps: null, worstNetReturnBps: null,
+      realizedNetPnlUsd: 0, fillRate: null, costCalibrationErrorFraction: null, maximumDrawdownUsd: 0,
+      consecutiveLosses: 0, sourceObservationIds: ['sample'] }, evaluatedAt: 2_000 });
+  assert.equal(event.passed, false);
+});
+
 test('lifecycle is sequential and funded paper requires untouched executable evidence', () => {
   const row = contract();
   const baseEvidence = { historicalSamples: 60, untouchedForwardSamples: 0, fundedPaperSamples: 0,
-    forwardNetEdgeLowerBoundBps: null, realizedNetPnlUsd: 0, fillRate: null,
+    forwardNetEdgeLowerBoundBps: null, costStressedNetEdgeLowerBoundBps: null, worstNetReturnBps: null,
+    realizedNetPnlUsd: 0, fillRate: null,
     costCalibrationErrorFraction: null, maximumDrawdownUsd: 0, consecutiveLosses: 0,
     sourceObservationIds: ['sample_1'] };
   const shadow = evaluatePaperLifecycle({ contract: row, currentState: 'research_candidate', requestedState: 'shadow_paper',
@@ -75,7 +89,9 @@ test('lifecycle is sequential and funded paper requires untouched executable evi
   assert.ok(blockedFunding.blockers.some((item) => item.startsWith('UNTOUCHED_FORWARD_SAMPLE_GATE')));
   const funded = evaluatePaperLifecycle({ contract: row, currentState: 'shadow_paper', requestedState: 'funded_paper',
     evidence: { ...baseEvidence, untouchedForwardSamples: 120, forwardNetEdgeLowerBoundBps: 2,
-      realizedNetPnlUsd: 12, fillRate: 0.6, costCalibrationErrorFraction: 0.1 }, evaluatedAt: 4_000 });
+      costStressedNetEdgeLowerBoundBps: 1,
+      realizedNetPnlUsd: 12, fillRate: 0.6, costCalibrationErrorFraction: 0.1,
+      independentBlockCount: 10 }, evaluatedAt: 4_000 });
   assert.equal(funded.passed, true);
   assert.throws(() => evaluatePaperLifecycle({ contract: row, currentState: 'research_candidate', requestedState: 'funded_paper',
     evidence: baseEvidence }), /TRANSITION_NOT_SEQUENTIAL/);
@@ -95,7 +111,8 @@ test('economic store is append-only, idempotent, and advances only passed transi
   const store = new EconomicOperationStore(root); const row = contract();
   store.appendContracts([row, row]);
   const evidence = { historicalSamples: 60, untouchedForwardSamples: 0, fundedPaperSamples: 0,
-    forwardNetEdgeLowerBoundBps: null, realizedNetPnlUsd: 0, fillRate: null,
+    forwardNetEdgeLowerBoundBps: null, costStressedNetEdgeLowerBoundBps: null, worstNetReturnBps: null,
+    realizedNetPnlUsd: 0, fillRate: null,
     costCalibrationErrorFraction: null, maximumDrawdownUsd: 0, consecutiveLosses: 0,
     sourceObservationIds: ['sample_1'] };
   const shadow = evaluatePaperLifecycle({ contract: row, currentState: 'research_candidate', requestedState: 'shadow_paper',
@@ -104,4 +121,17 @@ test('economic store is append-only, idempotent, and advances only passed transi
   assert.equal(store.snapshot().counts.contracts, 1);
   assert.equal(store.snapshot().counts.shadow_paper, 1);
   assert.equal(store.snapshot().integrity.allLiveExecutionLocked, true);
+});
+
+test('new evidence supersedes the active contract lineage without deleting audit history', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'metaedge-economic-lineage-'));
+  const store = new EconomicOperationStore(root); const first = contract();
+  const next = contract({ decisionAt: 2_000, evidenceCutoffAt: 2_000, expiresAt: 47_000, createdAt: 2_001,
+    provenance: { ...first.provenance, sourceEventIds: ['event_2'] } });
+  store.appendContracts([first, next]); const snapshot = store.snapshot();
+  assert.equal(snapshot.counts.contracts, 2);
+  assert.equal(snapshot.counts.activeContracts, 1);
+  assert.equal(snapshot.counts.supersededContracts, 1);
+  assert.equal(snapshot.current[0].contract.id, next.id);
+  assert.deepEqual(snapshot.integrity.supersededContractIds, [first.id]);
 });

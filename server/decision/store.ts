@@ -39,14 +39,23 @@ export function latestValidation(strategyHash: string): ValidationRecord | undef
 }
 
 export function persistDecision(decision: LayeredDecision): LayeredDecision {
+  persistDecisions([decision]);
+  return decision;
+}
+
+export function persistDecisions(decisions: LayeredDecision[]): LayeredDecision[] {
+  if (!decisions.length) return decisions;
   const db = readDatabase();
   const state = runtime(db);
-  const index = state.decisions.findIndex((item) => item.id === decision.id);
-  if (index >= 0) state.decisions[index] = decision;
-  else state.decisions.push(decision);
+  const indexes = new Map(state.decisions.map((item, index) => [item.id, index]));
+  for (const decision of decisions) {
+    const index = indexes.get(decision.id);
+    if (index != null) state.decisions[index] = decision;
+    else { indexes.set(decision.id, state.decisions.length); state.decisions.push(decision); }
+  }
   if (state.decisions.length > MAX_DECISIONS) state.decisions.splice(0, state.decisions.length - MAX_DECISIONS);
   writeDatabase(db);
-  return decision;
+  return decisions;
 }
 
 export function markDecisionRouted(decisionId: string, tradeId: string): LayeredDecision | undefined {

@@ -7,13 +7,14 @@ import type {
   PaperTradeContract,
   PaperTradeLifecycleEvent,
   PaperTradeLifecycleEvidence,
+  PaperTradeKillEvent,
   SpeedTier,
 } from './economic_types.js';
 
 export const ECONOMIC_OBJECTIVE_POLICY: EconomicObjectivePolicy = {
   schemaVersion: 1,
-  id: 'economic-objective-policy-v1',
-  version: 'economic-objective-policy-v1',
+  id: 'economic-objective-policy-v2',
+  version: 'economic-objective-policy-v2',
   description: 'Maximize conservative post-cost net paper dollars per day after capacity, correlation, tail-risk, and drawdown penalties.',
   scoreUnit: 'conservative_net_usd_per_day',
   tierGates: {
@@ -71,6 +72,7 @@ export function buildPaperTradeContract(input: {
   instrument: string;
   venue: string;
   side: PaperTradeContract['side'];
+  executionPolicy: PaperTradeContract['executionPolicy'];
   decisionAt: number;
   evidenceCutoffAt: number;
   edgeHalfLifeMs: number;
@@ -87,9 +89,10 @@ export function buildPaperTradeContract(input: {
   tailRiskPenaltyUsdPerDay: number;
   drawdownPenaltyUsdPerDay: number;
   riskLimits: PaperTradeContract['riskLimits'];
-  provenance: PaperTradeContract['provenance'];
+  provenance: Omit<PaperTradeContract['provenance'], 'feeProvenance'> & { feeProvenance?: PaperTradeContract['provenance']['feeProvenance'] };
   killRule: PaperTradeContract['killRule'];
   createdAt?: number;
+  softwareVersion?: string;
   policy?: EconomicObjectivePolicy;
 }): PaperTradeContract {
   const policy = input.policy ?? ECONOMIC_OBJECTIVE_POLICY;
@@ -124,8 +127,10 @@ export function buildPaperTradeContract(input: {
   const correlationPenaltyUsdPerDay = Math.max(0, conservativeNetUsdPerDay) * clamp01(Math.abs(input.maximumExistingCorrelation));
   const tailRiskPenaltyUsdPerDay = nonNegative(input.tailRiskPenaltyUsdPerDay, 'tail_risk_penalty_usd_per_day');
   const drawdownPenaltyUsdPerDay = nonNegative(input.drawdownPenaltyUsdPerDay, 'drawdown_penalty_usd_per_day');
-  const objectiveScoreUsdPerDay = conservativeNetUsdPerDay - correlationPenaltyUsdPerDay
-    - tailRiskPenaltyUsdPerDay - drawdownPenaltyUsdPerDay;
+  const historicalSampleEligible = input.confidence.independentHistoricalSamples
+    >= policy.tierGates[input.speedTier].minimumHistoricalSamplesForShadow;
+  const objectiveScoreUsdPerDay = historicalSampleEligible ? conservativeNetUsdPerDay - correlationPenaltyUsdPerDay
+    - tailRiskPenaltyUsdPerDay - drawdownPenaltyUsdPerDay : 0;
   const capitalEfficiencyBpsPerDay = notionalUsd > 0 ? conservativeNetUsdPerDay / notionalUsd * 10_000 : 0;
   const lifecycleBlockers = [
     ...(!(scoringEdgeBps > 0) ? ['CONSERVATIVE_NET_EDGE_LOWER_BOUND_NOT_POSITIVE'] : []),
@@ -133,13 +138,20 @@ export function buildPaperTradeContract(input: {
     ...(input.confidence.independentHistoricalSamples < policy.tierGates[input.speedTier].minimumHistoricalSamplesForShadow
       ? [`HISTORICAL_SAMPLE_GATE:${input.confidence.independentHistoricalSamples}/${policy.tierGates[input.speedTier].minimumHistoricalSamplesForShadow}`] : []),
     ...(!(objectiveScoreUsdPerDay > 0) ? ['ECONOMIC_OBJECTIVE_SCORE_NOT_POSITIVE'] : []),
+    ...(tailRiskPenaltyUsdPerDay <= 0 ? ['TAIL_RISK_PENALTY_UNMEASURED'] : []),
+    ...(drawdownPenaltyUsdPerDay <= 0 ? ['DRAWDOWN_PENALTY_UNMEASURED'] : []),
   ];
   if (!input.killRule.immutable || input.killRule.action !== 'kill_and_research') throw new Error('PAPER_CONTRACT_KILL_RULE_NOT_IMMUTABLE');
   if (input.riskLimits.maximumPositionUsd > input.riskLimits.maximumGrossExposureUsd) throw new Error('PAPER_CONTRACT_POSITION_EXCEEDS_GROSS_LIMIT');
   const createdAt = input.createdAt ?? Date.now();
+  const strategyVersionId = `strategy_version_${contentHash({ strategyFamilyId: input.strategyFamilyId,
+    mechanism: input.mechanism, parameterGrammar: input.trigger, universeVersionId: input.provenance.universeVersionId,
+    costModel: { ...input.costs, totalBps }, riskPolicy: input.riskLimits, executionPolicy: input.executionPolicy,
+    objectivePolicyId: policy.id, killRule: input.killRule, softwareVersion: input.softwareVersion ?? 'working-tree' }).slice(0, 20)}`;
   const base = {
     schemaVersion: 1 as const,
     objectivePolicyId: policy.id,
+    strategyVersionId,
     candidateId: input.candidateId,
     strategyFamilyId: input.strategyFamilyId,
     lane: input.lane,
@@ -149,6 +161,7 @@ export function buildPaperTradeContract(input: {
     instrument: input.instrument,
     venue: input.venue,
     side: input.side,
+    executionPolicy: input.executionPolicy,
     decisionAt: input.decisionAt,
     evidenceCutoffAt: input.evidenceCutoffAt,
     edgeHalfLifeMs: input.edgeHalfLifeMs,
@@ -165,7 +178,7 @@ export function buildPaperTradeContract(input: {
       capitalEfficiencyBpsPerDay, correlationPenaltyUsdPerDay, tailRiskPenaltyUsdPerDay,
       drawdownPenaltyUsdPerDay, objectiveScoreUsdPerDay },
     riskLimits: input.riskLimits,
-    provenance: { ...input.provenance, sourceEventIds,
+    provenance: { ...input.provenance, feeProvenance: input.provenance.feeProvenance ?? 'configured_conservative', sourceEventIds,
       signalArtifactIds: [...new Set(input.provenance.signalArtifactIds)].sort(),
       validationEvaluationIds: [...new Set(input.provenance.validationEvaluationIds)].sort() },
     lifecycleState: 'research_candidate' as const,
@@ -206,6 +219,9 @@ export function evaluatePaperLifecycle(input: {
     if (!(input.evidence.forwardNetEdgeLowerBoundBps != null && input.evidence.forwardNetEdgeLowerBoundBps > 0)) {
       blockers.push('FORWARD_NET_EDGE_LOWER_BOUND_NOT_POSITIVE');
     }
+    if (!(input.evidence.costStressedNetEdgeLowerBoundBps != null && input.evidence.costStressedNetEdgeLowerBoundBps > 0)) {
+      blockers.push('COST_STRESSED_NET_EDGE_LOWER_BOUND_NOT_POSITIVE');
+    }
     if (!(input.evidence.realizedNetPnlUsd > 0)) blockers.push('FORWARD_REALIZED_NET_PNL_NOT_POSITIVE');
     if (!(input.evidence.fillRate != null && input.evidence.fillRate >= gate.minimumFillRateForFunding)) {
       blockers.push(`FORWARD_FILL_RATE_GATE:${input.evidence.fillRate ?? 'missing'}/${gate.minimumFillRateForFunding}`);
@@ -214,6 +230,10 @@ export function evaluatePaperLifecycle(input: {
       && input.evidence.costCalibrationErrorFraction <= gate.maximumCostCalibrationErrorFraction)) {
       blockers.push(`COST_CALIBRATION_GATE:${input.evidence.costCalibrationErrorFraction ?? 'missing'}/${gate.maximumCostCalibrationErrorFraction}`);
     }
+    const minimumBlocks = input.contract.speedTier === 'microstructure' ? 20 : input.contract.speedTier === 'fast_event' ? 10 : 5;
+    if ((input.evidence.independentBlockCount ?? 0) < minimumBlocks) {
+      blockers.push(`INDEPENDENT_TIME_BLOCK_GATE:${input.evidence.independentBlockCount ?? 0}/${minimumBlocks}`);
+    }
   } else if (input.requestedState === 'live_review') {
     if (input.evidence.fundedPaperSamples < gate.minimumFundedPaperSamplesForLiveReview) {
       blockers.push(`FUNDED_PAPER_SAMPLE_GATE:${input.evidence.fundedPaperSamples}/${gate.minimumFundedPaperSamplesForLiveReview}`);
@@ -221,6 +241,18 @@ export function evaluatePaperLifecycle(input: {
     if (!(input.evidence.forwardNetEdgeLowerBoundBps != null && input.evidence.forwardNetEdgeLowerBoundBps > 0)) {
       blockers.push('FUNDED_PAPER_NET_EDGE_LOWER_BOUND_NOT_POSITIVE');
     }
+    if (!(input.evidence.costStressedNetEdgeLowerBoundBps != null && input.evidence.costStressedNetEdgeLowerBoundBps > 0)) {
+      blockers.push('FUNDED_PAPER_COST_STRESSED_EDGE_NOT_POSITIVE');
+    }
+    if (input.contract.provenance.feeProvenance !== 'authenticated_venue') blockers.push('AUTHENTICATED_VENUE_FEE_PROVENANCE_MISSING');
+    const minimumBlocks = input.contract.speedTier === 'microstructure' ? 20 : input.contract.speedTier === 'fast_event' ? 10 : 5;
+    if ((input.evidence.independentBlockCount ?? 0) < minimumBlocks) {
+      blockers.push(`INDEPENDENT_TIME_BLOCK_GATE:${input.evidence.independentBlockCount ?? 0}/${minimumBlocks}`);
+    }
+  }
+  if (input.evidence.worstNetReturnBps != null
+    && input.evidence.worstNetReturnBps <= -input.contract.killRule.maximumForwardLossBps) {
+    blockers.push('IMMUTABLE_MAXIMUM_FORWARD_LOSS_KILL_RULE_TRIGGERED');
   }
   if (input.evidence.maximumDrawdownUsd > input.contract.killRule.maximumDrawdownUsd) blockers.push('IMMUTABLE_DRAWDOWN_KILL_RULE_TRIGGERED');
   if (input.evidence.consecutiveLosses >= input.contract.killRule.maximumConsecutiveLosses) blockers.push('IMMUTABLE_CONSECUTIVE_LOSS_KILL_RULE_TRIGGERED');
@@ -228,8 +260,47 @@ export function evaluatePaperLifecycle(input: {
   const evaluatedAt = input.evaluatedAt ?? Date.now();
   const identity = { contractId: input.contract.id, from: input.currentState, to: input.requestedState,
     evaluatedAt, evidence: input.evidence, blockers: uniqueBlockers, policyId: policy.id };
+  const eligibleSampleIds = input.evidence.eligibleSampleIds ?? input.evidence.sourceObservationIds;
+  const independentBlockCount = input.evidence.independentBlockCount ?? 0;
+  const statisticalLookNumber = input.evidence.statisticalLookNumber ?? 1;
+  const alphaSpent = input.evidence.alphaSpent ?? 0.025;
   return { id: `paper_lifecycle_${contentHash(identity).slice(0, 20)}`, schemaVersion: 1,
-    ...identity, passed: uniqueBlockers.length === 0, liveExecution: 'locked' };
+    ...identity, eligibleSampleIds, independentBlockCount, statisticalLookNumber, alphaSpent,
+    costEvidence: { expectedCostBps: input.contract.costs.totalBps,
+      calibrationErrorFraction: input.evidence.costCalibrationErrorFraction },
+    riskEvidence: { maximumDrawdownUsd: input.evidence.maximumDrawdownUsd,
+      consecutiveLosses: input.evidence.consecutiveLosses },
+    passed: uniqueBlockers.length === 0, liveExecution: 'locked' };
+}
+
+export function evaluatePaperKillRule(input: {
+  contract: PaperTradeContract;
+  evidence: PaperTradeLifecycleEvidence;
+  evaluatedAt?: number;
+}): PaperTradeKillEvent {
+  const blockers: string[] = [];
+  if (input.evidence.worstNetReturnBps != null
+    && input.evidence.worstNetReturnBps <= -input.contract.killRule.maximumForwardLossBps) {
+    blockers.push('IMMUTABLE_MAXIMUM_FORWARD_LOSS_KILL_RULE_TRIGGERED');
+  }
+  if (input.evidence.maximumDrawdownUsd > input.contract.killRule.maximumDrawdownUsd) {
+    blockers.push('IMMUTABLE_DRAWDOWN_KILL_RULE_TRIGGERED');
+  }
+  if (input.evidence.consecutiveLosses >= input.contract.killRule.maximumConsecutiveLosses) {
+    blockers.push('IMMUTABLE_CONSECUTIVE_LOSS_KILL_RULE_TRIGGERED');
+  }
+  const minimumMonitoringSamples = ECONOMIC_OBJECTIVE_POLICY.tierGates[input.contract.speedTier]
+    .minimumUntouchedForwardSamplesForFunding;
+  const monitoredSamples = input.evidence.untouchedForwardSamples + input.evidence.fundedPaperSamples;
+  if (monitoredSamples >= minimumMonitoringSamples && (input.evidence.forwardNetEdgeLowerBoundBps == null
+    || input.evidence.forwardNetEdgeLowerBoundBps < input.contract.killRule.minimumForwardNetEdgeBps)) {
+    blockers.push('IMMUTABLE_MINIMUM_FORWARD_EDGE_KILL_RULE_TRIGGERED');
+  }
+  const evaluatedAt = input.evaluatedAt ?? Date.now();
+  const identity = { contractId: input.contract.id, evaluatedAt, evidence: input.evidence, blockers };
+  return { id: `paper_kill_${contentHash(identity).slice(0, 20)}`, schemaVersion: 1, ...identity,
+    triggered: blockers.length > 0, action: blockers.length ? 'kill_and_research' : 'continue_observation',
+    liveExecution: 'locked' };
 }
 
 export function compoundPaperNav(initialNavUsd: number, returns: CompoundedPaperTradeReturn[]): CompoundedPaperNavPoint[] {

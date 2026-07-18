@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": 1784227531147,
+  "archive": "/Users/devinsonpena/Documents/metaedge-gemini/data/archive/flywheel-v3-runaway-2026-07-16/fast-perps-legacy/books-2026-07-16.jsonl",
+  "archiveSha256": "8aae9b4a6d3d4ae42c9000b5e52af129f2f7352795e9d7485fc3a92a366c4652",
+  "replaySpeed": 10,
+  "evidenceMode": "canary",
+  "first": {
+    "hash": "0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2",
+    "decisions": 265,
+    "outcomes": 265,
+    "statuses": {
+      "risk_rejected": 165,
+      "unresolved": 97,
+      "filled": 3
+    },
+    "promotable": 0,
+    "restartPreserved": true,
+    "paths": {
+      "lifecyclePass": true,
+      "lifecycleDecline": true,
+      "filled": true,
+      "unresolved": true,
+      "riskRejected": true,
+      "killTriggered": true,
+      "restartPreserved": true,
+      "malformedRowRecovered": true
+    }
+  },
+  "secondHash": "0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2",
+  "deterministic": true,
+  "allLiveExecutionLocked": true
+}

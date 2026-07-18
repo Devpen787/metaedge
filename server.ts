@@ -32,6 +32,8 @@ import { startKillGuard } from './server/killguard.js';
 import { startDecisionRuntime } from './server/decision/runtime.js';
 import { discoveryRouter } from './server/discovery/router.js';
 import { startOpportunityFactory } from './server/discovery/runtime.js';
+import { startFastPerpRecorder } from './server/discovery/fast_perp_recorder.js';
+import { startFastPerpOperation, startFastPerpOperatorSummary } from './server/discovery/fast_perp_scheduler.js';
 import { mutationLimiter } from './server/ratelimit.js';
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -213,6 +215,12 @@ async function startServer() {
     startPredictionScout();
     startDecisionRuntime();
     startOpportunityFactory();
+    // Recovery containment: both fast-perp loops are fail-closed and must opt in
+    // independently after storage/recovery gates pass. Ordinary paper product
+    // startup remains available while the flywheel is disabled.
+    startFastPerpRecorder();
+    startFastPerpOperation();
+    startFastPerpOperatorSummary();
     startJanitor();
     startKillGuard();
 

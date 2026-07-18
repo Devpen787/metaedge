@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "verifiedAt": 1784361889806,
+  "source": "persisted-state-independent-verifier",
+  "baselineRequired": true,
+  "runtimeRequired": false,
+  "checks": {
+    "liveExecutionEnvironment": {
+      "LIVE_EXECUTION_ENABLED": "false",
+      "LIVE_REVIEW_EXECUTION_CERTIFIED": "false",
+      "runtimeEnabled": false
+    },
+    "archiveContracts": 14312,
+    "archiveResearchRuns": 37,
+    "archiveBookSha256": "8aae9b4a6d3d4ae42c9000b5e52af129f2f7352795e9d7485fc3a92a366c4652",
+    "archiveContractSha256": "2400cf4a9ae993455f33a0611eef153adf08360d908d39fab8a0f076044e7505",
+    "archiveResearchSha256": "069bc26273f878109378952f76233147c7eefc0d757db9d6c5f3e46c017900e4",
+    "legacyArchiveReadOnly": true,
+    "preacceptanceCutover": {
+      "cutoverAt": 1784201556251,
+      "archiveRoot": "/Users/devinsonpena/Documents/metaedge-gemini/data/archive/flywheel-recovery-preacceptance-1784201556251",
+      "evidenceBeforeCutover": "historical_replay",
+      "evidenceAtOrAfterCutover": "paper_forward"
+    },
+    "replay": {
+      "decisions": 265,
+      "outcomes": 265,
+      "promotable": 0,
+      "deterministic": true,
+      "restartPreserved": true,
+      "hash": "0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2"
+    },
+    "active": {
+      "contracts": 0,
+      "strategyVersions": 0,
+      "lifecycleEvents": 0,
+      "kills": 0,
+      "decisions": 0,
+      "outcomes": 0,
+      "referencedEvents": 0,
+      "recoveredEvents": 0,
+      "preparations": 0,
+      "authorizations": 0,
+      "consumptions": 0,
+      "executionStates": 0
+    },
+    "integrity": {
+      "duplicateFree": true,
+      "causal": true,
+      "reconciled": true,
+      "liveLocked": true
+    }
+  },
+  "failures": [],
+  "passed": true,
+  "liveExecution": "locked"
+}

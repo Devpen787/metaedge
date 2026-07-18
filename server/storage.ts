@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
 
 export const DB_FILE = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
+let databaseCache: { mtimeMs: number; size: number; state: DatabaseState } | null = null;
 
 export function readDatabase(): DatabaseState {
   try {
@@ -80,8 +81,11 @@ export function readDatabase(): DatabaseState {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(DB_FILE, JSON.stringify(initialState, null, 2), 'utf8');
+      const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: initialState };
       return initialState;
     }
+    const stat = fs.statSync(DB_FILE);
+    if (databaseCache && databaseCache.mtimeMs === stat.mtimeMs && databaseCache.size === stat.size) return databaseCache.state;
     const data = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(data);
     if (!parsed.sessions) {
@@ -109,8 +113,10 @@ export function readDatabase(): DatabaseState {
     if (!parsed.decisionRuntime.validations) parsed.decisionRuntime.validations = {};
     if (!parsed.decisionRuntime.decisions) parsed.decisionRuntime.decisions = [];
     if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
+    databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: parsed };
     return parsed;
   } catch (error) {
+    databaseCache = null;
     console.error('Error reading database:', error);
     // A parse error must NOT silently wipe everyone's data. Preserve the bad
     // file for forensics, then try to recover from the newest daily backup
@@ -161,6 +167,7 @@ export function writeDatabase(state: DatabaseState) {
       fs.closeSync(fd);
     }
     fs.renameSync(tmp, DB_FILE);
+    const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state };
   } catch (error) {
     console.error('Error writing database:', error);
   }

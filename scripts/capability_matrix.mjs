@@ -82,12 +82,15 @@ const CAPS = [
   { cap: 'Perps balance',      route: '/api/mm/perps/balance',    kind: 'readonly', planned: 'Trading Desk (perps margin strip)' },
   { cap: 'Perps quote',        route: '/api/mm/perps/quote',      kind: 'readonly', planned: 'Trading Desk (order ticket preview)' },
   { cap: 'Perps open',         route: '/api/mm/perps/open',       kind: 'execute', planned: 'Trading Desk (live-mode execution)' },
+  { cap: 'Reviewed perp prepare', route: '/api/mm/live-review/perps/prepare', kind: 'readonly' },
+  { cap: 'Reviewed perp approve', route: '/api/mm/live-review/perps/approve', kind: 'auth' },
+  { cap: 'Reviewed perp open', route: '/api/mm/live-review/perps/open', kind: 'execute' },
   { cap: 'Predict markets',    route: '/api/mm/predict/markets',  kind: 'readonly', cli: "'predict', 'markets'" },
   { cap: 'Predict quote',      route: '/api/mm/predict/quote',    kind: 'readonly', planned: 'Predictions tab (real-market quotes)' },
   { cap: 'Predict place',      route: '/api/mm/predict/place',    kind: 'execute', planned: 'Predictions tab (live-mode placement)' },
   { cap: 'Intent solver',      route: '/api/mm/intent/solve',     kind: 'ai' },
   { cap: 'Swarm copilot chat', route: '/api/mm/chat',             kind: 'ai' },
-  { cap: 'Autopilot planner',  route: '/api/mm/autopilot/execute',kind: 'ai' },
+  { cap: 'Autopilot planner',  route: '/api/mm/autopilot/execute',kind: 'ai', planned: 'Swarm Copilot after reviewed-run policy design' },
 ];
 
 const rows = CAPS.map((c) => {

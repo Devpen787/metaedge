@@ -2,6 +2,8 @@ export type ResearchLoopId =
   | 'market_data_health'
   | 'evidence_gap_acquisition'
   | 'signal_discovery'
+  | 'fast_event_research'
+  | 'fast_event_shadow'
   | 'numerical_verification'
   | 'forward_quarantine'
   | 'execution_calibration'

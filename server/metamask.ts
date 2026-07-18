@@ -6,8 +6,15 @@ import fs from 'fs';
 import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
 import { getSpotPrice, arenaSymbol } from './prices.js';
 import { recordDeclined } from './declined.js';
-import { isOperator } from './operator.js';
 import { rateLimitKey } from './ratelimit.js';
+import { EconomicOperationStore } from './discovery/economic_store.js';
+import {
+  buildLiveReviewPreparation,
+  liveExecutionRuntimeEnabled,
+  LIVE_REVIEW_CONFIRMATION,
+  MetaMaskLiveReviewStore,
+  type LiveReviewTradeRequest,
+} from './discovery/metamask_live_review.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
@@ -40,19 +47,11 @@ metamaskRouter.use((req: any, res, next) => {
 const MM_PACKAGE = '@metamask/agentic-cli@3';
 // Prefer the locally installed binary (fast, deterministic); fall back to npx.
 const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
-const LIVE_EXECUTION_ENABLED = process.env.LIVE_EXECUTION_ENABLED === 'true';
+const liveReviewStore = new MetaMaskLiveReviewStore();
 
-// Allowlist live mode (Operator tier, docs/DATA_MODEL.md): when the global flag
-// is OFF, live execution can still be enabled for specific WALLET addresses.
-//
-// The allowlist itself now lives in server/operator.ts so that other routes can
-// ask "is this an operator?" without re-parsing the env var. Semantics here are
-// unchanged: live execution is permitted if the GLOBAL flag is on, or if this
-// specific user is an operator.
-function liveEnabledFor(userId: string | undefined): boolean {
-  if (LIVE_EXECUTION_ENABLED) return true;
-  return isOperator(userId);
-}
+// Global live lock is authoritative. Operator status may grant product access,
+// but it can never bypass a disabled capital-mutation switch.
+function liveEnabledFor(_userId: string | undefined): boolean { return liveExecutionRuntimeEnabled(); }
 
 // Each user gets their OWN MetaMask CLI profile (an isolated HOME) on the
 // server, so wallet capabilities run as THEIR wallet — never a shared one.
@@ -451,6 +450,10 @@ async function computeReadiness(uid: string) {
   const isBeastMode = tradingModeText.includes('beast');
 
   const isAuthed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  const activeAddress = isCommandOk(address) ? extractText(address).trim() : null;
+  const canonicalAddress = readDatabase().users[uid]?.canonicalWallet || null;
+  const canonicalMatches = Boolean(activeAddress && canonicalAddress
+    && activeAddress.toLowerCase() === canonicalAddress.toLowerCase());
   const checks: MmCheck[] = [
     makeCheck('cli_v3', 'Agent Wallet v3', doctor, 'Agent Wallet CLI v3 responded to health check.'),
     {
@@ -462,6 +465,16 @@ async function computeReadiness(uid: string) {
     },
     makeCheck('wallet_init', 'Wallet setup', init, 'Wallet mode and trading mode are initialized.'),
     makeCheck('wallet_address', 'Wallet address', address, 'Active wallet address is available.'),
+    {
+      id: 'canonical_wallet',
+      label: 'Canonical execution wallet',
+      status: canonicalMatches ? 'ready' : 'blocked',
+      summary: canonicalMatches
+        ? 'The active wallet matches your canonical execution wallet.'
+        : canonicalAddress
+          ? 'Switch to your canonical wallet before live review.'
+          : 'Choose one canonical wallet before live review.'
+    },
     makeCheck('base_balance', 'Base balance', balance, 'Base balance check completed.'),
     {
       id: 'trading_mode',
@@ -518,7 +531,9 @@ async function computeReadiness(uid: string) {
     recommendedMode: 'Guard Mode',
     checks,
     wallet: {
-      address: isCommandOk(address) ? extractText(address).trim() : null,
+      address: activeAddress,
+      canonicalAddress,
+      canonicalMatches,
       baseBalanceReady: isCommandOk(balance)
     },
     capabilities: {
@@ -1011,6 +1026,158 @@ metamaskRouter.post('/api/mm/perps/quote', async (req: any, res) => {
   }
 });
 
+// Strategy-to-wallet bridge. This is deliberately separate from ordinary
+// manual paper trading: only a contract that has passed funded paper into
+// live_review can prepare an exact, expiring packet for the real execution
+// path. Preparing and approving never move funds.
+metamaskRouter.post('/api/mm/live-review/perps/prepare', requireWallet, async (req: any, res) => {
+  try {
+    const contractId = asString(req.body.contractId).trim();
+    if (!/^paper_contract_[a-f0-9]{20}$/.test(contractId)) throw new Error('Live-review contract is not valid.');
+    const economics = new EconomicOperationStore();
+    const contract = economics.readContracts().find((row) => row.id === contractId);
+    if (!contract) return res.status(404).json({ error: 'LIVE_REVIEW_CONTRACT_NOT_FOUND' });
+    const currentContract = economics.snapshot().current.find((row) => row.contract.id === contractId);
+    if (!currentContract) return res.status(409).json({ error: 'LIVE_REVIEW_CONTRACT_SUPERSEDED' });
+    if (currentContract?.killed) return res.status(409).json({ error: 'LIVE_REVIEW_KILL_RULE_TRIGGERED' });
+    const promotion = economics.readLifecycleEvents().filter((row) => row.contractId === contractId
+      && row.to === 'live_review' && row.passed).sort((left, right) => right.evaluatedAt - left.evaluatedAt)[0];
+    if (!promotion) return res.status(409).json({ error: 'LIVE_REVIEW_PROMOTION_EVIDENCE_NOT_FOUND' });
+    const decisionId = asString(req.body.decisionId).trim();
+    const decision = economics.readShadowDecisions().find((row) => row.id === decisionId && row.contractId === contractId);
+    if (!decision) return res.status(404).json({ error: 'LIVE_REVIEW_FRESH_SIGNAL_NOT_FOUND' });
+    const symbol = validateSymbol(req.body.symbol, 'Symbol');
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
+    const size = Number(validatePositiveAmount(req.body.size, 'Size'));
+    const leverage = Number(validatePositiveAmount(req.body.leverage || 1, 'Leverage'));
+    const trade: LiveReviewTradeRequest = { symbol, side, size, leverage, orderType: 'market' };
+    const quotedAt = Date.now();
+    const quoteResult = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--type', 'market', '--json'], 30_000);
+    const quoteLatencyMs = Date.now() - quotedAt;
+    if (!isCommandOk(quoteResult)) return res.status(503).json({ error: 'LIVE_REVIEW_QUOTE_FAILED', message: quoteResult.summary });
+    const quote = unwrap(quoteResult) || {};
+    const readiness = await computeReadiness(req.userId);
+    const packet = buildLiveReviewPreparation({
+      contract,
+      lifecycleState: economics.currentState(contract.id),
+      userId: req.userId,
+      trade,
+      signal: { decisionId: decision.id, evidenceMode: decision.evidenceMode, decidedAt: decision.decidedAt, expiresAt: decision.expiresAt,
+        sourceEventIds: decision.sourceSignalEventIds, symbol: decision.symbol, side: decision.side },
+      promotionEvidence: promotion.evidence,
+      quote: {
+        quoteReference: String(quote.quoteId || quote.id || `mm_quote_${generateId().slice(0, 16)}`),
+        quotedAt,
+        quoteLatencyMs,
+        notionalUsd: Number(quote.notional ?? quote.notionalUsd ?? quote.quote?.notional ?? Number.NaN),
+        entryPrice: Number.isFinite(Number(quote.entryPrice)) ? Number(quote.entryPrice) : null,
+        estimatedFeeUsd: Number.isFinite(Number(quote.estimatedFee)) ? Number(quote.estimatedFee) : null,
+        estimatedLiquidationPrice: Number.isFinite(Number(quote.estimatedLiquidationPrice))
+          ? Number(quote.estimatedLiquidationPrice) : null,
+      },
+      readinessChecks: readiness.checks,
+    });
+    liveReviewStore.appendPreparation(packet);
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_PREPARED',
+      `Prepared reviewed ${side} ${size} ${symbol}; blockers=${packet.blockers.join(',') || 'none'}.`);
+    res.json({ packet: { ...packet, userId: 'current_session' },
+      requiredConfirmation: LIVE_REVIEW_CONFIRMATION,
+      next: packet.executableAfterHumanApproval ? '/api/mm/live-review/perps/approve' : null,
+      fundsMoved: false });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/live-review/perps/approve', requireWallet, async (req: any, res) => {
+  try {
+    const authorization = liveReviewStore.authorize({
+      preparationId: asString(req.body.preparationId).trim(),
+      packetDigest: asString(req.body.packetDigest).trim(),
+      userId: req.userId,
+      confirmation: asString(req.body.confirmation),
+    });
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_AUTHORIZED',
+      `Authorized one reviewed ${authorization.trade.side} ${authorization.trade.size} ${authorization.trade.symbol} trade until ${authorization.expiresAt}.`);
+    res.json({ authorization: { ...authorization, userId: 'current_session', confirmation: 'explicit_confirmation_recorded' },
+      next: '/api/mm/live-review/perps/open', fundsMoved: false });
+  } catch (error: any) {
+    res.status(409).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/live-review/perps/open', requireWallet, requireLiveExecution, async (req: any, res) => {
+  let reservedAuthorizationId: string | null = null;
+  try {
+    const symbol = validateSymbol(req.body.symbol, 'Symbol');
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
+    const size = Number(validatePositiveAmount(req.body.size, 'Size'));
+    const leverage = Number(validatePositiveAmount(req.body.leverage, 'Leverage'));
+    const trade: LiveReviewTradeRequest = { symbol, side, size, leverage, orderType: 'market' };
+    const reservation = liveReviewStore.reserveForExecution({
+      authorizationId: asString(req.body.authorizationId).trim(),
+      packetDigest: asString(req.body.packetDigest).trim(),
+      userId: req.userId,
+      trade,
+    });
+    reservedAuthorizationId = reservation.authorizationId;
+    const authorization = liveReviewStore.validateForConsumption({ authorizationId: reservation.authorizationId,
+      packetDigest: asString(req.body.packetDigest).trim(), userId: req.userId, trade });
+    const economics = new EconomicOperationStore();
+    const current = economics.snapshot().current.find((row) => row.contract.id === authorization.contractId);
+    if (!current || current.currentState !== 'live_review' || current.killed) {
+      liveReviewStore.failReservation(authorization.id, 'CONTRACT_NO_LONGER_ELIGIBLE'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_CONTRACT_NO_LONGER_ELIGIBLE' });
+    }
+    const readiness = await computeReadiness(req.userId);
+    const readinessBlockers = readiness.checks.filter((check: MmCheck) => check.status !== 'ready').map((check: MmCheck) => check.id);
+    if (readinessBlockers.length) { liveReviewStore.failReservation(authorization.id, 'METAMASK_READINESS_BLOCKED');
+      reservedAuthorizationId = null; return res.status(409).json({ error: 'METAMASK_READINESS_BLOCKED', blockers: readinessBlockers }); }
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) { liveReviewStore.failReservation(authorization.id, guard.error || 'CANONICAL_WALLET_BLOCKED');
+      reservedAuthorizationId = null; return res.status(409).json({ error: guard.error }); }
+    const preparation = liveReviewStore.readPreparations().find((row) => row.id === authorization.preparationId);
+    if (!preparation || preparation.signal.expiresAt <= Date.now()) {
+      liveReviewStore.failReservation(authorization.id, 'SIGNAL_EXPIRED'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_SIGNAL_EXPIRED' });
+    }
+    const freshQuoteResult = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--type', 'market', '--json'], 30_000);
+    if (!isCommandOk(freshQuoteResult)) { liveReviewStore.failReservation(authorization.id, 'QUOTE_REFRESH_FAILED');
+      reservedAuthorizationId = null; return res.status(503).json({ error: 'LIVE_REVIEW_QUOTE_REFRESH_FAILED' }); }
+    const freshQuote = unwrap(freshQuoteResult) || {};
+    const freshNotional = Number(freshQuote.notional ?? freshQuote.notionalUsd ?? freshQuote.quote?.notional);
+    const freshFee = Number(freshQuote.estimatedFee ?? freshQuote.estimatedFeeUsd);
+    const freshEntry = Number(freshQuote.entryPrice);
+    const slippageBps = preparation.executionBounds.referenceEntryPrice && Number.isFinite(freshEntry)
+      ? Math.abs(freshEntry / preparation.executionBounds.referenceEntryPrice - 1) * 10_000 : Number.POSITIVE_INFINITY;
+    if (!(freshNotional > 0 && freshNotional <= preparation.executionBounds.maximumNotionalUsd)
+      || !(freshFee >= 0 && freshFee <= preparation.executionBounds.maximumFeeUsd)
+      || slippageBps > preparation.executionBounds.maximumSlippageBps) {
+      liveReviewStore.failReservation(authorization.id, 'QUOTE_OR_SLIPPAGE_BOUND_EXCEEDED'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_QUOTE_OR_SLIPPAGE_BOUND_EXCEEDED' });
+    }
+    const result = await runMmAs(req.userId, ['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--json'], 120_000);
+    if (!isCommandOk(result)) { liveReviewStore.failReservation(authorization.id, 'WALLET_EXECUTION_FAILED');
+      reservedAuthorizationId = null; return res.status(502).json(result.data); }
+    const payload = unwrap(result) || {};
+    const executionReference = String(payload.orderId || payload.id || payload.txHash || `mm_execution_${generateId().slice(0, 16)}`);
+    const consumption = liveReviewStore.consume(authorization, executionReference, Date.now(), reservation.id);
+    reservedAuthorizationId = null;
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_EXECUTED',
+      `Executed authorized reviewed trade ${authorization.id}; reference=${executionReference}.`);
+    res.json({ mode: 'live', result: payload, authorizationId: authorization.id,
+      contractId: authorization.contractId, consumptionId: consumption.id });
+  } catch (error: any) {
+    if (reservedAuthorizationId) liveReviewStore.failReservation(reservedAuthorizationId, error?.message || 'EXECUTION_FAILED');
+    res.status(409).json({ error: error.message });
+  }
+});
+
 metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
@@ -1032,10 +1199,9 @@ metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) =
         arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
       }));
     }
-    const guard = await assertCanonicalActive(req.userId);
-    if (!guard.ok) return res.status(409).json({ error: guard.error });
-    const result = await runMmAs(req.userId, ['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
-    res.status(isCommandOk(result) ? 200 : 502).json(result.data);
+    return res.status(403).json({ error: 'REVIEWED_STRATEGY_AUTHORIZATION_REQUIRED',
+      message: 'Generic perps live execution is disabled. Agent strategies must use the reviewed authorization route; manual live trading requires a separate human-only policy.',
+      liveModeGlobalLock: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

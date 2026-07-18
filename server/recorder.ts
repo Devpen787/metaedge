@@ -190,6 +190,10 @@ export function shortChangePct(sym: string, windowMs: number): number | null {
 }
 
 export function startRecorder() {
+  if (process.env.RECORDER_DISABLED === 'true') {
+    console.log('[recorder] disabled via RECORDER_DISABLED');
+    return;
+  }
   loadHourlyFromFiles();
   setInterval(() => { recordPrices(); updateRing(); }, TICK_MS).unref();
   setInterval(recordFunding, 60 * 60 * 1000).unref();

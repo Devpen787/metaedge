@@ -246,7 +246,9 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
         )}
 
         <div className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/20 mt-4 text-center">
-          Your position is marked-to-market and counts toward your Agent Arena standing.
+          {currentUser.walletAddress
+            ? 'Your position is marked-to-market and counts toward your Agent Arena standing.'
+            : 'Your position is marked-to-market now. Connect your Agent Wallet when you are ready for ranked Arena scoring.'}
         </div>
       </div>
 

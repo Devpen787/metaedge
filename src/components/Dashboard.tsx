@@ -357,7 +357,7 @@ export default function Dashboard({ user, onClaimFaucet, audits, onRefreshAudits
             <Swords className="w-6 h-6 text-yellow-500" />
           </div>
           <span className="text-sm font-bold text-slate-200">Agent Arena</span>
-          <span className="text-[10px] font-mono text-slate-500">Compete & Earn</span>
+          <span className="text-[10px] font-mono text-slate-500">Practice & Compete</span>
         </button>
         <button 
           onClick={() => window.dispatchEvent(new CustomEvent('navigate', { detail: 'intent' }))}

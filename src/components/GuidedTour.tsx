@@ -69,6 +69,7 @@ export default function GuidedTour({ onComplete }: GuidedTourProps) {
         className="bg-slate-900 border border-slate-700/80 rounded-3xl p-8 w-full max-w-lg shadow-2xl relative overflow-hidden"
       >
         <button
+          aria-label="Close platform tour"
           onClick={onComplete}
           className="absolute top-6 right-6 text-slate-500 hover:text-slate-300 transition-colors"
         >

@@ -211,6 +211,19 @@ export interface PredictionMarket {
   };
 }
 
+// Append-only stake ledger used by seasons and leagues. The aggregate stored on
+// PredictionMarket remains the market view; these events are the competition
+// authority for deciding which stake belongs inside a player's scoring window.
+export interface PredictionBetEvent {
+  id: string;
+  marketId: string;
+  userId: string;
+  side: 'yes' | 'no';
+  amount: number;
+  shares: number;
+  timestamp: number;
+}
+
 // A competition league in the Agent Arena. The leaderboard is COMPUTED from real
 // agent P&L (never stored/faked), so it stays truthful and consistent across users.
 export interface ArenaLeague {
@@ -264,6 +277,7 @@ export interface DatabaseState {
   auditEvents: AuditEvent[];
   graphEvents: GraphEvent[];
   predictionMarkets?: { [id: string]: PredictionMarket };
+  predictionBetEvents?: PredictionBetEvent[];
   arenaLeagues?: { [id: string]: ArenaLeague };
   arenaMembers?: ArenaMember[];
   arenaBadges?: ArenaBadge[];

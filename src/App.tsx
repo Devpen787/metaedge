@@ -37,7 +37,14 @@ export default function App() {
   const [appError, setAppError] = useState<string | null>(null);
 
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>(() => {
+    // Resolve the social deep link before the profile/setup branch renders.
+    // Otherwise a first-time visitor can finish their profile and land on the
+    // Dashboard even though they arrived through a league invitation.
+    return window.location.pathname === '/arena' || new URLSearchParams(window.location.search).get('league')
+      ? 'arena'
+      : 'dashboard';
+  });
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [proModeEnabled, setProModeEnabled] = useState(false);
   const [showTour, setShowTour] = useState(() => {
@@ -629,7 +636,7 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
+      <div className="flex-1 min-w-0 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
         {/* Dynamic Header */}
         <header className="sticky top-0 z-40 bg-[#060813]/85 backdrop-blur-xl border-b border-slate-900/80 px-4 py-3 md:px-8 shadow-sm">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
@@ -842,8 +849,6 @@ export default function App() {
                     agents={agents}
                     trades={trades}
                     onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
-                    onDeleteTrade={handleTradeDeleted}
-                    onClearAllTrades={handleClearAllTrades}
                   />
                 )}
 

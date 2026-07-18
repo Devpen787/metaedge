@@ -67,6 +67,7 @@ export function readDatabase(): DatabaseState {
         auditEvents: [],
         graphEvents: [],
         predictionMarkets: defaultPredictions,
+        predictionBetEvents: [],
         arenaLeagues: defaultLeagues,
         arenaMembers: [],
         arenaBadges: [],
@@ -93,6 +94,9 @@ export function readDatabase(): DatabaseState {
     }
     if (!parsed.predictionMarkets) {
       parsed.predictionMarkets = defaultPredictions;
+    }
+    if (!parsed.predictionBetEvents) {
+      parsed.predictionBetEvents = [];
     }
     if (!parsed.arenaLeagues) {
       parsed.arenaLeagues = defaultLeagues;
@@ -141,7 +145,7 @@ export function readDatabase(): DatabaseState {
     }
     return {
       users: {}, sessions: {}, rooms: {}, agents: {}, strategies: {}, trades: [],
-      vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {},
+      vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {}, predictionBetEvents: [],
       arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {},
       decisionRuntime: { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} }
     };

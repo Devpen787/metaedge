@@ -296,36 +296,14 @@ tradesRouter.get('/api/trades', (req: any, res) => {
 
 // Delete a specific trade
 tradesRouter.delete('/api/trades/:id', (req: any, res) => {
-  const userId = req.userId;
-  const tradeId = req.params.id;
-
-  const db = readDatabase();
-  const index = db.trades.findIndex(t => t.id === tradeId);
-
-  if (index === -1) {
-    res.status(404).json({ error: 'Trade not found' });
-    return;
-  }
-
-  const trade = db.trades[index];
-  if (trade.userId !== userId) {
-    res.status(403).json({ error: 'Unauthorized to delete this trade' });
-    return;
-  }
-
-  db.trades.splice(index, 1);
-
-  writeDatabase(db);
-  res.json({ success: true });
+  res.status(409).json({
+    error: 'Paper trade history is an immutable competition ledger. Pause or revoke the agent to stop future activity.',
+  });
 });
 
 // Clear all trades for current user
 tradesRouter.delete('/api/trades', (req: any, res) => {
-  const userId = req.userId;
-  const db = readDatabase();
-
-  db.trades = db.trades.filter(t => t.userId !== userId);
-
-  writeDatabase(db);
-  res.json({ success: true });
+  res.status(409).json({
+    error: 'Paper trade history is an immutable competition ledger. Start a new season or league for a fresh score.',
+  });
 });

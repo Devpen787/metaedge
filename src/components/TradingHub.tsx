@@ -586,14 +586,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
               <Activity className="w-4 h-4 text-emerald-400" />
               Active Leveraged Positions & Spot Fills
             </h4>
-            {trades.length > 0 && onClearAllTrades && (
+            {trades.length > 0 && onClearAllTrades ? (
               <button
                 onClick={onClearAllTrades}
                 className="text-[10px] font-mono text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-inner"
               >
                 Clear All History
               </button>
-            )}
+            ) : trades.length > 0 ? (
+              <span className="text-[10px] font-mono text-slate-500 border border-slate-800 px-3 py-1.5 rounded-lg">
+                Immutable scored ledger
+              </span>
+            ) : null}
           </div>
 
           {trades.length === 0 ? (
@@ -681,6 +685,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           {trade.pnl === undefined ? '—' : `$${trade.pnl.toFixed(2)}`}
                         </td>
                         <td className="py-2.5 px-3 text-right">
+                          {onDeleteTrade && (
                           <button
                             onClick={() => onDeleteTrade && onDeleteTrade(trade.id)}
                             className="p-1 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
@@ -688,6 +693,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          )}
                         </td>
                       </tr>
                     );

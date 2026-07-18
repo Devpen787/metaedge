@@ -83,6 +83,19 @@ predictionsRouter.post('/api/predictions/:id/bet', (req: any, res) => {
     userBet.noShares += sharesPurchased;
   }
 
+  // Durable, append-only scoring event. Market aggregates cannot tell a league
+  // which part of a player's position was opened before versus after joining.
+  db.predictionBetEvents = db.predictionBetEvents || [];
+  db.predictionBetEvents.push({
+    id: 'pbe_' + generateId(),
+    marketId,
+    userId,
+    side,
+    amount: betAmount,
+    shares: sharesPurchased,
+    timestamp: Date.now(),
+  });
+
   // Create audit and graph events
   db.auditEvents.push({
     id: 'aud_' + generateId(),

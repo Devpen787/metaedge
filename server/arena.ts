@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { readDatabase, writeDatabase, generateId, sanitizeText } from './storage.js';
 import { getSpotPrice } from './prices.js';
-import type { DatabaseState, ArenaLeague, PaperTrade } from '../src/types';
+import type { DatabaseState, ArenaLeague, PaperTrade, PredictionMarket } from '../src/types';
 
 export const arenaRouter = Router();
 
@@ -144,62 +144,209 @@ function rankMovement(db: DatabaseState, boardKey: string, current: Record<strin
   return { baseline, dirty };
 }
 
-// Single pass over agents + trades to build each user's realized P&L, agent count,
-// and lead strategy. `sinceByUser` floors trades at each member's league join time
-// so a competition only counts performance earned inside it. O(agents + trades).
-// A user's prediction-market P&L, marked-to-market on current pool odds (each
-// share pays $1 on resolution; live value = shares × implied probability).
-// Floored at `since` via firstBetAt so it's fair for seasons/leagues.
-function predictionPnl(db: DatabaseState, userId: string, since: number): number {
-  let pnl = 0;
-  for (const m of Object.values(db.predictionMarkets || {})) {
-    const bet = m.bets?.[userId];
-    if (!bet || (bet.firstBetAt ?? 0) < since) continue;
-    const total = m.yesPool + m.noPool || 1;
-    let value: number;
-    if (m.resolved) {
-      value = m.outcome === 'yes' ? bet.yesShares : m.outcome === 'no' ? bet.noShares : bet.invested;
-    } else {
-      value = bet.yesShares * (m.yesPool / total) + bet.noShares * (m.noPool / total);
-    }
-    pnl += value - bet.invested;
+type ArenaLaneKey = 'spot' | 'perps' | 'predictions';
+type ArenaLane = {
+  key: ArenaLaneKey;
+  label: string;
+  events: number;
+  volumeUsd: number;
+  realizedPnl: number;
+  unrealizedPnl: number;
+};
+
+function emptyLane(key: ArenaLaneKey): ArenaLane {
+  return {
+    key,
+    label: key === 'spot' ? 'Spot' : key === 'perps' ? 'Perps' : 'Predictions',
+    events: 0,
+    volumeUsd: 0,
+    realizedPnl: 0,
+    unrealizedPnl: 0,
+  };
+}
+
+function predictionValue(market: PredictionMarket, side: 'yes' | 'no', shares: number): number {
+  const totalPool = market.yesPool + market.noPool || 1;
+  if (!market.resolved) {
+    const probability = side === 'yes' ? market.yesPool / totalPool : market.noPool / totalPool;
+    return shares * probability;
   }
-  return pnl;
+  if (market.outcome !== side) return 0;
+  const totalWinningShares = Object.values(market.bets || {}).reduce(
+    (sum, bet) => sum + (side === 'yes' ? bet.yesShares : bet.noShares),
+    0,
+  );
+  return shares * (totalPool / (totalWinningShares || 1));
+}
+
+function predictionLane(db: DatabaseState, userId: string, since: number) {
+  const lane = emptyLane('predictions');
+  const activeDays = new Set<string>();
+  let wins = 0;
+  let losses = 0;
+
+  for (const market of Object.values(db.predictionMarkets || {})) {
+    const marketEvents = (db.predictionBetEvents || [])
+      .filter((event) => event.userId === userId && event.marketId === market.id && event.timestamp >= since);
+
+    // Existing databases predate the event ledger. Preserve an attributable
+    // legacy position only when its first stake is inside this scoring window.
+    if (marketEvents.length === 0) {
+      const hasAnyLedgerEvents = (db.predictionBetEvents || [])
+        .some((event) => event.userId === userId && event.marketId === market.id);
+      const bet = market.bets?.[userId];
+      if (!hasAnyLedgerEvents && bet && (bet.firstBetAt ?? 0) >= since) {
+        const value = market.resolved
+          ? predictionValue(market, market.outcome === 'no' ? 'no' : 'yes', market.outcome === 'no' ? bet.noShares : bet.yesShares)
+          : predictionValue(market, 'yes', bet.yesShares) + predictionValue(market, 'no', bet.noShares);
+        const pnl = value - bet.invested;
+        lane.events += 1;
+        lane.volumeUsd += bet.invested;
+        if (market.resolved) {
+          lane.realizedPnl += pnl;
+          if (pnl > 0) wins++; else if (pnl < 0) losses++;
+        } else {
+          lane.unrealizedPnl += pnl;
+        }
+        activeDays.add(new Date(bet.firstBetAt || since).toISOString().slice(0, 10));
+      }
+      continue;
+    }
+
+    let marketPnl = 0;
+    for (const event of marketEvents) {
+      marketPnl += predictionValue(market, event.side, event.shares) - event.amount;
+      lane.events++;
+      lane.volumeUsd += event.amount;
+      activeDays.add(new Date(event.timestamp).toISOString().slice(0, 10));
+    }
+    if (market.resolved) {
+      lane.realizedPnl += marketPnl;
+      if (marketPnl > 0) wins++; else if (marketPnl < 0) losses++;
+    } else {
+      lane.unrealizedPnl += marketPnl;
+    }
+  }
+  return { lane, activeDays, wins, losses };
+}
+
+type PositionLot = { direction: 1 | -1; size: number; price: number; eligible: boolean; lane: ArenaLaneKey; symbol: string };
+
+// Rebuild player positions from immutable fills. FIFO lots let a league close
+// a carried-in position without importing P&L earned before the player joined.
+function tradingLanes(db: DatabaseState, userId: string, since: number) {
+  const lanes = { spot: emptyLane('spot'), perps: emptyLane('perps') };
+  const lots: Record<string, PositionLot[]> = {};
+  const activeDays = new Set<string>();
+  let wins = 0;
+  let losses = 0;
+  const trades = db.trades.filter((trade) => trade.userId === userId).sort((a, b) => a.timestamp - b.timestamp);
+
+  for (const trade of trades) {
+    const laneKey: 'spot' | 'perps' = trade.tradeType === 'perp' ? 'perps' : 'spot';
+    const lane = lanes[laneKey];
+    const inPeriod = trade.timestamp >= since;
+    if (inPeriod) {
+      lane.events++;
+      lane.volumeUsd += Math.abs(trade.size * trade.price);
+      activeDays.add(new Date(trade.timestamp).toISOString().slice(0, 10));
+    }
+
+    // Wallet positions are independent records and freeze their P&L in place
+    // when closed. Agent fills below form a true multi-fill cost-basis ledger.
+    if (trade.source === 'wallet') {
+      if (!inPeriod) continue;
+      const pnl = tradePnl(trade);
+      if (typeof trade.pnl === 'number' || trade.status === 'closed') {
+        lane.realizedPnl += pnl;
+        if (pnl > 0) wins++; else if (pnl < 0) losses++;
+      } else {
+        lane.unrealizedPnl += pnl;
+      }
+      continue;
+    }
+
+    const direction: 1 | -1 = trade.side === 'sell' || trade.side === 'short' ? -1 : 1;
+    const key = `${trade.agentId}:${trade.assetSymbol}:${trade.tradeType}`;
+    const queue = (lots[key] = lots[key] || []);
+    let remaining = trade.size;
+    let realizedThisFill = 0;
+    while (remaining > 0 && queue.length > 0 && queue[0].direction !== direction) {
+      const lot = queue[0];
+      const closed = Math.min(remaining, lot.size);
+      if (inPeriod && lot.eligible) {
+        const pnl = (trade.price - lot.price) * closed * lot.direction;
+        lane.realizedPnl += pnl;
+        realizedThisFill += pnl;
+      }
+      lot.size -= closed;
+      remaining -= closed;
+      if (lot.size <= 1e-12) queue.shift();
+    }
+    if (inPeriod && realizedThisFill > 0) wins++;
+    else if (inPeriod && realizedThisFill < 0) losses++;
+    if (remaining > 1e-12) {
+      queue.push({ direction, size: remaining, price: trade.price, eligible: inPeriod, lane: laneKey, symbol: trade.assetSymbol });
+    }
+  }
+
+  for (const queue of Object.values(lots)) {
+    for (const lot of queue) {
+      if (!lot.eligible) continue;
+      const mark = getSpotPrice(lot.symbol);
+      if (mark == null) continue;
+      lanes[lot.lane as 'spot' | 'perps'].unrealizedPnl += (mark - lot.price) * lot.size * lot.direction;
+    }
+  }
+  return { lanes, activeDays, wins, losses };
+}
+
+function playerMetrics(db: DatabaseState, userId: string, since: number) {
+  const trading = tradingLanes(db, userId, since);
+  const prediction = predictionLane(db, userId, since);
+  const lanes: ArenaLane[] = [trading.lanes.spot, trading.lanes.perps, prediction.lane].map((lane) => ({
+    ...lane,
+    volumeUsd: Number(lane.volumeUsd.toFixed(2)),
+    realizedPnl: Number(lane.realizedPnl.toFixed(2)),
+    unrealizedPnl: Number(lane.unrealizedPnl.toFixed(2)),
+  }));
+  const activeDays = new Set([...trading.activeDays, ...prediction.activeDays]);
+  const wins = trading.wins + prediction.wins;
+  const losses = trading.losses + prediction.losses;
+  const realizedPnl = lanes.reduce((sum, lane) => sum + lane.realizedPnl, 0);
+  const unrealizedPnl = lanes.reduce((sum, lane) => sum + lane.unrealizedPnl, 0);
+  return {
+    lanes,
+    realizedPnl: Number(realizedPnl.toFixed(2)),
+    unrealizedPnl: Number(unrealizedPnl.toFixed(2)),
+    totalPnl: Number((realizedPnl + unrealizedPnl).toFixed(2)),
+    volumeUsd: Number(lanes.reduce((sum, lane) => sum + lane.volumeUsd, 0).toFixed(2)),
+    activityCount: lanes.reduce((sum, lane) => sum + lane.events, 0),
+    activeDays: activeDays.size,
+    winRatePct: wins + losses ? Number(((wins / (wins + losses)) * 100).toFixed(1)) : null,
+  };
 }
 
 function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<string, number>) {
   const include = new Set(userIds);
-  const pnl: Record<string, number> = {};
+  const metrics: Record<string, ReturnType<typeof playerMetrics>> = {};
   const agentCount: Record<string, number> = {};
   const strategy: Record<string, string> = {};
-  for (const id of userIds) { pnl[id] = 0; agentCount[id] = 0; }
+  for (const id of userIds) {
+    metrics[id] = playerMetrics(db, id, sinceByUser[id] ?? 0);
+    agentCount[id] = 0;
+  }
   for (const agent of Object.values(db.agents)) {
-    if (!include.has(agent.ownerId)) continue;
+    if (!include.has(agent.ownerId) || agent.status === 'revoked') continue;
     agentCount[agent.ownerId] = (agentCount[agent.ownerId] || 0) + 1;
     if (!strategy[agent.ownerId]) strategy[agent.ownerId] = humanizeStrategy(agent.strategyType);
   }
-  for (const trade of db.trades) {
-    if (!include.has(trade.userId)) continue;
-    if (trade.timestamp < (sinceByUser[trade.userId] ?? 0)) continue;
-    pnl[trade.userId] = (pnl[trade.userId] || 0) + tradePnl(trade);
-    // Label a wallet-only competitor (no agent) so the board reads sensibly.
-    if (trade.source === 'wallet' && !strategy[trade.userId]) strategy[trade.userId] = 'Wallet';
-  }
-  // Prediction-market P&L feeds the same score. Label any participant
-  // "Predictions" even at break-even so a pure-predictions player reads right.
   for (const id of userIds) {
-    const since = sinceByUser[id] ?? 0;
-    let participates = false;
-    for (const m of Object.values(db.predictionMarkets || {})) {
-      const bet = m.bets?.[id];
-      if (bet && (bet.firstBetAt ?? 0) >= since) { participates = true; break; }
-    }
-    if (participates) {
-      pnl[id] = (pnl[id] || 0) + predictionPnl(db, id, since);
-      if (!strategy[id]) strategy[id] = 'Predictions';
-    }
+    const activeLanes = metrics[id].lanes.filter((lane) => lane.events > 0);
+    if (!strategy[id] && activeLanes.length === 1) strategy[id] = activeLanes[0].label;
+    else if (!strategy[id] && activeLanes.length > 1) strategy[id] = 'Multi-lane';
   }
-  return { pnl, agentCount, strategy };
+  return { metrics, agentCount, strategy };
 }
 
 // Real, shared leaderboard. `?leagueId=global` ranks everyone with an agent;
@@ -207,10 +354,16 @@ function aggregate(db: DatabaseState, userIds: string[], sinceByUser: Record<str
 arenaRouter.get('/api/arena/leaderboard', (req, res) => {
   const db = readDatabase();
   const leagueId = String(req.query.leagueId || 'global');
+  const metric = String(req.query.metric || 'roi');
+  const metricLabels: Record<string, string> = { roi: 'Return %', pnl: 'Paper P&L', volume: 'Traded Volume' };
+  if (!metricLabels[metric]) {
+    res.status(400).json({ error: 'metric must be roi, pnl, or volume.' });
+    return;
+  }
   const season = seasonInfo();
 
   let entries: { userId: string; username: string; startBalance: number; since: number }[];
-  let board: { name: string; endsAt: number };
+  let board: { name: string; endsAt: number; metric: string; metricLabel: string };
   if (leagueId === 'global') {
     // Competing requires bringing your own MetaMask Agent Wallet: the global
     // board ranks CONNECTED players (agent owners or wallet traders). Guests
@@ -233,7 +386,7 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
         startBalance: GLOBAL_START_BALANCE,
         since: season.startMs,
       }));
-    board = { name: `Season · ${season.name}`, endsAt: season.endMs };
+    board = { name: `Season · ${season.name}`, endsAt: season.endMs, metric, metricLabel: metricLabels[metric] };
   } else {
     const league = db.arenaLeagues?.[leagueId];
     if (!league) { res.status(404).json({ error: 'League not found.' }); return; }
@@ -245,16 +398,16 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
         startBalance: m.startBalance || league.startBalance,
         since: m.joinedAt,
       }));
-    board = { name: league.name, endsAt: league.endsAt };
+    board = { name: league.name, endsAt: league.endsAt, metric, metricLabel: metricLabels[metric] };
   }
 
   const sinceByUser = Object.fromEntries(entries.map((e) => [e.userId, e.since]));
-  const { pnl, agentCount, strategy } = aggregate(db, entries.map((e) => e.userId), sinceByUser);
+  const { metrics, agentCount, strategy } = aggregate(db, entries.map((e) => e.userId), sinceByUser);
 
   const leaderboard = entries
     .map((e) => {
-      const realized = pnl[e.userId] || 0;
-      const roiPct = e.startBalance ? (realized / e.startBalance) * 100 : 0;
+      const player = metrics[e.userId];
+      const roiPct = e.startBalance ? (player.totalPnl / e.startBalance) * 100 : 0;
       const wallet = db.users[e.userId]?.walletAddress;
       return {
         userId: e.userId,
@@ -263,12 +416,22 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
         agents: agentCount[e.userId] || 0,
         strategy: strategy[e.userId] || 'No agents',
         startBal: e.startBalance,
-        currentBal: Math.round(e.startBalance + realized),
-        roiValue: roiPct,
+        currentBal: Number((e.startBalance + player.totalPnl).toFixed(2)),
+        pnlValue: player.totalPnl,
+        realizedPnl: player.realizedPnl,
+        unrealizedPnl: player.unrealizedPnl,
+        volumeUsd: player.volumeUsd,
+        activityCount: player.activityCount,
+        activeDays: player.activeDays,
+        winRatePct: player.winRatePct,
+        lanes: player.lanes,
+        roiValue: Number(roiPct.toFixed(4)),
         roi: `${roiPct >= 0 ? '+' : ''}${roiPct.toFixed(1)}%`,
+        scoreMetric: metric,
+        scoreValue: metric === 'pnl' ? player.totalPnl : metric === 'volume' ? player.volumeUsd : roiPct,
       };
     })
-    .sort((a, b) => b.roiValue - a.roiValue)
+    .sort((a, b) => b.scoreValue - a.scoreValue || b.roiValue - a.roiValue || b.pnlValue - a.pnlValue || a.name.localeCompare(b.name))
     .map((row, i) => ({ rank: i + 1, ...row }));
 
   // Gamification layer — all earned from real data: streaks from realized daily
@@ -278,7 +441,7 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
   const { newBadges, badgesByUser } = syncBadges(db, userIds, streaks);
   const ranksNow: Record<string, number> = {};
   for (const r of leaderboard) ranksNow[r.userId] = r.rank;
-  const { baseline, dirty } = rankMovement(db, leagueId, ranksNow);
+  const { baseline, dirty } = rankMovement(db, `${leagueId}:${metric}`, ranksNow);
   if (newBadges || dirty) writeDatabase(db);
 
   const rows = leaderboard.map((r) => ({
@@ -288,7 +451,7 @@ arenaRouter.get('/api/arena/leaderboard', (req, res) => {
     badges: (badgesByUser[r.userId] || []).map((b) => ({ id: b, ...BADGES[b] })),
   }));
 
-  res.json({ leaderboard: rows, leagueId, board });
+  res.json({ leaderboard: rows, leagueId, board, availableMetrics: Object.entries(metricLabels).map(([id, label]) => ({ id, label })) });
 });
 
 // List leagues with live participant counts and the caller's joined status.
@@ -296,9 +459,13 @@ arenaRouter.get('/api/arena/leagues', (req: any, res) => {
   const userId = req.userId;
   const db = readDatabase();
   const members = db.arenaMembers || [];
+  const now = Date.now();
   const leagues = Object.values(db.arenaLeagues || {})
     .map((l) => ({
       ...l,
+      // Status is derived from the clock so a stale persisted "active" value
+      // can never make an expired league appear joinable.
+      status: l.status === 'active' && l.endsAt > now ? 'active' : 'ended',
       participants: members.filter((m) => m.leagueId === l.id).length,
       joined: members.some((m) => m.leagueId === l.id && m.userId === userId),
     }))
@@ -368,6 +535,14 @@ arenaRouter.post('/api/arena/leagues/:id/join', (req: any, res) => {
   }
   const league = db.arenaLeagues?.[leagueId];
   if (!league) { res.status(404).json({ error: 'League not found.' }); return; }
+  if (league.endsAt <= Date.now()) {
+    res.status(410).json({ error: 'league_ended', message: 'This league has ended. Final standings remain available.' });
+    return;
+  }
+  if (league.status !== 'active') {
+    res.status(409).json({ error: 'league_inactive', message: 'This league is not accepting new players.' });
+    return;
+  }
   db.arenaMembers = db.arenaMembers || [];
   if (db.arenaMembers.some((m) => m.leagueId === leagueId && m.userId === userId)) {
     res.status(409).json({ error: 'Already joined this league.' });

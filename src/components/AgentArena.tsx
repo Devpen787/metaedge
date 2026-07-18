@@ -97,10 +97,16 @@ const DataStreamBackground = () => {
 
 export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, onAgentCreated, onAgentStatusChanged, onAgentAutopilotChanged }) => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'leagues' | 'create'>('dashboard');
-  const [activeLeagueId, setActiveLeagueId] = useState<string | 'global'>('global');
+  const [activeLeagueId, setActiveLeagueId] = useState<string | 'global'>(() => (
+    new URLSearchParams(window.location.search).get('league') || 'global'
+  ));
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployModalOpen, setDeployModalOpen] = useState(false);
   const [deployError, setDeployError] = useState('');
+  const [arenaError, setArenaError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
 
   const [leagues, setLeagues] = useState<any[]>([]);
   const [joinedLeagues, setJoinedLeagues] = useState<(string | 'global')[]>(['global']);
@@ -116,11 +122,27 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const [newLeagueRisk, setNewLeagueRisk] = useState<'Low' | 'Medium' | 'High'>('Medium');
   const [newLeaguePrize, setNewLeaguePrize] = useState('');
   const [activeTier, setActiveTier] = useState('All');
+  const [scoringMetric, setScoringMetric] = useState<'roi' | 'pnl' | 'volume'>('roi');
 
   const [inspectedAgentId, setInspectedAgentId] = useState<string | null>(null);
 
   const [inspectedPlayerRank, setInspectedPlayerRank] = useState<number | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
+  const [celebrationAction, setCelebrationAction] = useState<{ label: string; tab: 'trading' | 'rooms' } | null>(null);
+
+  // Every Arena modal must have the same keyboard recovery path. Mouse-only
+  // backdrops leave keyboard and assistive-technology users stranded.
+  useEffect(() => {
+    if (!deployModalOpen && !inspectedAgentId && inspectedPlayerRank === null) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (inspectedPlayerRank !== null) setInspectedPlayerRank(null);
+      else if (inspectedAgentId) setInspectedAgentId(null);
+      else setDeployModalOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [deployModalOpen, inspectedAgentId, inspectedPlayerRank]);
 
   // ---- Real portfolio, real agents, real P&L — no simulation in this layer.
   // Your agents are the SAME agents as the Trading Agents tab; P&L is the sum
@@ -143,29 +165,40 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
 
   const [positions, setPositions] = useState<any[]>([]);
   const [closingId, setClosingId] = useState<string | null>(null);
-  const [boardMeta, setBoardMeta] = useState<{ name: string; endsAt: number } | null>(null);
+  const [boardMeta, setBoardMeta] = useState<{ name: string; endsAt: number; metric?: string; metricLabel?: string } | null>(null);
   const [celebration, setCelebration] = useState<string | null>(null);
-  const prevRankRef = useRef<{ leagueId: string | 'global'; rank: number } | null>(null);
+  const prevRankRef = useRef<{ leagueId: string | 'global'; metric: string; rank: number } | null>(null);
   // Mirrors activeLeagueId so an in-flight response can ask "am I still the
   // league on screen?" without closing over the value it started with.
   const activeLeagueIdRef = useRef<string | 'global'>(activeLeagueId);
   activeLeagueIdRef.current = activeLeagueId;
+  const scoringMetricRef = useRef(scoringMetric);
+  scoringMetricRef.current = scoringMetric;
 
   // Auto-dismiss celebration toasts.
   useEffect(() => {
-    if (!celebration) return;
-    const t = setTimeout(() => setCelebration(null), 4500);
+    if (!celebration || celebrationAction) return;
+    const t = setTimeout(() => {
+      setCelebration(null);
+      setCelebrationAction(null);
+    }, 6500);
     return () => clearTimeout(t);
-  }, [celebration]);
+  }, [celebration, celebrationAction]);
 
-  // Arena share links: /arena?league=<id> opens that league's board directly
-  // (the visitor still joins deliberately via "Enter the Arena").
-  useEffect(() => {
-    const lg = new URLSearchParams(window.location.search).get('league');
-    if (lg) {
-      setActiveLeagueId(lg);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
+  // Keep the selected board in the address bar so refresh, profile setup, and
+  // copy/paste preserve the invitation target. Selecting Global clears only
+  // the league query, not the current session or any product state.
+  const selectLeague = React.useCallback((id: string | 'global') => {
+    setActionError('');
+    setArenaError('');
+    setBoardMeta(null);
+    setLeaderboard([]);
+    setActiveLeagueId(id);
+    const url = new URL(window.location.href);
+    url.pathname = '/arena';
+    if (id === 'global') url.searchParams.delete('league');
+    else url.searchParams.set('league', id);
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}`);
   }, []);
 
   const loadPositions = React.useCallback(async (signal?: AbortSignal) => {
@@ -173,9 +206,11 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
       const res = await apiFetch('/api/arena/positions', signal ? { signal } : undefined);
       if (signal?.aborted) return;
       if (res.ok) setPositions((await safeJson(res)).positions || []);
+      else setActionError('Wallet positions could not be refreshed. The last confirmed values remain on screen.');
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
       console.warn('[arena] loadPositions failed; keeping last good state', e);
+      setActionError('Wallet positions could not be refreshed. The last confirmed values remain on screen.');
     }
   }, []);
 
@@ -186,12 +221,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   // check backs it up, since a response already resolved cannot be aborted.
   const loadArena = React.useCallback(async (signal?: AbortSignal) => {
     const requestedLeagueId = activeLeagueId;
-    const isStale = () => !!signal?.aborted || requestedLeagueId !== activeLeagueIdRef.current;
+    const requestedMetric = scoringMetric;
+    const isStale = () => !!signal?.aborted || requestedLeagueId !== activeLeagueIdRef.current || requestedMetric !== scoringMetricRef.current;
     try {
       const init = signal ? { signal } : undefined;
       const [lgRes, lbRes] = await Promise.all([
         apiFetch('/api/arena/leagues', init),
-        apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(requestedLeagueId)}`, init),
+        apiFetch(`/api/arena/leaderboard?leagueId=${encodeURIComponent(requestedLeagueId)}&metric=${requestedMetric}`, init),
       ]);
       if (isStale()) return;
       if (lgRes.ok) {
@@ -200,6 +236,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
           id: l.id, name: l.name, creator: l.creatorName,
           participants: l.participants, prize: l.prize,
           time: msToLeft(l.endsAt), risk: l.risk, joined: l.joined,
+          status: l.status, endsAt: l.endsAt,
         }));
         setLeagues(mapped);
         setJoinedLeagues(['global', ...mapped.filter((l: any) => l.joined).map((l: any) => l.id)]);
@@ -207,6 +244,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
       if (lbRes.ok) {
         const data = await safeJson(lbRes);
         if (isStale()) return;
+        setArenaError('');
         const rows = data.leaderboard || [];
         setLeaderboard(rows);
         if (data.board) setBoardMeta(data.board);
@@ -214,33 +252,49 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         // league this response is FOR, not whichever league is selected now.
         const mine = rows.find((p: any) => p.userId === user.id);
         const prev = prevRankRef.current;
-        if (mine && prev && prev.leagueId === requestedLeagueId && mine.rank < prev.rank) {
+        if (mine && prev && prev.leagueId === requestedLeagueId && prev.metric === requestedMetric && mine.rank < prev.rank) {
+          setCelebrationAction(null);
           setCelebration(`🚀 Rank up! #${prev.rank} → #${mine.rank}`);
           burst('rankup');
         }
-        prevRankRef.current = mine ? { leagueId: requestedLeagueId, rank: mine.rank } : null;
+        prevRankRef.current = mine ? { leagueId: requestedLeagueId, metric: requestedMetric, rank: mine.rank } : null;
+      } else if (lbRes.status === 404 && requestedLeagueId !== 'global') {
+        setLeaderboard([]);
+        setBoardMeta(null);
+        setArenaError('This league invite is unavailable. It may have been removed or the link may be incomplete.');
+      } else {
+        setArenaError('The Arena standings could not be loaded. Your account and paper balance were not changed.');
       }
     } catch (e: any) {
       if (e?.name === 'AbortError') return;
       console.warn('[arena] loadArena failed; keeping last good state', e);
+      setArenaError('The Arena could not be reached. Check your connection and try again.');
     }
-  }, [activeLeagueId, user.id]);
+  }, [activeLeagueId, scoringMetric, user.id]);
 
   const handleClosePosition = async (id: string) => {
     setClosingId(id);
+    setActionError('');
     try {
       const res = await apiFetch(`/api/arena/positions/${id}/close`, { method: 'POST' });
       if (res.ok) {
         const data = await safeJson(res).catch(() => null);
         const pnl = data?.position?.pnl;
         if (typeof pnl === 'number' && pnl > 0) {
+          setCelebrationAction(null);
           setCelebration(`💰 +${pnl.toLocaleString('en-US', { style: 'currency', currency: 'USD' })} locked in!`);
           burst('profit');
         }
         await loadPositions();
         await loadArena();
+      } else {
+        const data = await safeJson(res);
+        setActionError(data?.message || data?.error || 'This paper position could not be closed.');
       }
-    } catch (e) { console.error('[arena] closePosition failed; the next refresh reconciles state', e); } finally {
+    } catch (e) {
+      console.error('[arena] closePosition failed; the next refresh reconciles state', e);
+      setActionError('This paper position could not be closed. Check your connection and try again.');
+    } finally {
       setClosingId(null);
     }
   };
@@ -269,21 +323,26 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     return () => { clearInterval(t); ctrl.abort(); };
   }, [loadPositions]);
 
+  const fmtUsd = (n: number) =>
+    Math.abs(n) >= 1_000_000 ? `${n < 0 ? '-' : ''}$${(Math.abs(n) / 1_000_000).toFixed(1)}M`
+    : Math.abs(n) >= 1_000 ? `${n < 0 ? '-' : ''}$${(Math.abs(n) / 1_000).toFixed(1)}K`
+    : `${n < 0 ? '-' : ''}$${Math.round(Math.abs(n))}`;
+
   // Real, computed arena stats derived from the live leaderboard (never faked).
   // `leaderboard` already reflects the active league (global or a specific one).
   const arenaStats = React.useMemo(() => {
     const participants = leaderboard.length;
     const capitalInPlay = leaderboard.reduce((s, p) => s + (p.currentBal || 0), 0);
-    const topReturn = leaderboard[0]?.roi ?? '—';
+    const totalVolume = leaderboard.reduce((s, p) => s + (p.volumeUsd || 0), 0);
+    const topScore = leaderboard[0]
+      ? scoringMetric === 'volume' ? fmtUsd(leaderboard[0].volumeUsd || 0)
+      : scoringMetric === 'pnl' ? fmtUsd(leaderboard[0].pnlValue || 0)
+      : leaderboard[0].roi
+      : '—';
     const inProfit = leaderboard.filter((p) => (p.roiValue || 0) > 0).length;
     const myRank = leaderboard.find((p) => p.userId === user.id)?.rank ?? null;
-    return { participants, capitalInPlay, topReturn, inProfit, myRank };
-  }, [leaderboard, user.id]);
-
-  const fmtUsd = (n: number) =>
-    n >= 1_000_000 ? `$${(n / 1_000_000).toFixed(1)}M`
-    : n >= 1_000 ? `$${(n / 1_000).toFixed(1)}K`
-    : `$${Math.round(n)}`;
+    return { participants, capitalInPlay, totalVolume, topScore, inProfit, myRank };
+  }, [leaderboard, scoringMetric, user.id]);
 
   // Real rank-percentile tiers (top 10% Platinum, 35% Gold, 70% Silver, rest
   // Bronze) — computed from the live board, filterable, never decorative.
@@ -306,16 +365,24 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     ? leaderboard
     : leaderboard.filter((p) => tierOf(p.rank) === activeTier);
 
-  const handleShare = () => {
+  const selectedLeague = activeLeagueId === 'global'
+    ? null
+    : leagues.find((league) => league.id === activeLeagueId);
+  const leagueEnded = activeLeagueId !== 'global' && selectedLeague?.status === 'ended';
+
+  const handleShare = async () => {
     const link = `${window.location.origin}/arena?league=${activeLeagueId}`;
-    // writeText() rejects when the page lacks clipboard permission or focus. The
-    // unhandled rejection used to surface nowhere while the UI still said "Copied!".
-    navigator.clipboard.writeText(link).catch((e) => {
+    setActionError('');
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2000);
+    } catch (e) {
       console.warn('[arena] clipboard write failed', e);
+      setShareCopied(false);
+      setActionError('Clipboard access was blocked. Copy the invitation link from the dialog.');
       window.prompt('Copy this invite link:', link);
-    });
-    setShareCopied(true);
-    setTimeout(() => setShareCopied(false), 2000);
+    }
   };
 
   // Competing requires the user's own MetaMask Agent Wallet.
@@ -325,21 +392,36 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const handleJoinLeague = async (id: string | 'global') => {
     if (!walletConnected) { promptConnect(); return; }
     if (id === 'global' || joinedLeagues.includes(id)) {
-      setActiveLeagueId(id);
+      selectLeague(id);
       setActiveTab('dashboard');
       return;
     }
+    setIsJoining(true);
+    setActionError('');
     try {
       const res = await apiFetch(`/api/arena/leagues/${id}/join`, { method: 'POST' });
       if (res.ok || res.status === 409) {
-        setActiveLeagueId(id);
+        // 409 is only idempotent when the server says this membership already
+        // exists. Inactive leagues also use 409 and must remain a visible error.
+        const data = res.status === 409 ? await safeJson(res) : null;
+        if (res.status === 409 && data?.error !== 'Already joined this league.') {
+          setActionError(data?.message || data?.error || 'This league is not accepting new players.');
+          return;
+        }
+        selectLeague(id);
         setActiveTab('dashboard');
         await loadArena();
       } else if (res.status === 403) {
         promptConnect();
+      } else {
+        const data = await safeJson(res);
+        setActionError(data?.message || data?.error || 'This league could not be joined.');
       }
     } catch (e) {
       console.error('[arena] league action failed; the next load reconciles state', e);
+      setActionError('This league could not be joined. Check your connection and try again.');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -347,6 +429,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
     e.preventDefault();
     if (!walletConnected) { promptConnect(); return; }
     if (!newLeagueName.trim()) return;
+    setIsCreating(true);
+    setActionError('');
     try {
       const res = await apiFetch('/api/arena/leagues', {
         method: 'POST',
@@ -371,9 +455,15 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         await loadArena();
       } else if (res.status === 403) {
         promptConnect();
+      } else {
+        const data = await safeJson(res);
+        setActionError(data?.message || data?.error || 'This paper league could not be created.');
       }
     } catch (e) {
       console.error('[arena] league action failed', e);
+      setActionError('This paper league could not be created. Check your connection and try again.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -391,7 +481,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         leverage: tpl.tradeType === 'perp' ? 5 : 1,
       });
       setDeployModalOpen(false);
-      setCelebration(`🤖 ${tpl.name} deployed — it can trade from the Trading Desk now`);
+      setCelebration(`🤖 ${tpl.name} deployed — place its first paper fill next`);
+      setCelebrationAction({ label: 'Open Trading Desk', tab: 'trading' });
     } catch (e: any) {
       setDeployError(e.message || 'Could not deploy agent.');
     } finally {
@@ -402,43 +493,71 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
   const handlePauseResume = async (agent: TradingAgent) => {
     try {
       await onAgentStatusChanged(agent.id, agent.status === 'active' ? 'paused' : 'active');
-    } catch (e) { console.error('[arena] pause/resume failed; refreshed state will show the truth', e); }
+    } catch (e) {
+      console.error('[arena] pause/resume failed; refreshed state will show the truth', e);
+      setActionError('This agent status could not be changed. Its last confirmed state remains on screen.');
+    }
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden text-slate-300 relative bg-[#020617]">
+    <div className="flex flex-col h-full min-w-0 overflow-hidden text-slate-300 relative bg-[#020617]">
       <DataStreamBackground />
 
       {/* Celebration toast — fires on real events (rank-up, profitable close) */}
       <AnimatePresence>
         {celebration && (
           <motion.div
+            role="status"
+            aria-live="polite"
             initial={{ opacity: 0, y: 24, scale: 0.92 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 12 }}
-            className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-yellow-500/40 shadow-[0_0_36px_rgba(234,179,8,0.3)] rounded-2xl px-5 py-4 text-white font-bold text-sm flex items-center gap-2"
+            className="fixed top-20 left-4 right-4 sm:left-auto sm:right-6 z-50 bg-slate-900 border border-yellow-500/40 shadow-[0_0_36px_rgba(234,179,8,0.3)] rounded-2xl px-5 py-4 text-white font-bold text-sm flex flex-wrap items-center gap-3"
           >
-            {celebration}
+            <span className="flex-1 min-w-0">{celebration}</span>
+            {celebrationAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('navigate', { detail: celebrationAction.tab }));
+                  setCelebration(null);
+                  setCelebrationAction(null);
+                }}
+                className="shrink-0 rounded-lg bg-yellow-500 px-3 py-2 text-xs font-black text-yellow-950 hover:bg-yellow-400"
+              >
+                {celebrationAction.label} <ChevronRight className="ml-1 inline-block h-3.5 w-3.5" />
+              </button>
+            )}
+            <button
+              type="button"
+              aria-label="Dismiss notification"
+              onClick={() => { setCelebration(null); setCelebrationAction(null); }}
+              className="shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Header */}
-      <div className="flex-none p-6 border-b border-slate-800 bg-slate-900/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div className="flex-none p-4 sm:p-6 border-b border-slate-800 bg-slate-900/50 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-3 font-mono">
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex flex-wrap items-center gap-2 sm:gap-3 font-mono">
             <Swords className="w-6 h-6 text-yellow-500" />
-            Agent Arena <span className="text-xs px-2 py-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded font-bold">PAPER LEAGUE</span>
+            <span>Agent Arena</span>
+            <span className="basis-full sm:basis-auto w-fit text-xs px-2 py-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 rounded font-bold">PAPER LEAGUE</span>
           </h1>
           <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-            Learn to deploy agents and test your strategies risk-free. Compete against others using Swarm Copilot, Autopilot, and Intent Solvers.
+            Paper practice is open without a wallet. Connect a MetaMask Agent Wallet only when you want to enter ranked seasons and leagues.
           </p>
         </div>
 
-        <div className="flex gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <div className="grid grid-cols-3 gap-1 sm:gap-2 w-full md:w-auto bg-slate-950 p-1 rounded-xl border border-slate-800">
           <button
-            onClick={() => { setActiveLeagueId('global'); setActiveTab('dashboard'); }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            onClick={() => { selectLeague('global'); setActiveTab('dashboard'); }}
+            aria-pressed={activeLeagueId === 'global' && activeTab === 'dashboard'}
+            className={`px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
               activeLeagueId === 'global' && activeTab === 'dashboard' ? 'bg-yellow-500/20 text-yellow-500' : 'hover:bg-slate-800'
             }`}
           >
@@ -446,15 +565,17 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
           </button>
           <button
             onClick={() => setActiveTab('leagues')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            aria-pressed={activeTab === 'leagues'}
+            className={`px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
               activeTab === 'leagues' ? 'bg-yellow-500/20 text-yellow-500' : 'hover:bg-slate-800'
             }`}
           >
-            Custom Leagues
+            <span><span className="hidden sm:inline">Custom </span>Leagues</span>
           </button>
           <button
             onClick={() => setActiveTab('create')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${
+            aria-pressed={activeTab === 'create'}
+            className={`px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors flex items-center justify-center gap-1 ${
               activeTab === 'create' ? 'bg-yellow-500/20 text-yellow-500' : 'hover:bg-slate-800'
             }`}
           >
@@ -463,7 +584,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 scrollbar-hide">
+        {actionError && (
+          <div role="alert" className="max-w-6xl mx-auto mb-4 rounded-xl border border-rose-500/30 bg-rose-950/40 px-4 py-3 text-sm text-rose-200 flex items-start justify-between gap-4">
+            <span>{actionError}</span>
+            <button onClick={() => setActionError('')} className="text-xs font-bold text-rose-300 hover:text-white">Dismiss</button>
+          </div>
+        )}
         {activeTab === 'dashboard' && (
           <motion.div 
             initial={{ opacity: 0 }} 
@@ -472,8 +599,22 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
             className="space-y-6 max-w-6xl mx-auto"
           >
             
-            {/* Header & Stats (Always visible) */}
-            <motion.div 
+            {arenaError && (
+              <div role="alert" className="rounded-2xl border border-amber-500/30 bg-amber-950/20 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">League invite unavailable</h2>
+                  <p className="text-sm text-slate-300 mt-1">{arenaError}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => { selectLeague('global'); setActiveTab('dashboard'); }} className="px-4 py-2 rounded-xl bg-yellow-500 text-yellow-950 font-bold">Open Global Season</button>
+                  <button onClick={() => { selectLeague('global'); setActiveTab('leagues'); }} className="px-4 py-2 rounded-xl bg-slate-800 text-white font-bold">Browse Leagues</button>
+                </div>
+              </div>
+            )}
+
+            {/* Header & Stats */}
+            {!arenaError && (
+            <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative"
@@ -481,7 +622,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
               {/* Decorative Background */}
               <div className="absolute top-0 left-0 w-full h-48 bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-yellow-500/20 blur-3xl pointer-events-none" />
               
-              <div className="p-8 relative z-10">
+              <div className="p-5 sm:p-8 relative z-10">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-8">
                   <div>
                     {/* One real countdown, one real title, no duplicated copy —
@@ -490,10 +631,10 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                       <Clock className="w-3 h-3" />
                       {boardMeta ? msToLeft(boardMeta.endsAt) : '…'}{activeLeagueId === 'global' ? ' · resets monthly' : ''}
                     </div>
-                    <h2 className="text-4xl font-black text-white tracking-tight">
+                    <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight break-words">
                       {activeLeagueId === 'global'
                         ? (boardMeta ? `${boardMeta.name.replace('Season · ', '')} Season` : 'Global Season')
-                        : leagues.find(l => l.id === activeLeagueId)?.name}
+                        : (selectedLeague?.name || 'League unavailable')}
                     </h2>
                   </div>
 
@@ -507,19 +648,27 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         {shareCopied ? 'Link Copied!' : 'Invite Rivals'}
                       </button>
                     )}
-                    {!walletConnected ? (
+                    {arenaError ? null : leagueEnded ? (
+                      <div className="px-6 py-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
+                        <div className="text-xs text-slate-500 font-mono uppercase">League ended</div>
+                        <div className="text-sm font-bold text-slate-200">Final standings</div>
+                      </div>
+                    ) : !walletConnected ? (
                       <button
                         onClick={promptConnect}
-                        className="px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl flex items-center justify-center gap-3 transition-all shadow-[0_0_30px_rgba(234,88,12,0.35)] hover:scale-105"
+                        className="w-full sm:w-auto px-4 sm:px-8 py-4 bg-orange-600 hover:bg-orange-500 text-white text-sm sm:text-base font-bold rounded-xl flex items-center justify-center gap-2 sm:gap-3 transition-all shadow-[0_0_30px_rgba(234,88,12,0.35)] hover:scale-105"
                       >
-                        <Wallet className="w-5 h-5" /> Connect MetaMask to Compete
+                        <Wallet className="w-5 h-5" />
+                        <span className="sm:hidden">Connect to Compete</span>
+                        <span className="hidden sm:inline">Connect MetaMask to Compete</span>
                       </button>
                     ) : !joinedLeagues.includes(activeLeagueId) ? (
                       <button
                         onClick={() => handleJoinLeague(activeLeagueId)}
+                        disabled={isJoining}
                         className="px-8 py-4 bg-yellow-500 hover:bg-yellow-400 text-yellow-950 font-bold rounded-xl flex items-center justify-center gap-3 transition-all shadow-[0_0_30px_rgba(234,179,8,0.3)] hover:scale-105"
                       >
-                        <Swords className="w-5 h-5" /> Enter the Arena
+                        <Swords className="w-5 h-5" /> {isJoining ? 'Joining…' : 'Enter the Arena'}
                       </button>
                     ) : (
                       <div className="px-6 py-3 bg-slate-950 border border-slate-800 rounded-xl text-center">
@@ -536,12 +685,15 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   <span className="text-slate-700">·</span>
                   <span><span className="text-white font-bold">{fmtUsd(arenaStats.capitalInPlay)}</span> in play</span>
                   <span className="text-slate-700">·</span>
-                  <span>top <span className="text-emerald-400 font-bold">{arenaStats.topReturn}</span></span>
+                  <span><span className="text-white font-bold">{fmtUsd(arenaStats.totalVolume)}</span> traded</span>
                   <span className="text-slate-700">·</span>
-                  <span className="text-yellow-500/90">{activeLeagueId === 'global' ? 'prize: leaderboard glory' : `prize: ${leagues.find(l => l.id === activeLeagueId)?.prize || 'Reputation Badge'}`}</span>
+                  <span>top {boardMeta?.metricLabel || 'Return %'} <span className="text-emerald-400 font-bold">{arenaStats.topScore}</span></span>
+                  <span className="text-slate-700">·</span>
+                  <span className="text-yellow-500/90">{activeLeagueId === 'global' ? 'reward: leaderboard glory' : `paper prize: ${selectedLeague?.prize || 'Reputation Badge'}`}</span>
                 </div>
               </div>
             </motion.div>
+            )}
 
             {joinedLeagues.includes(activeLeagueId) && (
               <div className="space-y-6">
@@ -558,7 +710,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     
                     <div className="flex justify-between items-start mb-6 relative z-10">
                       <div>
-                        <h3 className="text-slate-400 text-sm font-mono uppercase tracking-wider mb-1">Your Paper Balance</h3>
+                        <h3 className="text-slate-400 text-sm font-mono uppercase tracking-wider mb-1">Account Paper Balance</h3>
                         <div className="text-4xl font-mono font-bold text-white">
                           <AnimatedValue
                             value={user.paperBalance}
@@ -569,7 +721,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                           {totalPnL >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingUp className="w-4 h-4 rotate-180" />}
                           <AnimatedValue
                             value={totalPnL}
-                            formatter={(v) => `${v >= 0 ? '+' : ''}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} realized P&L`}
+                            formatter={(v) => `${v >= 0 ? '+' : ''}${v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} all-time realized P&L`}
                           />
                         </div>
                       </div>
@@ -596,13 +748,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   >
                      <div className="absolute inset-0 bg-indigo-500/5 pointer-events-none" />
                      <Rocket className="w-12 h-12 text-indigo-400 mb-4" />
-                     <h3 className="text-lg font-bold text-white mb-2">Deploy New Agent</h3>
-                     <p className="text-xs text-slate-400 mb-6">Deploy a real trading agent, then trade with it from the Trading Desk — its P&L ranks you here.</p>
+                     <h3 className="text-lg font-bold text-white mb-2">Deploy Paper Agent</h3>
+                     <p className="text-xs text-slate-400 mb-6">Deploy a paper agent and place fills from the Trading Desk. Connect your Agent Wallet when you are ready for those results to enter the ranked season.</p>
                      <button
                        onClick={() => setDeployModalOpen(true)}
                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors relative z-10"
                      >
-                       <Plus className="w-5 h-5" /> Deploy Agent
+                       <Plus className="w-5 h-5" /> Deploy Paper Agent
                      </button>
                   </motion.div>
                 </div>
@@ -619,12 +771,12 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         <Bot className="w-8 h-8 text-slate-500" />
                       </div>
                       <h4 className="text-xl font-bold text-white mb-2">No Agents Yet</h4>
-                      <p className="text-slate-400 mb-6 max-w-sm mx-auto">Deploy an agent, trade with it from the Trading Desk, and its real P&L puts you on the board.</p>
+                      <p className="text-slate-400 mb-6 max-w-sm mx-auto">Deploy a paper agent and practice immediately. Ranked seasons begin after you connect your Agent Wallet.</p>
                       <button
                         onClick={() => setDeployModalOpen(true)}
                         className="px-6 py-3 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 hover:text-indigo-300 font-bold rounded-xl transition-colors border border-indigo-500/30 flex items-center gap-2"
                       >
-                        <Plus className="w-4 h-4" /> Deploy Your First Agent
+                        <Plus className="w-4 h-4" /> Deploy Your First Paper Agent
                       </button>
                     </div>
                   ) : (
@@ -669,7 +821,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                                  <button
                                    onClick={() => onAgentAutopilotChanged(agent.id, !agent.autopilot)}
                                    className={`p-1.5 rounded-lg transition-colors ${agent.autopilot ? 'text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/20' : 'text-slate-500 hover:text-cyan-300 hover:bg-cyan-500/10'}`}
-                                   title={agent.autopilot ? 'Autopilot ON — agent trades itself. Click to stop.' : 'Enable Autopilot — the agent trades by itself on live prices'}
+                                   title={agent.autopilot ? 'Paper Autopilot ON — click to stop simulated trading.' : 'Enable Paper Autopilot — simulated trades based on market prices'}
                                  >
                                    <Zap className="w-4 h-4" />
                                  </button>
@@ -756,12 +908,32 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
             )}
 
             {/* Leaderboard snippet */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 mt-8">
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-8 mt-8">
+              <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-yellow-500" /> Leaderboard
                 </h3>
-                {activeLeagueId === 'global' && (
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono uppercase text-slate-500">Rank by</span>
+                    <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden p-1">
+                      {([
+                        ['roi', 'Return %'],
+                        ['pnl', 'P&L'],
+                        ['volume', 'Volume'],
+                      ] as const).map(([id, label]) => (
+                        <button
+                          key={id}
+                          onClick={() => { setScoringMetric(id); setInspectedPlayerRank(null); }}
+                          aria-pressed={scoringMetric === id}
+                          className={`px-3 py-1.5 text-sm transition-colors rounded-lg ${scoringMetric === id ? 'font-bold bg-yellow-500/15 text-yellow-300' : 'font-medium text-slate-400 hover:text-white'}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {activeLeagueId === 'global' && (
                   <div className="flex bg-slate-950 border border-slate-800 rounded-xl overflow-hidden p-1">
                     {['All', 'Platinum', 'Gold', 'Silver', 'Bronze'].map((tier) => (
                       <button
@@ -777,7 +949,8 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                       </button>
                     ))}
                   </div>
-                )}
+                  )}
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -785,9 +958,10 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     <tr>
                       <th className="px-4 py-4 font-semibold">Rank</th>
                       <th className="px-4 py-4 font-semibold">Player</th>
-                      <th className="px-4 py-4 font-semibold">Active Agents</th>
-                      <th className="px-4 py-4 font-semibold text-right">PnL</th>
-                      <th className="px-4 py-4 font-semibold text-right">ROI</th>
+                      <th className="px-4 py-4 font-semibold">Scored Lanes</th>
+                      <th className={`px-4 py-4 font-semibold text-right ${scoringMetric === 'volume' ? 'text-yellow-300' : ''}`}>Volume</th>
+                      <th className={`px-4 py-4 font-semibold text-right ${scoringMetric === 'pnl' ? 'text-yellow-300' : ''}`}>P&amp;L</th>
+                      <th className={`px-4 py-4 font-semibold text-right ${scoringMetric === 'roi' ? 'text-yellow-300' : ''}`}>Return</th>
                       <th className="px-4 py-4"></th>
                     </tr>
                   </thead>
@@ -798,8 +972,17 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                       const tier = tierOf(player.rank);
                       return (
                       <tr
-                        key={player.rank}
+                        key={player.userId}
                         onClick={() => setInspectedPlayerRank(player.rank)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setInspectedPlayerRank(player.rank);
+                          }
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Open ${player.name}'s Arena profile, rank ${player.rank}`}
                         className={`transition-colors group cursor-pointer ${isYou ? 'bg-indigo-500/10 border-l-2 border-indigo-500' : 'hover:bg-slate-800/50'}`}
                       >
                         <td className={`px-4 py-4 font-mono font-bold ${isYou ? 'text-indigo-400' : 'text-slate-300'}`}>
@@ -824,15 +1007,25 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-slate-400">{player.agents} <span className="text-xs ml-1 bg-slate-800 group-hover:bg-indigo-500/10 group-hover:text-indigo-300 px-2 py-0.5 rounded text-slate-500 transition-colors">{player.strategy}</span></td>
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap gap-1.5 mb-1">
+                            {(player.lanes || []).filter((lane: any) => lane.events > 0).map((lane: any) => (
+                              <span key={lane.key} className="text-[9px] font-mono uppercase px-1.5 py-0.5 rounded border bg-indigo-500/10 text-indigo-300 border-indigo-500/20">
+                                {lane.label}
+                              </span>
+                            ))}
+                            {!(player.lanes || []).some((lane: any) => lane.events > 0) && <span className="text-xs text-slate-600">No scored activity</span>}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">{player.activityCount || 0} events · {player.activeDays || 0} active days</div>
+                        </td>
+                        <td className={`px-4 py-4 text-right font-mono font-bold ${scoringMetric === 'volume' ? 'text-yellow-300' : 'text-slate-300'}`}>{fmtUsd(player.volumeUsd || 0)}</td>
                         <td className="px-4 py-4 text-right">
-                          <span className={`font-mono font-bold text-base ${(player.currentBal - player.startBal) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {(player.currentBal - player.startBal) >= 0 ? '+' : ''}
-                            {((player.currentBal - player.startBal)).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                          <span className={`font-mono font-bold text-base ${(player.pnlValue || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'} ${scoringMetric === 'pnl' ? 'underline decoration-yellow-500/40 underline-offset-4' : ''}`}>
+                            {(player.pnlValue || 0) >= 0 ? '+' : ''}{fmtUsd(player.pnlValue || 0)}
                           </span>
                         </td>
                         <td className="px-4 py-4 text-right">
-                          <span className="font-mono font-bold text-emerald-400 text-lg">{player.roi}</span>
+                          <span className={`font-mono font-bold text-lg ${(player.roiValue || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'} ${scoringMetric === 'roi' ? 'underline decoration-yellow-500/40 underline-offset-4' : ''}`}>{player.roi}</span>
                         </td>
                         <td className="px-4 py-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
                           <ChevronRight className="w-5 h-5 text-slate-400 inline-block" />
@@ -842,9 +1035,9 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     })}
                     {visibleLeaderboard.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-slate-500 text-sm">
+                        <td colSpan={7} className="px-4 py-10 text-center text-slate-500 text-sm">
                           {leaderboard.length === 0
-                            ? 'No agents competing yet. Deploy an agent to claim the top spot.'
+                            ? (arenaError ? 'No standings are available for this invitation.' : 'No agents competing yet. Deploy a paper agent to claim the top spot.')
                             : `No players in ${activeTier} tier yet.`}
                         </td>
                       </tr>
@@ -863,12 +1056,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {leagues.map((league) => {
                 const isJoined = joinedLeagues.includes(league.id);
+                const isEnded = league.status === 'ended';
                 return (
-                  <div key={league.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-indigo-500/30 transition-all group flex flex-col">
+                  <div key={league.id} className={`bg-slate-900 border border-slate-800 rounded-2xl p-6 transition-all group flex flex-col ${isEnded ? 'opacity-75' : 'hover:border-indigo-500/30'}`}>
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-lg font-bold text-white group-hover:text-indigo-400 transition-colors">{league.name}</h3>
                       <span className="text-[10px] uppercase font-mono px-2 py-1 rounded bg-slate-800 text-slate-400">
-                        {league.risk} Risk
+                        {isEnded ? 'Ended' : `${league.risk} Risk`}
                       </span>
                     </div>
                     
@@ -878,7 +1072,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         <span className="font-mono text-slate-300">{league.creator}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Prize Pool</span>
+                        <span className="text-slate-500">Paper Prize</span>
                         <span className="text-yellow-500 font-medium">{league.prize}</span>
                       </div>
                       <div className="flex justify-between">
@@ -886,20 +1080,30 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         <span className="text-slate-300 flex items-center gap-1"><Users className="w-3 h-3" /> {league.participants}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">Ends In</span>
+                        <span className="text-slate-500">{isEnded ? 'Status' : 'Ends In'}</span>
                         <span className="text-slate-300">{league.time}</span>
                       </div>
                     </div>
                     
                     <button 
-                      onClick={() => handleJoinLeague(league.id)}
+                      onClick={() => {
+                        if (isEnded) {
+                          selectLeague(league.id);
+                          setActiveTab('dashboard');
+                        } else {
+                          handleJoinLeague(league.id);
+                        }
+                      }}
+                      disabled={isJoining && !isEnded}
                       className={`w-full py-2.5 rounded-xl font-medium transition-colors flex items-center justify-center gap-2 ${
-                        isJoined 
+                        isEnded
+                          ? 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+                          : isJoined
                           ? 'bg-indigo-600 text-white shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:bg-indigo-500' 
                           : 'bg-slate-800 hover:bg-slate-700 text-white'
                       }`}
                     >
-                      {isJoined ? 'Enter Arena' : 'Join League'} <ChevronRight className="w-4 h-4" />
+                      {isEnded ? 'View Final Standings' : isJoined ? 'Enter Arena' : isJoining ? 'Joining…' : 'Join League'} <ChevronRight className="w-4 h-4" />
                     </button>
                   </div>
                 );
@@ -911,9 +1115,16 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
         {/* Create Tab */}
         {activeTab === 'create' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-8">
               <h2 className="text-2xl font-bold text-white mb-2">Create Custom League</h2>
               <p className="text-slate-400 mb-8 text-sm">Set up a paper trading competition with custom parameters to challenge your friends or community.</p>
+
+              {!walletConnected && (
+                <div role="note" className="mb-6 rounded-xl border border-orange-500/30 bg-orange-950/20 p-4 text-sm text-orange-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <span>Creating and joining ranked leagues requires your MetaMask Agent Wallet. Paper practice remains open without it.</span>
+                  <button type="button" onClick={promptConnect} className="shrink-0 rounded-lg bg-orange-600 px-3 py-2 font-bold text-white hover:bg-orange-500">Connect Agent Wallet</button>
+                </div>
+              )}
 
               <form className="space-y-6" onSubmit={handleCreateLeague}>
                 <div>
@@ -928,7 +1139,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   />
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">Starting Balance (Simulated USDC)</label>
                     <input 
@@ -959,7 +1170,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     exist. Replaced with the two fields the API actually honours
                     (AR6), which the form had been hardcoding behind the user's
                     back. */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-slate-300 mb-2">Risk band</label>
                     <select
@@ -973,7 +1184,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Prize</label>
+                    <label className="block text-sm font-medium text-slate-300 mb-2">Paper prize label</label>
                     <input
                       type="text"
                       maxLength={60}
@@ -985,8 +1196,13 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   </div>
                 </div>
                 <div className="pt-4">
-                  <button type="submit" className="w-full py-4 bg-white text-slate-900 font-bold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2">
-                    Initialize League <Zap className="w-4 h-4" />
+                  <button
+                    type={walletConnected ? 'submit' : 'button'}
+                    onClick={walletConnected ? undefined : promptConnect}
+                    disabled={isCreating}
+                    className="w-full py-4 bg-white disabled:bg-slate-700 disabled:text-slate-400 text-slate-900 font-bold rounded-xl hover:bg-slate-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    {isCreating ? 'Creating Paper League…' : walletConnected ? 'Initialize Paper League' : 'Connect Wallet to Initialize'} <Zap className="w-4 h-4" />
                   </button>
                 </div>
               </form>
@@ -1003,23 +1219,26 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
+              className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
               onClick={() => setDeployModalOpen(false)}
             />
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="deploy-paper-agent-title"
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-slate-900 border border-slate-700 rounded-3xl p-6 z-50 shadow-2xl"
             >
               <div className="flex justify-between items-center mb-2">
-                <h3 className="text-xl font-bold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-indigo-400" /> Deploy an Agent</h3>
-                <button onClick={() => setDeployModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+                <h3 id="deploy-paper-agent-title" className="text-xl font-bold text-white flex items-center gap-2"><Bot className="w-5 h-5 text-indigo-400" /> Deploy a Paper Agent</h3>
+                <button aria-label="Close deploy dialog" onClick={() => setDeployModalOpen(false)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-xs text-slate-500 mb-5">
-                Pick a starter — this creates a real trading agent (it also appears in the Trading Agents tab). Trade with it from the Trading Desk; its P&L ranks you on the board.
+                Pick a starter — this creates a paper agent that also appears in Trading Agents. Practice fills are immediate; connect your Agent Wallet to enter ranked seasons.
               </p>
 
               <div className="space-y-3 max-h-[420px] overflow-y-auto pr-2 custom-scrollbar">
@@ -1042,7 +1261,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                   onClick={() => { setDeployModalOpen(false); window.dispatchEvent(new CustomEvent('navigate', { detail: 'agents' })); }}
                   className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border border-dashed border-slate-600 hover:border-indigo-500 hover:bg-indigo-500/10 text-slate-400 hover:text-indigo-400 transition-all font-medium"
                 >
-                  Build a custom agent in the Trading Agents tab →
+                  Build a custom paper agent in the Trading Agents tab →
                 </button>
               </div>
 
@@ -1067,6 +1286,9 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
               onClick={() => setInspectedAgentId(null)}
             />
             <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="arena-agent-detail-title"
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -1083,14 +1305,14 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                     <div className="p-6 border-b border-slate-800 flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-3 mb-1">
-                          <h3 className="text-2xl font-bold text-white">{agent.name}</h3>
+                          <h3 id="arena-agent-detail-title" className="text-2xl font-bold text-white">{agent.name}</h3>
                           <span className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs uppercase font-mono ${paused ? 'bg-slate-700/40 text-slate-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
                             {!paused && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />} {paused ? 'Paused' : 'Active'}
                           </span>
                         </div>
                         <div className="text-slate-500 text-sm">{agent.strategyType.replace('_', ' ')} · {agent.assetSymbol} · {agent.tradeType === 'perp' ? `${agent.leverage}x perp` : 'spot'}</div>
                       </div>
-                      <button onClick={() => setInspectedAgentId(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
+                      <button aria-label="Close agent details" onClick={() => setInspectedAgentId(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
@@ -1113,7 +1335,14 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Recent Fills</h4>
                         {agentTrades.length === 0 ? (
                           <div className="bg-slate-950/50 border border-slate-800 border-dashed rounded-xl p-6 text-center text-sm text-slate-500">
-                            No trades yet — take this agent to the <b className="text-slate-300">Trading Desk</b> and place its first fill.
+                            <p>No fills yet. Open the Trading Desk with this agent already available.</p>
+                            <button
+                              type="button"
+                              onClick={() => { setInspectedAgentId(null); window.dispatchEvent(new CustomEvent('navigate', { detail: 'trading' })); }}
+                              className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-500"
+                            >
+                              Open Trading Desk <ChevronRight className="ml-1 inline-block h-4 w-4" />
+                            </button>
                           </div>
                         ) : (
                           <div className="space-y-1.5">
@@ -1166,11 +1395,14 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
               className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-40"
               onClick={() => setInspectedPlayerRank(null)}
             />
-            <motion.div 
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="arena-player-profile-title"
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-3xl z-50 shadow-2xl flex flex-col"
+              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[calc(100%-2rem)] max-w-2xl bg-slate-900 border border-slate-700 rounded-3xl z-50 shadow-2xl flex flex-col"
               style={{ maxHeight: '90vh' }}
             >
               {(() => {
@@ -1183,7 +1415,7 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                       <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] pointer-events-none" />
                       <div className="relative z-10">
                         <div className="flex items-center gap-3 mb-1">
-                          <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                          <h3 id="arena-player-profile-title" className="text-2xl font-bold text-white flex items-center gap-2">
                             {player.rank === 1 ? <Crown className="w-6 h-6 text-yellow-500" /> : 
                              player.rank === 2 ? <Crown className="w-6 h-6 text-slate-300" /> :
                              player.rank === 3 ? <Crown className="w-6 h-6 text-amber-700" /> :
@@ -1193,31 +1425,51 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         </div>
                         <div className="text-slate-500 text-sm font-mono">{player.address}</div>
                       </div>
-                      <button onClick={() => setInspectedPlayerRank(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors relative z-10">
+                      <button aria-label="Close player profile" onClick={() => setInspectedPlayerRank(null)} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 transition-colors relative z-10">
                         <X className="w-5 h-5" />
                       </button>
                     </div>
 
                     <div className="p-6 overflow-y-auto custom-scrollbar">
-                      <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 mb-8">
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 sm:col-span-2">
-                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Total PnL</div>
-                          <div className={`text-xl font-bold ${(player.currentBal - player.startBal) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            {(player.currentBal - player.startBal) >= 0 ? '+' : ''}{((player.currentBal - player.startBal)).toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Total P&amp;L</div>
+                          <div className={`text-xl font-bold ${(player.pnlValue || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {(player.pnlValue || 0) >= 0 ? '+' : ''}{fmtUsd(player.pnlValue || 0)}
                           </div>
+                          <div className="text-[10px] text-slate-600 font-mono mt-1">{fmtUsd(player.realizedPnl || 0)} realized · {fmtUsd(player.unrealizedPnl || 0)} open</div>
                         </div>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 sm:col-span-1">
-                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Total ROI</div>
-                          <div className="text-xl font-bold text-emerald-400">{player.roi}</div>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Return</div>
+                          <div className={`text-xl font-bold ${(player.roiValue || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{player.roi}</div>
                         </div>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 sm:col-span-1">
-                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Agents</div>
-                          <div className="text-xl font-bold text-white">{player.agents}</div>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Traded Volume</div>
+                          <div className="text-xl font-bold text-white">{fmtUsd(player.volumeUsd || 0)}</div>
+                          <div className="text-[10px] text-slate-600 font-mono mt-1">{player.activityCount || 0} scored events</div>
                         </div>
-                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 sm:col-span-2">
-                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Primary Strategy</div>
-                          <div className="text-lg font-bold text-white">{player.strategy}</div>
+                        <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                          <div className="text-xs text-slate-500 font-mono uppercase mb-1">Realized Win Rate</div>
+                          <div className="text-xl font-bold text-white">{player.winRatePct == null ? '—' : `${player.winRatePct}%`}</div>
+                          <div className="text-[10px] text-slate-600 font-mono mt-1">{player.activeDays || 0} active days</div>
                         </div>
+                      </div>
+
+                      <h4 className="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Money lanes</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-8">
+                        {(player.lanes || []).map((lane: any) => {
+                          const lanePnl = (lane.realizedPnl || 0) + (lane.unrealizedPnl || 0);
+                          return (
+                            <div key={lane.key} className={`rounded-xl border p-4 ${lane.events > 0 ? 'bg-slate-950 border-indigo-500/20' : 'bg-slate-950/40 border-slate-800 opacity-60'}`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <span className="font-bold text-white">{lane.label}</span>
+                                <span className="text-[9px] font-mono uppercase text-slate-500">{lane.events} events</span>
+                              </div>
+                              <div className={`font-mono font-bold ${lanePnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{lanePnl >= 0 ? '+' : ''}{fmtUsd(lanePnl)}</div>
+                              <div className="text-[10px] text-slate-500 font-mono mt-1">{fmtUsd(lane.volumeUsd || 0)} volume</div>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {player.badges?.length > 0 && (
@@ -1255,15 +1507,20 @@ export const AgentArena: React.FC<AgentArenaProps> = ({ user, agents, trades, on
                         </div>
                       </div>
 
-                      <div className="mt-8 bg-indigo-500/10 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4">
+                      <button
+                        type="button"
+                        onClick={() => { setInspectedPlayerRank(null); window.dispatchEvent(new CustomEvent('navigate', { detail: 'rooms' })); }}
+                        className="mt-8 w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl p-4 flex items-start gap-4 text-left transition-colors"
+                      >
                         <Activity className="w-6 h-6 text-indigo-400 flex-shrink-0 mt-0.5" />
-                        <div>
+                        <div className="flex-1">
                           <h5 className="font-bold text-indigo-300 text-sm mb-1">Copy their edge</h5>
                           <p className="text-xs text-indigo-400/80 leading-relaxed">
-                            Shared strategies from other players can be copied from Rooms — deploy one, tune it, and take their spot on the board.
+                            Open Rooms to find shared strategies, copy one, tune it, and bring it back to the Arena.
                           </p>
                         </div>
-                      </div>
+                        <ChevronRight className="w-5 h-5 text-indigo-400 mt-2" />
+                      </button>
                     </div>
                   </>
                 );

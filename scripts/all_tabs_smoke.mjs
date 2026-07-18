@@ -5,9 +5,45 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 
-const baseUrl = process.env.METAEDGE_URL || 'http://127.0.0.1:3000';
-const serverPort = new URL(baseUrl).port || '3000';
+async function getFreePort() {
+  return await new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const address = probe.address();
+      if (!address || typeof address === 'string') {
+        probe.close();
+        reject(new Error('Could not allocate an isolated tab-smoke port.'));
+        return;
+      }
+      const freePort = address.port;
+      probe.close((error) => error ? reject(error) : resolve(freePort));
+    });
+  });
+}
+
+async function stopChild(child) {
+  if (child.exitCode !== null || child.signalCode) return;
+  await new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      if (child.exitCode === null) child.kill('SIGKILL');
+      resolve();
+    }, 2000);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    child.kill('SIGTERM');
+  });
+}
+
+const serverPort = process.env.METAEDGE_URL
+  ? Number(new URL(process.env.METAEDGE_URL).port || 3000)
+  : await getFreePort();
+const baseUrl = process.env.METAEDGE_URL || `http://127.0.0.1:${serverPort}`;
+const expectedCommit = `tab-smoke-${process.pid}-${Date.now()}`;
 const tmpDir = await mkdtemp(path.join(tmpdir(), 'metaedge-tabs-'));
 const dbPath = path.join(tmpDir, 'db.json');
 
@@ -44,7 +80,13 @@ async function req(pathname, { method = 'GET', cookie, body, timeoutMs = 8_000 }
 async function waitForServer() {
   const startedAt = Date.now();
   while (Date.now() - startedAt < 30_000) {
-    try { const res = await fetch(`${baseUrl}/api/health`); if (res.ok) return; } catch { /* keep polling */ }
+    try {
+      const res = await fetch(`${baseUrl}/api/health`);
+      if (res.ok) {
+        const health = await res.json().catch(() => ({}));
+        if (health.commit === expectedCommit) return;
+      }
+    } catch { /* keep polling */ }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
   throw new Error(`MetaEdge server did not become ready at ${baseUrl}.`);
@@ -83,7 +125,9 @@ if (!existsSync(path.join(process.cwd(), 'dist', 'server.cjs'))) {
 const child = spawn('node', ['dist/server.cjs'], {
   cwd: process.cwd(),
   env: { ...process.env, PORT: serverPort, DATABASE_URL: dbPath, COOKIE_SECRET: 'all-tabs-smoke',
-    LIVE_EXECUTION_ENABLED: 'false', NODE_ENV: 'production' },
+    LIVE_EXECUTION_ENABLED: 'false', NODE_ENV: 'production', GIT_COMMIT: expectedCommit,
+    AUTOTRADER_DISABLED: 'true', RECORDER_DISABLED: 'true', PREDICTION_SCOUT_DISABLED: 'true',
+    DECISION_RUNTIME_DISABLED: 'true', OPPORTUNITY_FACTORY_DISABLED: 'true' },
   stdio: ['ignore', 'ignore', 'ignore'],
 });
 
@@ -140,6 +184,6 @@ try {
   console.error('Tab smoke failed:', err.message);
   process.exitCode = 1;
 } finally {
-  child.kill('SIGKILL');
+  await stopChild(child);
   await rm(tmpDir, { recursive: true, force: true });
 }

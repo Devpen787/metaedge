@@ -98,8 +98,11 @@ test('the continuous server launcher keeps research batches disabled', () => {
 
 test('the final browser smoke targets an isolated configurable server port', () => {
   const smoke = fs.readFileSync(path.join(process.cwd(), 'scripts', 'all_tabs_smoke.mjs'), 'utf8');
+  const browserProof = fs.readFileSync(path.join(process.cwd(), 'scripts', 'recovery_browser_proof.mjs'), 'utf8');
   const matrix = fs.readFileSync(path.join(process.cwd(), 'scripts', 'run_flywheel_final_matrix.mjs'), 'utf8');
   assert.match(smoke, /process\.env\.METAEDGE_URL/);
+  assert.match(browserProof, /process\.env\.METAEDGE_URL/);
+  assert.match(matrix, /recovery_browser_proof\.mjs/);
   assert.match(matrix, /METAEDGE_URL.*127\.0\.0\.1:3100/);
 });
 

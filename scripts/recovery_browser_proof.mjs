@@ -3,12 +3,13 @@ import path from 'node:path';
 import puppeteer from 'puppeteer';
 
 const output = path.join(process.cwd(), 'output', 'playwright', 'flywheel-recovery');
+const baseUrl = process.env.METAEDGE_URL || 'http://127.0.0.1:3000';
 fs.mkdirSync(output, { recursive: true });
 const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
 
 async function capture(name, viewport) {
   const page = await browser.newPage(); await page.setViewport(viewport);
-  await page.goto('http://127.0.0.1:3000', { waitUntil: 'networkidle0', timeout: 30_000 });
+  await page.goto(baseUrl, { waitUntil: 'networkidle0', timeout: 30_000 });
   const needsEntry = await page.evaluate(() => document.body.innerText.includes('Enter Paper Room'));
   if (needsEntry) {
     await page.evaluate(() => {

@@ -16,6 +16,7 @@ const commands = [
   ['availability-proof', 'npm', ['run', 'fast-perp:availability-proof']],
   ['typecheck', 'npm', ['run', 'lint']],
   ['production-build', 'npm', ['run', 'build']],
+  ['browser-proof', 'node', ['scripts/recovery_browser_proof.mjs']],
   ['browser-smoke', 'npm', ['run', 'smoke:tabs']],
   ['capability-matrix', 'node', ['scripts/capability_matrix.mjs', '--strict']],
   ['diff-check', 'git', ['diff', '--check']],

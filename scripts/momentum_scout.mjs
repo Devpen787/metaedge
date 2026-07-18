@@ -25,8 +25,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const DIR = path.join(process.cwd(), 'data', 'market', 'momentum');
-const PAGES = Number(process.env.MOM_PAGES || 6);       // 250/page -> ~1500 coins deep into small-caps
-const VOL_FLOOR = Number(process.env.MOM_VOL_FLOOR || 250000);   // $250k 24h vol: tradeable, not a micro-rug
+const PAGES = Number(process.env.MOM_PAGES || 10);      // 250/page -> ~2500 coins; reaches the ~$5M-mcap tail (ATLAS-tier)
+const VOL_FLOOR = Number(process.env.MOM_VOL_FLOOR || 100000);   // $100k 24h vol: tradeable small-cap, not a micro-rug
 const MCAP_FLOOR = Number(process.env.MOM_MCAP_FLOOR || 1e6);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };

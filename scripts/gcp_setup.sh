@@ -62,6 +62,10 @@ After=network.target
 User=$USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
+Environment=OPPORTUNITY_FACTORY_DISABLED=true
+Environment=FAST_PERP_RECORDER_ENABLED=false
+Environment=FAST_PERP_OPERATION_ENABLED=false
+Environment=FAST_PERP_RESEARCH_ENABLED=false
 ExecStart=$(command -v node) $APP_DIR/dist/server.cjs
 Restart=always
 RestartSec=3

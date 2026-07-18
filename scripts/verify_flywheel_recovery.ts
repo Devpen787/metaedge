@@ -302,7 +302,7 @@ if (baselineRequired) {
 
 if (runtimeRequired) {
   const clockDefinitions: Record<string, number> = { signal_evaluator: 250, outcome_resolver: 1_000,
-    challenger_research: 21_600_000, lifecycle_evaluator: 60_000 };
+    lifecycle_evaluator: 60_000 };
   for (const [clock, cadenceMs] of Object.entries(clockDefinitions)) {
     const file = path.join(operatorRoot, 'heartbeats', `${clock}.json`);
     if (!fs.existsSync(file)) { fail('RUNTIME_HEARTBEAT_MISSING', clock); continue; }
@@ -314,6 +314,12 @@ if (runtimeRequired) {
   }
   const storageFile = path.join(operatorRoot, 'storage-health.json');
   if (!fs.existsSync(storageFile) || JSON.parse(fs.readFileSync(storageFile, 'utf8')).healthy !== true) fail('RUNTIME_STORAGE_UNHEALTHY');
+  const attemptsRoot = path.join(projectRoot, 'data', 'opportunity-factory-v3', 'research-bridge', 'attempts');
+  if (fs.existsSync(attemptsRoot)) for (const name of fs.readdirSync(attemptsRoot).filter((row) => row.endsWith('.json'))) {
+    const attempt = JSON.parse(fs.readFileSync(path.join(attemptsRoot, name), 'utf8'));
+    if (attempt.liveExecution !== 'locked') fail('RESEARCH_BATCH_LIVE_NOT_LOCKED', attempt.id);
+    if (attempt.status === 'running' && now > Number(attempt.deadlineAt)) fail('RESEARCH_BATCH_DEADLINE_EXCEEDED', attempt.id);
+  }
 }
 
 checks.active = { contracts: contracts.length, strategyVersions: versions.length, lifecycleEvents: lifecycle.length,

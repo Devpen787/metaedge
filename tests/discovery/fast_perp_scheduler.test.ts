@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { FAST_PERP_CLOCKS, enabledFastPerpClocks,
+import { FAST_PERP_CLOCKS, FAST_PERP_RESEARCH_BATCH, enabledFastPerpClocks,
   evaluateFastPerpClockHeartbeat, measureFastPerpClockQueue,
   fastPerpClockWakeInterval, recorderEvidenceIsOperational,
   remainingChallengerDelay } from '../../server/discovery/fast_perp_scheduler.js';
@@ -12,13 +12,16 @@ import { EconomicOperationStore } from '../../server/discovery/economic_store.js
 import { runControlledFastPerpCycle } from '../../server/discovery/fast_perp_controlled_runtime.js';
 import { FastPerpEvidenceStore } from '../../server/discovery/fast_perp_store.js';
 
-test('fast-perp operation exposes four independent clocks with declared cadences', () => {
+test('fast-perp operation exposes only the three continuous clocks', () => {
   assert.deepEqual(FAST_PERP_CLOCKS.map((clock) => [clock.id, clock.cadenceMs]), [
     ['signal_evaluator', 250],
     ['outcome_resolver', 1_000],
-    ['challenger_research', 6 * 60 * 60 * 1_000],
     ['lifecycle_evaluator', 60_000],
   ]);
+  assert.deepEqual(FAST_PERP_RESEARCH_BATCH, {
+    id: 'challenger_research', flag: 'FAST_PERP_RESEARCH_ENABLED', cadenceMs: 6 * 60 * 60 * 1_000,
+    timeoutMs: 5 * 60_000,
+  });
 });
 
 test('each clock is independently fail-closed behind its staged flag', () => {
@@ -83,12 +86,8 @@ test('latency-sensitive clocks wake with scheduling margin while health keeps st
     status: 'healthy' }, 2_001).fresh, false);
 });
 
-test('a long-cadence research clock stays fresh only for a bounded running heartbeat window', () => {
-  const clock = FAST_PERP_CLOCKS.find((row) => row.id === 'challenger_research')!;
-  assert.equal(evaluateFastPerpClockHeartbeat(clock, { completedAt: null, heartbeatAt: 1_000, phase: 'running',
-    queueDepth: 0, status: 'healthy' }, 60_000).fresh, true);
-  assert.equal(evaluateFastPerpClockHeartbeat(clock, { completedAt: null, heartbeatAt: 1_000, phase: 'running',
-    queueDepth: 0, status: 'healthy' }, 61_001).fresh, false);
+test('challenger research is not eligible for continuous heartbeat health', () => {
+  assert.equal(FAST_PERP_CLOCKS.map((row) => String(row.id)).includes('challenger_research'), false);
 });
 
 test('clock queue health measures schedule overrun instead of reporting a literal zero', () => {

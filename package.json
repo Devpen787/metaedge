@@ -38,6 +38,12 @@
     "discovery:portfolio-audit": "tsx scripts/portfolio_execution_audit.ts",
     "discovery:forward-audit": "tsx scripts/forward_learning_audit.ts",
     "discovery:fast-perps": "tsx scripts/fast_perp_cycle.ts",
+    "fast-perp:export": "tsx scripts/fast_perp_export_evidence.ts",
+    "fast-perp:research-batch": "tsx scripts/fast_perp_research_batch.ts",
+    "fast-perp:import": "tsx scripts/fast_perp_import_proposal.ts",
+    "fast-perp:availability-proof": "tsx scripts/fast_perp_availability_proof.ts",
+    "fast-perp:verify-burnin": "node scripts/verify_fast_perp_availability_burnin.mjs",
+    "fast-perp:final-matrix": "node scripts/run_flywheel_final_matrix.mjs",
     "discovery:resolve-predictions": "tsx scripts/record_prediction_resolutions.ts",
     "test:discovery": "tsx --test tests/discovery/*.test.ts",
     "test:truth-mutations": "tsx scripts/flywheel_truth_mutations.ts",
@@ -72,6 +78,7 @@
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
+    "jsonschema": "^1.5.0",
     "puppeteer": "^25.2.1",
     "tsx": "^4.21.0"
   }

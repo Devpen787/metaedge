@@ -102,7 +102,7 @@ export interface FastPerpRecorderStatus {
 }
 
 export interface OperatorClockHealth {
-  id: 'signal_evaluator' | 'outcome_resolver' | 'challenger_research' | 'lifecycle_evaluator';
+  id: 'signal_evaluator' | 'outcome_resolver' | 'lifecycle_evaluator';
   cadenceMs: number;
   ageMs: number | null;
   queueDepth: number | null;
@@ -110,6 +110,13 @@ export interface OperatorClockHealth {
   fresh: boolean;
   bounded: boolean;
   status: 'healthy' | 'degraded' | 'paused' | 'missing';
+}
+
+export interface ResearchBatchHealth {
+  id: 'challenger_research'; cadenceMs: number; timeoutMs: number; latestAttemptId: string | null;
+  status: 'disabled' | 'idle' | 'running' | 'completed' | 'failed' | 'timed_out' | 'abandoned';
+  startedAt: number | null; completedAt: number | null; deadlineAt: number | null; failureReason: string | null;
+  affectsContinuousOperation: false;
 }
 
 export interface OperatorHealth {
@@ -128,6 +135,7 @@ export interface OperatorHealth {
   unresolvedOutcomes: number;
   storageHealthy: boolean;
   clocks: OperatorClockHealth[];
+  researchBatch: ResearchBatchHealth;
   currentLiveLock: boolean;
   liveExecution: 'locked' | 'enabled';
 }

@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EconomicOperationStore } from '../server/discovery/economic_store.js';
 import { runFastLifecycleCycle } from '../server/discovery/fast_lifecycle_runtime.js';
-import { runFastPerpResearchCycle } from '../server/discovery/fast_perp_research.js';
 import { FastPerpEvidenceStore } from '../server/discovery/fast_perp_store.js';
 import { commitFastForwardDecisions, resolveFastForwardOutcomes } from '../server/discovery/fast_shadow_runtime.js';
 import { materializeV3OperatorSnapshot } from '../server/discovery/operator_snapshot.js';
@@ -24,9 +23,7 @@ if (clock === 'signal_evaluator') {
   detail = resolveFastForwardOutcomes({ evidenceStore, economicStore, now });
   items = (detail as { createdOutcomes: number }).createdOutcomes;
 } else if (clock === 'challenger_research') {
-  detail = runFastPerpResearchCycle({ evidenceStore, economicStore, now });
-  items = (detail as { evaluations: unknown[] }).evaluations.length;
-  evidenceStore.maintainPartitions(now, 30, 2);
+  throw new Error('CHALLENGER_RESEARCH_MUST_RUN_THROUGH_IMMUTABLE_BATCH_BRIDGE');
 } else if (clock === 'lifecycle_evaluator') {
   detail = runFastLifecycleCycle({ economicStore });
   items = (detail as { evaluated: number }).evaluated;

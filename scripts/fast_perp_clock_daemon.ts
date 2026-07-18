@@ -2,11 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EconomicOperationStore } from '../server/discovery/economic_store.js';
 import { runFastLifecycleCycle } from '../server/discovery/fast_lifecycle_runtime.js';
-import { runFastPerpResearchCycle } from '../server/discovery/fast_perp_research.js';
 import { FastPerpEvidenceStore } from '../server/discovery/fast_perp_store.js';
 import { commitFastForwardDecisions, resolveFastForwardOutcomes } from '../server/discovery/fast_shadow_runtime.js';
-import { FAST_PERP_CLOCKS, fastPerpClockWakeInterval, measureFastPerpClockQueue,
-  remainingChallengerDelay } from '../server/discovery/fast_perp_scheduler.js';
+import { FAST_PERP_CLOCKS, fastPerpClockWakeInterval, measureFastPerpClockQueue } from '../server/discovery/fast_perp_scheduler.js';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -29,16 +27,9 @@ async function main(): Promise<void> {
   while (true) {
     try { process.kill(parentPid, 0); } catch { process.exit(0); }
     const startedAt = Date.now(); let items = 0; let status = 'healthy'; let detail: unknown = null;
-    const challengerDelayMs = clockId === 'challenger_research'
-      ? remainingChallengerDelay(evidenceStore.readResearchRuns().at(-1)?.createdAt ?? null, startedAt) : 0;
     const paused = fs.existsSync(path.join(pauseRoot, 'global.json')) || fs.existsSync(path.join(pauseRoot, `${clockId}.json`));
     if (paused) status = 'paused';
-    else if (challengerDelayMs > 0) detail = { disposition: 'cadence_deferred', remainingMs: challengerDelayMs };
     else {
-      if (clockId === 'challenger_research') writeHeartbeat({ schemaVersion: 1, clock: clockId, pid: process.pid,
-        startedAt, heartbeatAt: startedAt, completedAt: null, durationMs: 0, cadenceMs: definition.cadenceMs,
-        queueDepth: 0, queueLagMs: 0, scheduleLagMs: 0, status: 'healthy', phase: 'running', items: 0,
-        detail: { disposition: 'research_running' }, liveExecution: 'locked' });
       try {
         if (clockId === 'signal_evaluator') {
           const configured = process.env.FAST_PERP_EVIDENCE_MODE;
@@ -48,9 +39,6 @@ async function main(): Promise<void> {
         } else if (clockId === 'outcome_resolver') {
           detail = resolveFastForwardOutcomes({ evidenceStore, economicStore, now: startedAt });
           items = (detail as { createdOutcomes: number }).createdOutcomes;
-        } else if (clockId === 'challenger_research') {
-          detail = runFastPerpResearchCycle({ evidenceStore, economicStore, now: startedAt });
-          items = (detail as { evaluations: unknown[] }).evaluations.length;
         } else {
           detail = runFastLifecycleCycle({ economicStore }); items = (detail as { evaluated: number }).evaluated;
         }
@@ -70,7 +58,7 @@ async function main(): Promise<void> {
       console.log(`[fast-perps:${clockId}] status=${status} items=${items}; live locked`);
     }
     lastLogSignature = logSignature;
-    const wakeIntervalMs = challengerDelayMs || fastPerpClockWakeInterval(definition);
+    const wakeIntervalMs = fastPerpClockWakeInterval(definition);
     await sleep(Math.max(1, wakeIntervalMs - (Date.now() - startedAt)));
   }
 }

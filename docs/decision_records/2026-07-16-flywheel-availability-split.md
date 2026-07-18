@@ -1,9 +1,9 @@
 # Flywheel availability: split the workload (corrected per Codex 2026-07-16)
 
 Date: 2026-07-16
-Status: PROPOSED — architectural direction ADOPTED; the causal story below is
-CORRECTED from v1; bridge + proof contract are DEFERRED to Codex (its lane, its
-accurate incident data). Not yet an executable spec.
+Status: IMPLEMENTED LOCALLY on `codex/flywheel-availability-split`; finite proof
+passed, real-corpus proposal/import passed, and the two-hour continuous-paper
+burn-in is running. Live execution remains locked. Canonical Python port deferred.
 Author: Claude (v1), corrected after Codex's review.
 
 ## Correction notice (read first)
@@ -33,13 +33,13 @@ better. The real failure was a **continuous clocked daemon holding a liveness
 heartbeat contract it could not keep**: one challenger computation ran 74 s without
 a heartbeat and tripped the 60 s watchdog.
 
-A **batch job dissolves that failure mode**, and not by adding CPU — by removing
-the contract. A one-shot job has no heartbeat to stall: it either completes or is
-killed by a wall-clock timeout. "Heartbeat stale for 74 s" is a sentence that
-cannot be written about a process whose only liveness signal is "did it exit 0
-before the timeout." So converting `challenger_research` from a clocked daemon into
-a disposable capped batch job removes the exact defect Codex observed — the CPU
-framing in v1 was wrong, the batch remedy is right.
+A **batch job replaces the wrong liveness contract**, and not by adding CPU. It
+does not become magically free of liveness: the continuous heartbeat is replaced
+by a persisted attempt, fixed deadline, and terminal completed/failed/timed-out/
+abandoned result. A research timeout is visible but cannot make recorder, signal,
+resolver, or lifecycle health false. Converting `challenger_research` from a
+clocked daemon into that disposable capped batch removes the exact defect Codex
+observed — the CPU framing in v1 was wrong, the batch remedy is right.
 
 The split's *other* benefit still holds independently: heavy research off the
 serving box means a research stall can never pause the continuous paper node's
@@ -170,15 +170,35 @@ together. Codex correctly separates them — the recorder / evaluator / resolver
 lifecycle loop is its own continuous node and the sole writer of canonical events;
 the serving node only serves and (maybe) does bounded recording.
 
-## Blocker before any of this is coded
+## Former blocker — closed
 
-The recovery implementation is **not a reproducible checkpoint.** `465b553`
-committed this doc, but `claude/backend-buildout` is heavily dirty — most of the
-recovery files this references are uncommitted/untracked, so a clean clone does not
-contain the working system. **Codex must commit the recovery work at a green
-checkpoint first**, so there is a stable base to implement the split against (and so
-Claude can run the promised RED-on-old-code verification). This is the same
-uncommitted-module risk that took the site down on 2026-07-15.
+The recovery tree was preserved and verified in checkpoint commit `3b10d00` before
+the split was implemented. No raw evidence, secrets, bulky soak series, or unrelated
+concurrent Arena work entered that checkpoint.
+
+## Implemented contract and measured result (2026-07-18)
+
+- `FAST_PERP_CLOCKS` contains only signal, resolver, and lifecycle. Server startup
+  cannot spawn challenger research as a persistent clock.
+- Evidence publication uses an atomic directory with a small manifest and bounded,
+  individually hashed JSONL chunks. The first real-data attempt exposed and fixed
+  Node single-string limits; the accepted artifact was 712 MB uncompressed.
+- The research child reads the verified artifact without duplicating it into a
+  second raw store. A deliberately preserved first real attempt timed out at the
+  five-minute cap; the optimized retry completed in about two minutes.
+- The continuous importer validates schema, full payload hash, per-chunk hashes,
+  live lock, expiry, and authority digest. Import is locked and idempotent; partial
+  research-run/contract writes resume safely because append-only IDs are stable.
+- The real proposal `fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713`
+  imported run `fast_perp_research_7a25be6616811b8ac90a`: 300 evaluations, zero
+  contracts, explicit `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked. This is
+  a valid no-edge/no-contract result, not a profitability claim.
+- The deterministic fault proof ran 20 cycles twice with semantic hash
+  `38fb4a85777b8bec7c504a4482f1f0d49d4d9e2e5108e16ee4dc1b3b05efdf66`.
+  It exercised partial run and contract imports, duplicates, killed attempts,
+  kill-during-publication, concurrent import, stale/corrupt/expired bundles, and
+  challenger exclusion from continuous health. It produced two synthetic paper
+  contracts solely as test fixtures.
 
 ## Non-goals
 - Not a rewrite of the flywheel engine — it already batches correctly.

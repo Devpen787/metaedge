@@ -67,7 +67,7 @@ async function storageMetrics() {
 
 function heartbeatPids() {
   const result = {};
-  for (const clock of ['signal_evaluator', 'outcome_resolver', 'challenger_research', 'lifecycle_evaluator']) {
+  for (const clock of ['signal_evaluator', 'outcome_resolver', 'lifecycle_evaluator']) {
     try { result[clock] = Number(JSON.parse(fs.readFileSync(path.join(heartbeatRoot, `${clock}.json`), 'utf8')).pid) || null; }
     catch { result[clock] = null; }
   }

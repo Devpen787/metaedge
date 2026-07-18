@@ -19,6 +19,7 @@ import { fastPerpRecorderStatus } from './fast_perp_recorder.js';
 import { MetaMaskLiveReviewStore } from './metamask_live_review.js';
 import { FAST_PERP_CLOCKS, enabledFastPerpClocks, evaluateFastPerpClockHeartbeat,
   recorderEvidenceIsOperational } from './fast_perp_scheduler.js';
+import { FastPerpResearchBridge } from './fast_perp_research_bridge.js';
 import type { OperatorHealth } from './fast_perp_types.js';
 
 export const discoveryRouter = Router();
@@ -97,11 +98,14 @@ discoveryRouter.get('/api/opportunity-factory/health', (_req, res) => {
   const operational = process.env.FAST_PERP_OPERATION_ENABLED === 'true' && clocks.length > 0
     && clocks.every((clock) => clock.fresh && clock.bounded && clock.status === 'healthy') && recorderHealthy
     && !cached.stale && evidence.integrity.allLiveExecutionLocked && liveLocked && storageHealthy;
+  const researchBatch = new FastPerpResearchBridge().researchBatchHealth(
+    process.env.FAST_PERP_RESEARCH_ENABLED === 'true', now);
   const health: OperatorHealth = { schemaVersion: 1, generatedAt: now, operational, status: operational ? 'operational'
     : process.env.FAST_PERP_OPERATION_ENABLED === 'true' ? 'degraded' : 'disabled', recorder,
     eventAgeMs: evidence.freshness.newestEventAgeMs, apiSummaryAgeMs: cached.ageMs, apiSummaryStale: cached.stale,
     queueLagMs, diskGrowthBytesPerDay: storage.diskGrowthBytesPerDay,
     contractChurn: Number(economicCounts.contractsCreatedLast24h ?? 0), unresolvedDecisions, unresolvedOutcomes,
-    storageHealthy, clocks, currentLiveLock: liveLocked, liveExecution: liveLocked ? 'locked' : 'enabled' };
+    storageHealthy, clocks, researchBatch, currentLiveLock: liveLocked,
+    liveExecution: liveLocked ? 'locked' : 'enabled' };
   res.json(health);
 });

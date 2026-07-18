@@ -22,9 +22,9 @@ Finish the recovery by replacing the fast-perp challenger's continuous liveness 
 2. **Completed - Red tests:** storage, forward timing, stable lineage, trial budget, lifecycle restart, cost reconciliation, operator health, and wallet concurrency.
 3. **Completed - Bounded runtime:** partitioned evidence, lock-and-merge materialized summary, persistent worker clocks, stable contracts, online decision writer, later resolver.
 4. **Completed - Honest economics and safety:** global trials, repeated-look accounting, risk reservations, wallet atomicity and no bypass.
-5. **In progress - reproducible green checkpoint:** preserve the shared dirty recovery tree on `codex/flywheel-availability-split`, archive the invalid run's active pause, run the existing full verification matrix, and commit the recovery baseline without raw data or bulky soak series.
-6. **Pending - availability split implementation:** add one-shot challenger attempts with persisted leases/deadlines/results; immutable evidence-export and research-proposal bundles; staging, hashes, schema/provenance validation, atomic exactly-once import; and lane-local research degradation that cannot pause recording, resolution, or lifecycle.
-7. **Pending - finite availability proof:** run 10-20 real-corpus batches plus timeout, kill-during-publish, corrupt, stale, duplicate, concurrent-import, abandoned-attempt, and restart cases; then run a two-hour continuous-paper burn-in across hourly partition maintenance.
+5. **Completed - reproducible green checkpoint:** recovery baseline preserved in `3b10d00` without raw data, secrets, or bulky soak series.
+6. **Completed - availability split implementation:** three continuous clocks; deadline-bound research attempt ledger; immutable chunked evidence exports and proposals; hash/schema/expiry/authority validation; locked idempotent import; serving-node discovery disabled.
+7. **In progress - finite availability proof:** deterministic 20-cycle proof passed twice; real 712 MB export, bounded batch, and canonical no-contract import passed; two-hour continuous-paper burn-in is running across hourly partition maintenance.
 8. **Pending - final verification and commit:** rerun discovery/decision/integration/recovery/performance tests, independent verifier, lint, build, smoke, and strict capability matrix; finalize the compact proof pack and commit. Canonical Python integration remains a later goal.
 
 ### Recovery invariants

@@ -1,6 +1,6 @@
 # MetaEdge Gemini Flywheel Recovery Proof Pack
 
-Status: **INCOMPLETE — REPAIR STAGE PASSED; REPLACEMENT 24-HOUR SOAK NOT YET COMPLETE**
+Status: **IN PROGRESS — AVAILABILITY ARCHITECTURE REPLACED; TWO-HOUR BURN-IN RUNNING**
 
 This file is an evidence index, not a completion certificate. A row marked
 `PENDING` prevents certification. Historical replay, canary data, and invalidated
@@ -15,14 +15,38 @@ Live execution must remain locked throughout.
 | Cutover separates `historical_replay` from `paper_forward` | `persisted-state-verification.json`; `data/opportunity-factory-v3/fast-perp-cutover.json` | PASS in latest pre-soak independent verification; must be reverified post-soak |
 | Deterministic 10x canary replay, decision-before-outcome, restart/recovery paths, zero promotable evidence | `deterministic-replay.json` | PASS: 265 decisions / 265 outcomes twice; identical hash `0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2`; zero promotable |
 | Deliberate lies are rejected | `truth-mutation-proof.json` | PASS: clean control plus nine rejected mutations |
-| Full discovery, decision, Python parity, TypeScript, production build, strict capability, and product smoke commands | Fresh post-soak logs under `command-logs/` | **PENDING** — prior fresh commands passed, but self-contained post-soak logs are required |
+| Full discovery, decision, Python parity, TypeScript, production build, strict capability, and product smoke commands | Fresh post-burn-in logs under `command-logs/` | **PENDING** — checkpoint commands passed; final fresh matrix follows the burn-in |
 | Cached operator UI and API truth | `output/playwright/flywheel-recovery/browser-proof.json`; desktop/mobile screenshots | PASS pre-soak; final API truth must match post-soak persisted truth |
 | Desktop and mobile screenshots | `output/playwright/flywheel-recovery/research-fleet-desktop.png`; `research-fleet-mobile.png` | PASS pre-soak |
-| Bounded hourly compression, manifest durability, retention/orphan integrity | Replacement final-soak series and partition manifest; post-soak independent orphan/hash check | First invalid run's initial maintenance hour passed, but cannot satisfy final acceptance; replacement check **PENDING** |
-| Complete 24-hour uptime, endpoint latency, CPU, final-six-hour RSS, raw/derived storage, queue, PID, decision-lag, unresolved, no-raw-contract, no-pause, and live-lock gates | New final-soak series and eventual `summary.json` | **PENDING** — detached run `soak-final-1784284906426` failed operational/no-pause gates and is permanently excluded; no current acceptance soak exists |
-| Persisted decision/outcome/lifecycle/authorization uniqueness, causality, reconciliation, archive integrity, and current two-key live lock after the soak | Fresh `persisted-state-verification.json` with `runtimeRequired: true` | **PENDING** — must run after a passing summary |
+| Bounded hourly compression, manifest durability, retention/orphan integrity | `soak-availability-split-1784363625767/summary.json`; partition manifest; independent orphan/hash check | **RUNNING** — two-hour burn-in crosses UTC partitions with two-file maintenance cap |
+| Continuous-paper availability after removing challenger from liveness | `availability-split-proof.json`; real attempt/proposal/import records; two-hour burn-in | Finite 20-cycle/fault proof PASS; real 712 MB batch PASS after one safely preserved timeout; burn-in **RUNNING** |
+| Persisted decision/outcome/lifecycle/authorization uniqueness, causality, reconciliation, archive integrity, and current two-key live lock after burn-in | Fresh `persisted-state-verification.json` with `runtimeRequired: true` | **PENDING** — runs after the burn-in summary |
 | Invalid runs remain visibly excluded | Each invalid run's `INVALIDATED.json` | PASS for preserved invalidated runs; recheck final index post-soak |
 | Economic claim boundary | Final operator snapshot and proof conclusion | Current result is `no_promoted_alpha`; no profitability, HFT, or live-readiness claim is authorized |
+
+## Availability-split evidence
+
+- Recovery checkpoint: `3b10d00`.
+- Deterministic fault proof: `availability-split-proof.json`, 20 cycles twice,
+  semantic hash `38fb4a85777b8bec7c504a4482f1f0d49d4d9e2e5108e16ee4dc1b3b05efdf66`.
+- Exercised: partial research-run import, partial contract import, duplicate import,
+  killed/abandoned attempt, kill-during-publication, concurrent import, stale,
+  corrupt and expired bundles, and challenger exclusion
+  from continuous health. Synthetic fixtures produced two paper contracts solely to
+  exercise lifecycle/import plumbing.
+- Real export: `fast_perp_evidence_export_781c79941eee70962d9111e9`, payload SHA-256
+  `db149273b69857737580f863f48edec563325ae26110f1fd19bb610ec4693612`,
+  atomically published as a manifest plus bounded per-chunk hashes.
+- First real attempt `fast_perp_attempt_e2d811045fd1d49c4aa196f1` timed out at the
+  fixed five-minute deadline before publication. This is preserved failure evidence.
+- Optimized retry `fast_perp_attempt_ce8ae515b9f22aaa82f87c0b` completed in about
+  two minutes and published `fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713`.
+- Sole-writer import persisted `fast_perp_research_7a25be6616811b8ac90a`: 300
+  evaluations, zero contracts/lifecycle events, blocker
+  `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked.
+- Active burn-in: `soak-availability-split-1784363625767`; server PID 10496;
+  continuous clock PIDs 10578/10579/10580. Research is disabled on this node and
+  reported separately with `affectsContinuousOperation: false`.
 
 ## Invalid first final soak
 
@@ -68,13 +92,13 @@ Live execution must remain locked throughout.
 - Monitor PID: `27980`.
 - Durable supervision: detached screen sessions `27286.metaedge_final_server` and `27978.metaedge_final_monitor`, independent of individual Codex tool sessions.
 - Permanent exclusion marker: `soak-final-1784284906426/INVALIDATED.json`; original `RUNNING.json` remains preserved as launch evidence.
-- Failure: challenger research saturated CPU/memory and spawned an additional child; its heartbeat became stale, the recorder stopped, evidence passed 30 seconds, and signal/resolver/lifecycle paused fail-closed. The preserved 475-row series contains nine non-operational samples and can never be relabeled valid.
+- Corrected failure sequence: at the first bad sample endpoints were still about 17 ms, recorder evidence was 254 ms old, storage was healthy, and the 12-core Mac was not proven starved. Challenger's running heartbeat reached 74,085 ms, exceeded its 60-second watchdog, and made operator health false; the monitor then wrote the global fail-closed pause, which stopped recorder and dependent clocks. The preserved 475-row series contains nine non-operational samples and can never be relabeled valid.
 
-## Required completion sequence
+## Remaining completion sequence
 
-1. Require the monitor to write a full-duration `summary.json` with every gate true and no violations.
+1. Require the two-hour monitor to write a full-duration `summary.json` with every gate true and no violations.
 2. Independently read persisted state and partition manifests; do not trust the API summary as the verifier's source.
 3. Persist fresh command logs for discovery, decision, Python parity, truth mutations, lint, build, strict capability matrix, and product browser smoke.
 4. Hash the final summary, series, verifier, replay, mutation proof, command logs, browser proof, screenshots, archive manifests, and lifecycle traces into a final manifest.
 5. Compare API/UI truth with persisted truth and retain `no_promoted_alpha` or `no_trade` when evidence has not promoted a strategy.
-6. Only after every row above passes may the recovery goal be marked complete. Do not start the canonical port or enable live execution as part of this goal.
+6. Only after every row above passes may this recovery goal be marked complete. The obsolete 24-hour co-located-daemon acceptance is not waived; it is superseded by the implemented three-role boundary, finite batch/fault proof, and two-hour continuous-only burn-in defined in the corrected decision record. Do not start the canonical port or enable live execution as part of this goal.

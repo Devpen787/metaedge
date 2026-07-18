@@ -16,6 +16,8 @@ wallet-status-history.jsonl
 # External review/design bundles — reference only, must never build or deploy.
 # Kept out of the repo so they can't pollute typecheck or ship to the live site.
 reference/
+!scripts/reference/
+!scripts/reference/**
 
 # Recovery proof corpora are preserved locally and referenced by hashes. Commit
 # compact proof manifests and screenshots, not multi-hour JSONL series or stale

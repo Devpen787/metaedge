@@ -31,10 +31,20 @@ if (samples.some((row) => (row.health.clocks || []).some((clock) => !clock.fresh
   || clock.status !== 'healthy' || Number(clock.queueDepth) > 10_000 || Number(clock.queueLagMs) > 30_000))) {
   fail('CLOCK_HEALTH_FAILURE');
 }
-const pidSignatures = new Set(samples.map((row) => JSON.stringify(row.process.pids)));
-if (pidSignatures.size !== 1 || samples.some((row) => row.process.processCount !== 4 || !row.process.alive)) {
+const firstHeartbeatPids = Object.values(samples[0]?.heartbeatPids || {}).map(Number).filter(Number.isFinite);
+const heartbeatPidSet = new Set(firstHeartbeatPids);
+const serverPid = (samples[0]?.process?.pids || []).map(Number).find((pid) => !heartbeatPidSet.has(pid)) ?? null;
+const coreProcessPids = [serverPid, ...firstHeartbeatPids].filter(Number.isFinite).sort((a, b) => a - b);
+const maximumProcessCount = Math.max(0, ...samples.map((row) => Number(row.process.processCount) || 0));
+const maximumTransientProcesses = Math.max(0, maximumProcessCount - coreProcessPids.length);
+const coreChanged = coreProcessPids.length !== 4 || samples.some((row) => !row.process.alive
+  || coreProcessPids.some((pid) => !row.process.pids.includes(pid))
+  || JSON.stringify(Object.values(row.heartbeatPids || {}).map(Number).sort((a, b) => a - b))
+    !== JSON.stringify([...firstHeartbeatPids].sort((a, b) => a - b)));
+if (coreChanged) {
   fail('PROCESS_TREE_CHANGED');
 }
+if (maximumTransientProcesses > 2) fail('TRANSIENT_PROCESS_TREE_UNBOUNDED');
 if (samples.some((row) => Number(row.health.unresolvedDecisions) !== 0 || Number(row.health.unresolvedOutcomes) !== 0)) {
   fail('UNRESOLVED_FORWARD_STATE');
 }
@@ -71,10 +81,11 @@ const rawRoot = path.join(projectRoot, 'data', 'opportunity-factory-v3', 'fast-p
 const orphanTemporaryFiles = walk(rawRoot).filter((file) => file.endsWith('.tmp') || file.endsWith('.staging'));
 if (orphanTemporaryFiles.length) fail('ORPHAN_TEMPORARY_PARTITION');
 const proof = { schemaVersion: 1, verifiedAt: Date.now(), runRoot, durationMs, samples: samples.length,
-  utcHours: [...utcHours].sort(), processPids: JSON.parse([...pidSignatures][0] || '[]'),
+  utcHours: [...utcHours].sort(), processPids: coreProcessPids, coreProcessPids,
   metrics: { ...summary.metrics, averageCpuPercent, p95CpuPercent, finalThirtyRssGrowthFraction,
     maintenanceRecords: maintenance.length, maintenanceBatches: batches.size, maximumMaintenanceBatch: Math.max(0, ...batches.values()),
-    orphanTemporaryFiles: orphanTemporaryFiles.length }, failures, passed: failures.length === 0, liveExecution: 'locked' };
+    orphanTemporaryFiles: orphanTemporaryFiles.length, maximumProcessCount, maximumTransientProcesses },
+  failures, passed: failures.length === 0, liveExecution: 'locked' };
 const output = path.join(projectRoot, 'output', 'proof', 'flywheel-recovery', 'availability-burnin-verification.json');
 fs.writeFileSync(output, JSON.stringify(proof, null, 2)); console.log(JSON.stringify({ output, ...proof }, null, 2));
 if (failures.length) process.exitCode = 1;

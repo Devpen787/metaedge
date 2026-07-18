@@ -106,6 +106,13 @@ test('the final browser smoke targets an isolated configurable server port', () 
   assert.match(matrix, /METAEDGE_URL.*127\.0\.0\.1:3100/);
 });
 
+test('the burn-in verifier distinguishes stable core PIDs from bounded ordinary-product children', () => {
+  const verifier = fs.readFileSync(path.join(process.cwd(), 'scripts', 'verify_fast_perp_availability_burnin.mjs'), 'utf8');
+  assert.match(verifier, /coreProcessPids/);
+  assert.match(verifier, /maximumProcessCount/);
+  assert.doesNotMatch(verifier, /pidSignatures\.size !== 1/);
+});
+
 test('clock queue health measures schedule overrun instead of reporting a literal zero', () => {
   assert.deepEqual(measureFastPerpClockQueue({ cadenceMs: 250, startedAt: 1_000, completedAt: 1_800,
     reportedQueueDepth: 0, reportedQueueLagMs: 0 }), { queueDepth: 3, queueLagMs: 550, scheduleLagMs: 550 });

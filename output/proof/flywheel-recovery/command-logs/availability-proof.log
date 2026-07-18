@@ -1,0 +1,30 @@
+
+> react-example@0.0.0 fast-perp:availability-proof
+> tsx scripts/fast_perp_availability_proof.ts
+
+{
+  "output": "/private/tmp/metaedge-flywheel-final-verify2/output/proof/flywheel-recovery/availability-split-proof.json",
+  "passed": true,
+  "deterministic": true,
+  "cycles": 20,
+  "faults": {
+    "partialResearchRunRecovered": true,
+    "partialContractsRecovered": true,
+    "duplicateImportsRejected": true,
+    "killedAttemptId": "fast_perp_attempt_b681bdf451f9e5b13047e483",
+    "killedAttemptAbandoned": true,
+    "corruptRejected": true,
+    "expiredRejected": true,
+    "killedPublicationHidden": true,
+    "concurrentImportRejected": true,
+    "staleAuthorityRejected": true,
+    "challengerExcludedFromContinuousHealth": true
+  },
+  "final": {
+    "researchRuns": 21,
+    "contracts": 2,
+    "lifecycleEvents": 2,
+    "liveExecution": "locked"
+  },
+  "semanticHash": "44756b5a1e87cf5a8e3a71ada18e623a8cdfda565a33fb557b8546d59bf33c87"
+}

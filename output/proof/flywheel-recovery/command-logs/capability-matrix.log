@@ -1,0 +1,45 @@
+
+MetaMask Agent-Wallet capability -> UI reachability
+
+CAPABILITY           KIND       PRESENT   REACHABLE     UI ENTRY
+------------------------------------------------------------------------------------------------
+Wallet readiness     readonly   yes       DIRECT        src/components/AgentWalletModal.tsx, src/components/ReadinessSheet.tsx
+Wallet status        readonly   yes       PLANNED       planned: superseded by connect/status
+Connect (login link) auth       yes       DIRECT        src/components/AgentWalletModal.tsx
+Connect status poll  auth       yes       DIRECT        src/components/AgentWalletModal.tsx
+Connect (CLI token)  auth       yes       DIRECT        src/components/AgentWalletModal.tsx
+Disconnect wallet    auth       yes       DIRECT        src/components/AgentWalletModal.tsx
+Wallet address       readonly   yes       PLANNED       planned: shown via connect/status in the wallet card
+Wallet balance       readonly   yes       PLANNED       planned: Trading Desk (live-mode balance strip)
+Transfer / send      execute    yes       PLANNED       planned: live-mode path; no paper UI by design
+Swap quote           readonly   yes       DIRECT        src/components/TradingHub.tsx
+Swap execute         execute    yes       PLANNED       planned: Trading Desk (live-mode execution)
+Perps balance        readonly   yes       DIRECT        src/components/WalletsPanel.tsx
+Perps quote          readonly   yes       DIRECT        src/components/TradingHub.tsx
+Perps open           execute    yes       PLANNED       planned: Trading Desk (live-mode execution)
+Reviewed perp prepare readonly   yes       DIRECT        src/components/ResearchFleet.tsx
+Reviewed perp approve auth       yes       DIRECT        src/components/ResearchFleet.tsx
+Reviewed perp open   execute    yes       DIRECT        src/components/ResearchFleet.tsx
+Predict markets      readonly   yes       DIRECT        src/components/PredictionMarkets.tsx
+Predict quote        readonly   yes       PLANNED       planned: Predictions tab (real-market quotes)
+Predict place        execute    yes       PLANNED       planned: Predictions tab (live-mode placement)
+Intent solver        ai         yes       DIRECT        src/components/IntentSolver.tsx
+Swarm copilot chat   ai         yes       DIRECT        src/components/SwarmCopilot.tsx
+Autopilot planner    ai         yes       PLANNED       planned: Swarm Copilot after reviewed-run policy design
+------------------------------------------------------------------------------------------------
+
+Present: 23/23   Surfaced in UI: 14/23   Planned home declared: 9   Unreachable gaps: 0
+
+PLANNED (backend ready, product-surface integration pending):
+  - Wallet status → superseded by connect/status
+  - Wallet address → shown via connect/status in the wallet card
+  - Wallet balance → Trading Desk (live-mode balance strip)
+  - Transfer / send → live-mode path; no paper UI by design
+  - Swap execute → Trading Desk (live-mode execution)
+  - Perps open → Trading Desk (live-mode execution)
+  - Predict quote → Predictions tab (real-market quotes)
+  - Predict place → Predictions tab (live-mode placement)
+  - Autopilot planner → Swarm Copilot after reviewed-run policy design
+
+No unreachable gaps: every capability is surfaced, planned with a declared home, or removed by design.
+STRICT OK: no capability is present-but-unreachable.

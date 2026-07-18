@@ -1,4 +1,9 @@
+
+> react-example@0.0.0 test:truth-mutations
+> tsx scripts/flywheel_truth_mutations.ts
+
 {
+  "output": "/private/tmp/metaedge-flywheel-final-verify2/output/proof/flywheel-recovery/truth-mutation-proof.json",
   "schemaVersion": 1,
   "generatedAt": 1784371270562,
   "cases": [

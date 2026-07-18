@@ -1,4 +1,5 @@
 {
+  "output": "/private/tmp/metaedge-flywheel-final-verify2/output/proof/flywheel-recovery/persisted-state-verification.json",
   "schemaVersion": 2,
   "verifiedAt": 1784371254043,
   "source": "persisted-state-independent-verifier",

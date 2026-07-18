@@ -104,6 +104,7 @@ test('the final browser smoke targets an isolated configurable server port', () 
   assert.match(browserProof, /process\.env\.METAEDGE_URL/);
   assert.match(matrix, /recovery_browser_proof\.mjs/);
   assert.match(matrix, /METAEDGE_URL.*127\.0\.0\.1:3100/);
+  assert.match(matrix, /trimEnd\(\)/);
 });
 
 test('the burn-in verifier distinguishes stable core PIDs from bounded ordinary-product children', () => {

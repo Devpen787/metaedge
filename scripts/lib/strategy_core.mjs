@@ -80,45 +80,73 @@ export function signalAt(family, p, bars, F, i) {
   return false;
 }
 
+// Simulate ONE trade entered on signal bar i. Returns the trade plus its
+// entry/exit indices, or {skip:true} for a degenerate stop (caller advances by 1).
+// This is the SINGLE source of entry/exit truth — runStrategy (trade P&L) and
+// positionPath (bar-by-bar exposure) are both built on it, so they can never drift.
+function simulateOne(family, p, bars, F, i, to, cost) {
+  const entry = bars[i + 1].o * (1 + cost);
+  let stopPx, targetPx;
+  if (family === 'trend_atr') {
+    stopPx = entry - p.atrMult * (F.atr[i] ?? entry * 0.02); targetPx = Infinity; // trailing stop only
+  } else if (family === 'vol_squeeze') {
+    let lo = Infinity; for (let k = Math.max(0, i - 24); k <= i; k++) lo = Math.min(lo, bars[k].l);
+    stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);
+    if (stopPx >= entry) return { skip: true };
+  } else if (family === 'meanrev_stab') {
+    let lo = Infinity; for (let k = Math.max(0, i - 6); k <= i; k++) lo = Math.min(lo, bars[k].l);
+    stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);                 // structural stop, 2R target
+    if (stopPx >= entry) return { skip: true };                                    // degenerate stop → skip
+  } else {
+    stopPx = entry * (1 - p.stop); targetPx = entry * (1 + p.stop * 2);            // 2R target
+  }
+  let exitPx = null, bars_held = 0, trailHigh = entry;
+  for (let j = i + 1; j < Math.min(i + 1 + p.maxHold, to); j++) {
+    bars_held = j - i;
+    if (family === 'trend_atr') {
+      trailHigh = Math.max(trailHigh, bars[j].c);
+      stopPx = Math.max(stopPx, trailHigh - p.atrMult * (F.atr[j] ?? 0));          // ratchet up only
+    }
+    if (bars[j].l <= stopPx) { exitPx = stopPx; break; }          // conservative: stop checked first
+    if (bars[j].h >= targetPx) { exitPx = targetPx; break; }
+    if (family === 'rsi_meanrev' && F.rsi[j] != null && F.rsi[j] >= 50) { exitPx = bars[j].c; break; }
+  }
+  const lastJ = Math.min(i + bars_held, to - 1);
+  if (exitPx == null) exitPx = bars[lastJ].c;                      // time exit
+  exitPx *= (1 - cost);
+  return { ret: (exitPx - entry) / entry, bars: bars_held, entryIdx: i, exitIdx: lastJ };
+}
+
 export function runStrategy(family, p, bars, F, from, to, cost = 0.001) {
   const trades = [];
   let i = Math.max(from, 200);
   while (i < to - 1) {
     if (!signalAt(family, p, bars, F, i)) { i++; continue; }
-    const entry = bars[i + 1].o * (1 + cost);
-    let stopPx, targetPx;
-    if (family === 'trend_atr') {
-      stopPx = entry - p.atrMult * (F.atr[i] ?? entry * 0.02); targetPx = Infinity; // trailing stop only
-    } else if (family === 'vol_squeeze') {
-      let lo = Infinity; for (let k = Math.max(0, i - 24); k <= i; k++) lo = Math.min(lo, bars[k].l);
-      stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);
-      if (stopPx >= entry) { i++; continue; }
-    } else if (family === 'meanrev_stab') {
-      let lo = Infinity; for (let k = Math.max(0, i - 6); k <= i; k++) lo = Math.min(lo, bars[k].l);
-      stopPx = lo * 0.998; targetPx = entry + 2 * (entry - stopPx);                 // structural stop, 2R target
-      if (stopPx >= entry) { i++; continue; }                                        // degenerate stop → skip
-    } else {
-      stopPx = entry * (1 - p.stop); targetPx = entry * (1 + p.stop * 2);            // 2R target
-    }
-    let exitPx = null, bars_held = 0;
-    let trailHigh = entry;
-    for (let j = i + 1; j < Math.min(i + 1 + p.maxHold, to); j++) {
-      bars_held = j - i;
-      if (family === 'trend_atr') {
-        trailHigh = Math.max(trailHigh, bars[j].c);
-        stopPx = Math.max(stopPx, trailHigh - p.atrMult * (F.atr[j] ?? 0));          // ratchet up only
-      }
-      if (bars[j].l <= stopPx) { exitPx = stopPx; break; }          // conservative: stop checked first
-      if (bars[j].h >= targetPx) { exitPx = targetPx; break; }
-      if (family === 'rsi_meanrev' && F.rsi[j] != null && F.rsi[j] >= 50) { exitPx = bars[j].c; break; }
-    }
-    const lastJ = Math.min(i + bars_held, to - 1);
-    if (exitPx == null) exitPx = bars[lastJ].c;                      // time exit
-    exitPx *= (1 - cost);
-    trades.push({ ret: (exitPx - entry) / entry, bars: bars_held });
-    i = lastJ + 1;                                                   // no overlapping positions
+    const t = simulateOne(family, p, bars, F, i, to, cost);
+    if (t.skip) { i++; continue; }
+    trades.push({ ret: t.ret, bars: t.bars });
+    i = t.exitIdx + 1;                                             // no overlapping positions
   }
   return trades;
+}
+
+// Bar-by-bar LONG exposure (0/1) from the SAME entry/exit logic as runStrategy.
+// pos[k] = 1 means the strategy is holding during bar k. Entry is at the open of
+// signalBar+1, so a position occupies bars [signalBar+1 .. exitIdx]. Causal:
+// pos[k] is fully determined by information at bars <= k-1. The portfolio ledger
+// consumes this as a target and applies its OWN fills/costs (no idealized stop
+// prices leak into portfolio P&L — that stays the ledger's honest job).
+export function positionPath(family, p, bars, F, from, to, cost = 0.001) {
+  const pos = new Array(bars.length).fill(0);
+  let i = Math.max(from, 200);
+  while (i < to - 1) {
+    if (!signalAt(family, p, bars, F, i)) { i++; continue; }
+    const t = simulateOne(family, p, bars, F, i, to, cost);
+    if (t.skip) { i++; continue; }
+    for (let k = t.entryIdx + 1; k <= t.exitIdx; k++) pos[k] = 1;
+    i = t.exitIdx + 1;
+  }
+  return pos;
 }
 
 export function metrics(trades) {

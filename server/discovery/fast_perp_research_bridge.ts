@@ -448,8 +448,16 @@ export class FastPerpResearchBridge {
     try {
       if (fs.existsSync(importedFile)) return { status: 'already_imported' as const, id };
       const bundle = this.readProposal(id);
-      const completedAttempt = this.readAttempts().some((row) => row.status === 'completed' && row.proposalId === id);
+      const completedAttempt = this.readAttempts().find((row) => row.status === 'completed' && row.proposalId === id
+        && row.evidenceExportId === bundle.evidenceExportId);
       if (!completedAttempt) throw new Error('RESEARCH_PROPOSAL_ATTEMPT_NOT_COMPLETED');
+      let evidenceMetadata: Omit<FastPerpEvidenceExportBundle, 'payload'>;
+      try { evidenceMetadata = this.readEvidenceMetadata(bundle.evidenceExportId); }
+      catch { throw new Error('RESEARCH_EVIDENCE_EXPORT_NOT_AVAILABLE'); }
+      if (evidenceMetadata.payloadHash !== bundle.evidenceExportHash
+        || evidenceMetadata.authorityDigest !== bundle.authorityDigest) {
+        throw new Error('RESEARCH_EVIDENCE_PROVENANCE_MISMATCH');
+      }
       if ((options.now ?? Date.now()) > bundle.expiresAt) {
         this.atomicJson(path.join(this.root, 'rejections', `${id}.json`),
           { proposalId: id, rejectedAt: options.now ?? Date.now(), reason: 'RESEARCH_PROPOSAL_EXPIRED' });

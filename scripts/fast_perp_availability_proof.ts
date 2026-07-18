@@ -66,6 +66,7 @@ function runProof() {
   const killed = bridge.beginAttempt('killed-export', latestNow, 100);
   const abandoned = bridge.researchBatchHealth(true, latestNow + 101);
   const currentExport = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: latestNow + 200 });
+  bridge.publishEvidence(currentExport);
   const publicationBridge = new FastPerpResearchBridge(path.join(root, 'publication-fault-bridge'));
   let killedPublicationHidden = false;
   try { publicationBridge.publishEvidence(currentExport, { failAfterChunks: 1 }); } catch {

@@ -40,7 +40,8 @@ function fixture() {
 }
 
 function publishCompleted(bridge: FastPerpResearchBridge, proposal: ReturnType<typeof executeFastPerpResearchBatch>,
-  now = 700_000) {
+  exported: ReturnType<typeof createFastPerpEvidenceExport>, now = 700_000) {
+  bridge.publishEvidence(exported);
   const attempt = bridge.beginAttempt(proposal.evidenceExportId, now, 300_000);
   bridge.prepareAttemptCommit(attempt.id, proposal.id, now + 1);
   const file = bridge.publishProposal(proposal);
@@ -81,8 +82,11 @@ test('proposal import requires a completed attempt and recovers a parent crash a
     now: 700_002 }), /ATTEMPT_NOT_COMPLETED/);
   const reconciled = bridge.reconcileAttempts(700_002).find((row) => row.id === attempt.id);
   assert.equal(reconciled?.status, 'completed');
+  assert.throws(() => bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,
+    now: 700_003 }), /EVIDENCE_EXPORT_NOT_AVAILABLE/);
+  bridge.publishEvidence(exported);
   assert.equal(bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,
-    now: 700_003 }).status, 'imported');
+    now: 700_004 }).status, 'imported');
 
   const second = fixture();
   const abandoned = second.bridge.beginAttempt('unpublished-export', 800_000, 100);
@@ -123,7 +127,7 @@ test('continuous importer is exactly-once and resumes safely after an interrupte
   const { root, evidence, economics, bridge } = fixture();
   const exported = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: 700_000 });
   const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'research-work'));
-  publishCompleted(bridge, proposal);
+  publishCompleted(bridge, proposal, exported);
   assert.throws(() => bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,
     failAfter: 'research_run', now: 700_001 }), /INJECTED_IMPORT_FAILURE/);
   const completed = bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics, now: 700_001 });
@@ -138,7 +142,7 @@ test('stale authority and live-unlocked bundles fail closed', () => {
   const { root, evidence, economics, bridge } = fixture();
   const exported = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: 700_000 });
   const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'research-work'));
-  publishCompleted(bridge, proposal);
+  publishCompleted(bridge, proposal, exported);
   evidence.appendResearchRuns([{ ...proposal.payload.run, id: 'independent-authority-change' }]);
   assert.throws(() => bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics, now: 700_001 }),
     /STALE_AUTHORITY/);
@@ -151,7 +155,7 @@ test('expired evidence and proposals are rejected without canonical writes', () 
   assert.throws(() => executeFastPerpResearchBatch(exported, path.join(root, 'late-work'), exported.expiresAt + 1),
     /EVIDENCE_EXPORT_EXPIRED/);
   const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'research-work'));
-  publishCompleted(bridge, proposal);
+  publishCompleted(bridge, proposal, exported);
   assert.throws(() => bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,
     now: proposal.expiresAt + 1 }), /PROPOSAL_EXPIRED/);
   assert.equal(evidence.readResearchRuns().length, 0);
@@ -172,11 +176,12 @@ test('unchanged evidence imports as an idempotent no-op instead of false stale a
   const { root, evidence, economics, bridge } = fixture();
   const firstExport = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: 700_000 });
   const first = executeFastPerpResearchBatch(firstExport, path.join(root, 'first-work'));
-  publishCompleted(bridge, first); bridge.importProposal(first.id, { evidenceStore: evidence, economicStore: economics, now: 700_003 });
+  publishCompleted(bridge, first, firstExport); bridge.importProposal(first.id, {
+    evidenceStore: evidence, economicStore: economics, now: 700_003 });
   const before = { runs: evidence.readResearchRuns().length, contracts: economics.readContracts().length };
   const unchangedExport = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: 700_100 });
   const unchanged = executeFastPerpResearchBatch(unchangedExport, path.join(root, 'unchanged-work'));
-  assert.equal(unchanged.payload.runIsNew, false); publishCompleted(bridge, unchanged, 700_100);
+  assert.equal(unchanged.payload.runIsNew, false); publishCompleted(bridge, unchanged, unchangedExport, 700_100);
   assert.equal(bridge.importProposal(unchanged.id, { evidenceStore: evidence, economicStore: economics,
     now: 700_101 }).status, 'imported');
   assert.deepEqual({ runs: evidence.readResearchRuns().length, contracts: economics.readContracts().length }, before);
@@ -188,7 +193,8 @@ test('fresh overlap and import locks reject competitors while stale import locks
   assert.throws(() => bridge.beginAttempt('two', 1_001, 10_000), /ALREADY_RUNNING/);
   bridge.finishAttempt(attempt.id, 'failed', { completedAt: 1_002, failureReason: 'TEST_RELEASE' });
   const exported = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now: 700_000 });
-  const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'work')); publishCompleted(bridge, proposal, 700_000);
+  const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'work'));
+  publishCompleted(bridge, proposal, exported, 700_000);
   const lock = path.join(root, 'bridge', 'imports', `${proposal.id}.json.lock`);
   fs.mkdirSync(path.dirname(lock), { recursive: true }); fs.writeFileSync(lock, 'active');
   assert.throws(() => bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,

@@ -24,7 +24,8 @@ const results = [];
 for (const [name, command, args] of commands) {
   const startedAt = Date.now(); const result = spawnSync(command, args, { cwd: root, encoding: 'utf8',
     maxBuffer: 50 * 1024 * 1024, env: { ...process.env, LIVE_EXECUTION_ENABLED: 'false',
-      LIVE_REVIEW_EXECUTION_CERTIFIED: 'false', VERIFY_RUNTIME_REQUIRED: name === 'persisted-state' ? 'true' : 'false' } });
+      LIVE_REVIEW_EXECUTION_CERTIFIED: 'false', VERIFY_RUNTIME_REQUIRED: name === 'persisted-state' ? 'true' : 'false',
+      ...(name === 'browser-smoke' ? { METAEDGE_URL: 'http://127.0.0.1:3100' } : {}) } });
   const output = `${result.stdout || ''}${result.stderr || ''}`; const file = path.join(logRoot, `${name}.log`);
   fs.writeFileSync(file, output); results.push({ name, command: [command, ...args].join(' '),
     startedAt, completedAt: Date.now(), exitCode: result.status, signal: result.signal,

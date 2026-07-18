@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 
-const baseUrl = 'http://127.0.0.1:3000';
+const baseUrl = process.env.METAEDGE_URL || 'http://127.0.0.1:3000';
+const serverPort = new URL(baseUrl).port || '3000';
 const tmpDir = await mkdtemp(path.join(tmpdir(), 'metaedge-tabs-'));
 const dbPath = path.join(tmpDir, 'db.json');
 
@@ -46,7 +47,7 @@ async function waitForServer() {
     try { const res = await fetch(`${baseUrl}/api/health`); if (res.ok) return; } catch { /* keep polling */ }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
-  throw new Error('MetaEdge server did not become ready on port 3000.');
+  throw new Error(`MetaEdge server did not become ready at ${baseUrl}.`);
 }
 
 // tab -> primary data endpoint. `wallet: true` = needs a live Agent Wallet, so a
@@ -81,7 +82,8 @@ if (!existsSync(path.join(process.cwd(), 'dist', 'server.cjs'))) {
 // npm -> tsx -> vite tree, whose orphans keep the smoke from exiting).
 const child = spawn('node', ['dist/server.cjs'], {
   cwd: process.cwd(),
-  env: { ...process.env, DATABASE_URL: dbPath, COOKIE_SECRET: 'all-tabs-smoke', LIVE_EXECUTION_ENABLED: 'false', NODE_ENV: 'production' },
+  env: { ...process.env, PORT: serverPort, DATABASE_URL: dbPath, COOKIE_SECRET: 'all-tabs-smoke',
+    LIVE_EXECUTION_ENABLED: 'false', NODE_ENV: 'production' },
   stdio: ['ignore', 'ignore', 'ignore'],
 });
 

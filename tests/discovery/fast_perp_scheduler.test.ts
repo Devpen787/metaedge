@@ -96,6 +96,13 @@ test('the continuous server launcher keeps research batches disabled', () => {
   assert.doesNotMatch(launcher, /FAST_PERP_RESEARCH_ENABLED=true/);
 });
 
+test('the final browser smoke targets an isolated configurable server port', () => {
+  const smoke = fs.readFileSync(path.join(process.cwd(), 'scripts', 'all_tabs_smoke.mjs'), 'utf8');
+  const matrix = fs.readFileSync(path.join(process.cwd(), 'scripts', 'run_flywheel_final_matrix.mjs'), 'utf8');
+  assert.match(smoke, /process\.env\.METAEDGE_URL/);
+  assert.match(matrix, /METAEDGE_URL.*127\.0\.0\.1:3100/);
+});
+
 test('clock queue health measures schedule overrun instead of reporting a literal zero', () => {
   assert.deepEqual(measureFastPerpClockQueue({ cadenceMs: 250, startedAt: 1_000, completedAt: 1_800,
     reportedQueueDepth: 0, reportedQueueLagMs: 0 }), { queueDepth: 3, queueLagMs: 550, scheduleLagMs: 550 });

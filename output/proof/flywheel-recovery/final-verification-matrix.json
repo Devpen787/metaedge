@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": 1784371098847,
+  "burnin": "/Users/devinsonpena/Documents/metaedge-gemini/output/proof/flywheel-recovery/soak-availability-split-1784363625767",
+  "results": [
+    {
+      "name": "verify-burnin",
+      "command": "node scripts/verify_fast_perp_availability_burnin.mjs /Users/devinsonpena/Documents/metaedge-gemini/output/proof/flywheel-recovery/soak-availability-split-1784363625767",
+      "startedAt": 1784371041261,
+      "completedAt": 1784371041329,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1732,
+      "sha256": "67666fb676974f3c5617be6b60a18ce46fb36bcb3e2acb8712f6128bf5e4746d",
+      "log": "output/proof/flywheel-recovery/command-logs/verify-burnin.log"
+    },
+    {
+      "name": "persisted-state",
+      "command": "npx tsx scripts/verify_flywheel_recovery.ts",
+      "startedAt": 1784371041330,
+      "completedAt": 1784371053103,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1905,
+      "sha256": "2faa8851ce7cad20c6d146d135c69c808d8f20e17c6c0ab8cdfc26a9832ffa7b",
+      "log": "output/proof/flywheel-recovery/command-logs/persisted-state.log"
+    },
+    {
+      "name": "discovery-tests",
+      "command": "npm run test:discovery",
+      "startedAt": 1784371053103,
+      "completedAt": 1784371055932,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 15628,
+      "sha256": "5c05c3008ac2446422289bde7966e2b4cb1f1d77072c61eaedbd15f4c226cfc8",
+      "log": "output/proof/flywheel-recovery/command-logs/discovery-tests.log"
+    },
+    {
+      "name": "decision-tests",
+      "command": "npm run test:decision",
+      "startedAt": 1784371055932,
+      "completedAt": 1784371056736,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1863,
+      "sha256": "d65e444d90993a4aab14aa582339794138ee20501e5ebd1f633437ba5aaa471e",
+      "log": "output/proof/flywheel-recovery/command-logs/decision-tests.log"
+    },
+    {
+      "name": "reference-parity",
+      "command": "npm run discovery:reference",
+      "startedAt": 1784371056736,
+      "completedAt": 1784371056984,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 167,
+      "sha256": "7d09979e083be87ef0b8d5ccd20ccabd5e2a5a46f88b852b5a2ace57617508a5",
+      "log": "output/proof/flywheel-recovery/command-logs/reference-parity.log"
+    },
+    {
+      "name": "truth-mutations",
+      "command": "npm run test:truth-mutations",
+      "startedAt": 1784371056984,
+      "completedAt": 1784371059193,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1852,
+      "sha256": "2180e0a2cfa0b376a4cbf677fbdf139d03e9ae39f3e437675f425c4dbd02d798",
+      "log": "output/proof/flywheel-recovery/command-logs/truth-mutations.log"
+    },
+    {
+      "name": "availability-proof",
+      "command": "npm run fast-perp:availability-proof",
+      "startedAt": 1784371059193,
+      "completedAt": 1784371082067,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 947,
+      "sha256": "ab600bf13b2bfb253abf0e1b112f6b5066bb150724c52771eb29c2ccfc0e6d7e",
+      "log": "output/proof/flywheel-recovery/command-logs/availability-proof.log"
+    },
+    {
+      "name": "typecheck",
+      "command": "npm run lint",
+      "startedAt": 1784371082067,
+      "completedAt": 1784371085019,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 44,
+      "sha256": "a6b21efd55cdba93c857a8b986c6aa67f41a33d644c5aa05f06a0a0ec4bcb73d",
+      "log": "output/proof/flywheel-recovery/command-logs/typecheck.log"
+    },
+    {
+      "name": "production-build",
+      "command": "npm run build",
+      "startedAt": 1784371085019,
+      "completedAt": 1784371089325,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1686,
+      "sha256": "4640516d3e37d31ecaf6b6b521bb92e194a3e36e19f089bfb60a8a05fa7ddb7f",
+      "log": "output/proof/flywheel-recovery/command-logs/production-build.log"
+    },
+    {
+      "name": "browser-proof",
+      "command": "node scripts/recovery_browser_proof.mjs",
+      "startedAt": 1784371089325,
+      "completedAt": 1784371095185,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 659,
+      "sha256": "a8379ce510ed7f5a55f3eaa2e8f0d7bf3397b772720650210e41daff7719d433",
+      "log": "output/proof/flywheel-recovery/command-logs/browser-proof.log"
+    },
+    {
+      "name": "browser-smoke",
+      "command": "npm run smoke:tabs",
+      "startedAt": 1784371095185,
+      "completedAt": 1784371098740,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 1113,
+      "sha256": "b32b2c3b23896c457fd140b855e2898daedf63185b41ac54a413af1d79f3120e",
+      "log": "output/proof/flywheel-recovery/command-logs/browser-smoke.log"
+    },
+    {
+      "name": "capability-matrix",
+      "command": "node scripts/capability_matrix.mjs --strict",
+      "startedAt": 1784371098740,
+      "completedAt": 1784371098821,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 3386,
+      "sha256": "b3134c148afcca730ccd60d659176257a544bbc20436bf11d9a1ddc31529f284",
+      "log": "output/proof/flywheel-recovery/command-logs/capability-matrix.log"
+    },
+    {
+      "name": "diff-check",
+      "command": "git diff --check",
+      "startedAt": 1784371098822,
+      "completedAt": 1784371098847,
+      "exitCode": 0,
+      "signal": null,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "log": "output/proof/flywheel-recovery/command-logs/diff-check.log"
+    }
+  ],
+  "passed": true,
+  "liveExecution": "locked"
+}

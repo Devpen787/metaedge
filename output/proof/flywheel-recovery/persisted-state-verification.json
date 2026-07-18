@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
-  "verifiedAt": 1784361889806,
+  "verifiedAt": 1784371041859,
   "source": "persisted-state-independent-verifier",
   "baselineRequired": true,
-  "runtimeRequired": false,
+  "runtimeRequired": true,
   "checks": {
     "liveExecutionEnvironment": {
       "LIVE_EXECUTION_ENABLED": "false",

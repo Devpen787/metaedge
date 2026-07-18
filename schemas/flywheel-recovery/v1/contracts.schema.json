@@ -130,7 +130,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["id", "cadenceMs", "timeoutMs", "latestAttemptId", "status", "startedAt", "completedAt", "deadlineAt", "failureReason", "affectsContinuousOperation"],
       "properties": { "id": { "const": "challenger_research" }, "cadenceMs": { "type": "number" }, "timeoutMs": { "type": "number" },
-        "latestAttemptId": { "$ref": "#/$defs/nullableString" }, "status": { "enum": ["disabled", "idle", "running", "completed", "failed", "timed_out", "abandoned"] },
+        "latestAttemptId": { "$ref": "#/$defs/nullableString" }, "status": { "enum": ["disabled", "idle", "running", "committing", "completed", "failed", "timed_out", "abandoned"] },
         "startedAt": { "$ref": "#/$defs/nullableNumber" }, "completedAt": { "$ref": "#/$defs/nullableNumber" },
         "deadlineAt": { "$ref": "#/$defs/nullableNumber" }, "failureReason": { "$ref": "#/$defs/nullableString" },
         "affectsContinuousOperation": { "const": false } }

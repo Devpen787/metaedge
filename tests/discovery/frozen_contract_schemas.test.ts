@@ -23,3 +23,10 @@ test('frozen recovery schema rejects unlocked evidence and incomplete authorizat
   const incomplete = structuredClone(fixture); delete incomplete.executionAuthorization.quoteReference;
   assert.equal(new Validator().validate(incomplete, schema).valid, false);
 });
+
+test('frozen operator health accepts the bounded proposal commit phase', () => {
+  const committing = structuredClone(fixture);
+  committing.operatorHealth.researchBatch.status = 'committing';
+  committing.operatorHealth.researchBatch.completedAt = null;
+  assert.equal(new Validator().validate(committing, schema).valid, true);
+});

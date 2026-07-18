@@ -1,28 +1,49 @@
-# Flywheel availability: split the box, don't soak the box
+# Flywheel availability: split the workload (corrected per Codex 2026-07-16)
 
 Date: 2026-07-16
-Status: PROPOSED (for Codex — this is the "another way" past the 24h soak)
-Author: Claude, at Devin's request, after Codex reported the availability wall.
+Status: PROPOSED — architectural direction ADOPTED; the causal story below is
+CORRECTED from v1; bridge + proof contract are DEFERRED to Codex (its lane, its
+accurate incident data). Not yet an executable spec.
+Author: Claude (v1), corrected after Codex's review.
 
-## The problem, stated honestly
+## Correction notice (read first)
 
-Codex ran the flywheel under continuous operation and observed: **183% CPU,
-peaks >280%, ~2.3 GB memory, a 74s heartbeat stall, recording stopped, evidence
-went stale, dependent processing paused fail-closed.** Its conclusion: safety and
-truthfulness are strong; **availability is unproven and unreliable**; profitability
-unproven.
+v1 of this document diagnosed the incident wrong, and I'm recording the correction
+rather than quietly editing, because a wrong cause left in a committed doc becomes
+a "fact" nobody re-checks.
 
-The safety system behaved correctly. But the proposed remedy — a clean 24-hour
-soak — **cannot pass, because it is not a bug, it is a hardware mismatch.** The
-production host is a GCP e2-micro: **1 vCPU, ~1 GB RAM.** A workload that wants
-280% CPU wants ~3 cores. You cannot soak-certify a 3-core workload onto a 1-core
-box; there is no run long enough to make one core into three. The soak is trying
-to prove that physics is negotiable.
+- **v1 said:** the e2-micro ran out of CPU (280% on 1 core = hardware mismatch)
+  and starved recording. **Wrong.** I assumed the incident matched the 2026-07-15
+  *site* outage without checking where it ran.
+- **Actual incident (Codex):** the soak ran on the **12-core Mac**, where 280% CPU
+  is ~23% of capacity. At first failure endpoints were ~17 ms and recorded evidence
+  was 254 ms old — **nothing was starved.** The failure was a **74-second
+  `challenger_research` heartbeat exceeding a 60-second watchdog**, which correctly
+  triggered a global fail-closed pause.
+- **Failing component (Codex):** the separate fast-perp `challenger_research` clock
+  in `scripts/fast_perp_clock_daemon.ts` — NOT the legacy multi-market
+  `flywheel_v3_cycle.ts` batch child in `runtime.ts`. So
+  `OPPORTUNITY_FACTORY_DISABLED=true` disables the wrong component; it does not
+  touch what failed.
 
-This is the same wall that took the whole site down on 2026-07-15 (heavy research
-starved the web server to 48-second responses; see the VM-capacity memory). It is
-also exactly what the review-pack deployment profiles prescribed: a **lean hosted
-app** and a **research node** are two machines, not one.
+## Why the batch direction is still right — but for the REAL reason
+
+The architectural split survives the corrected diagnosis, and actually fits it
+better. The real failure was a **continuous clocked daemon holding a liveness
+heartbeat contract it could not keep**: one challenger computation ran 74 s without
+a heartbeat and tripped the 60 s watchdog.
+
+A **batch job dissolves that failure mode**, and not by adding CPU — by removing
+the contract. A one-shot job has no heartbeat to stall: it either completes or is
+killed by a wall-clock timeout. "Heartbeat stale for 74 s" is a sentence that
+cannot be written about a process whose only liveness signal is "did it exit 0
+before the timeout." So converting `challenger_research` from a clocked daemon into
+a disposable capped batch job removes the exact defect Codex observed — the CPU
+framing in v1 was wrong, the batch remedy is right.
+
+The split's *other* benefit still holds independently: heavy research off the
+serving box means a research stall can never pause the continuous paper node's
+recording — blast-radius containment, separate from the heartbeat fix.
 
 ## The principle
 
@@ -57,21 +78,39 @@ The Mac now; a dedicated always-on node later. Runs `flywheel_v3_cycle.ts` as a
 - run it capped, as defense-in-depth (see below), so even a runaway cycle cannot
   take the whole node.
 
-### The data bridge
-The micro is the source of truth for RECORDED MARKET DATA (recorders run there).
-The research node is the source of truth for RESEARCH ARTIFACTS (candidates,
-decisions, validations, promotions).
+### The data bridge — CORRECTED (v1 was unsafe; Codex's contract governs)
 
-Per flywheel cycle (6h cadence, so eventual consistency is fine):
-1. research node **pulls** recent recorded evidence from the micro
-   (`data/market/**`) over the existing gcloud-ssh/rsync channel;
-2. runs one `flywheel_v3_cycle.ts`;
-3. **pushes** the canonical artifacts back
-   (`data/opportunity-factory-v3/**`, the decision/candidate ledgers) so the
-   product on the micro can read and display them.
+v1 said "rsync `data/opportunity-factory-v3/**` back to the micro." **That is
+unsafe and must not be built.** That directory holds multiple independently-written
+authorities — decisions, outcomes, lifecycle state, heartbeats, pauses, operator
+summaries, possibly authorization state. Rsyncing it between machines can clobber
+newer state or import partial files. The research node must **never push canonical
+decisions or promotions.**
 
-No shared database is required at this scale. Do NOT reach for Postgres/Timescale
-(review-pack Profile C) until measured load demands it.
+The correct contract (Codex, and it owns the detail):
+- **research node PROPOSES; the continuous node ACCEPTS.** The research node emits
+  immutable *research-proposal* bundles (candidate specs + evidence). The
+  continuous node validates and, only there, creates the canonical lifecycle
+  events. Canonical decisions/promotions are written in exactly one place.
+- evidence flows the other way as immutable *evidence-export* bundles.
+- every bundle carries: schema version, dataset manifest, content hashes,
+  provenance, and an idempotent bundle ID.
+- import is **staging + atomic**: rejected if stale, corrupt, or schema-incompatible;
+  never deletes or overwrites a canonical ledger; a given bundle imports **exactly
+  once**.
+
+### Killed jobs must be safe, not just "retried" — CORRECTED
+
+v1's "cron reruns next tick" is insufficient. A killed batch job is safe only if,
+with tests to prove each:
+- partial output never becomes visible (write-temp + atomic rename, or staging);
+- the next run detects and reconciles an abandoned attempt;
+- trial budgets are not double-spent;
+- lifecycle samples are not duplicated;
+- the same bundle imports exactly once even under a concurrent attempt.
+
+These are explicit implementation requirements, not properties that fall out of
+cron. Codex owns them.
 
 ## Defense-in-depth caps (even on the research node)
 Match a workload to hardware, then still cage it so one bad cycle is survivable:
@@ -99,16 +138,47 @@ Match a workload to hardware, then still cage it so one bad cycle is survivable:
 8. Stable memory over the final six hours → **dissolved.** A batch job releases
    memory on exit; there is no six-hour continuous window to prove.
 
-## The proof that replaces the 24-hour soak
-Availability certification becomes cheap and finite:
-- **one** `flywheel_v3_cycle.ts` run completes correctly and exits clean, under the
-  cap, within the timeout;
-- the pull → run → push bridge round-trips (recorded evidence in, artifacts out)
-  and the micro's product reads the new artifacts;
-- a killed/timed-out cycle leaves recoverable state and the next cron tick proceeds.
+## The proof that replaces the 24-hour soak — CORRECTED (Codex's contract)
 
-That is minutes to verify, deterministically — not a day of soaking a box that was
-never the right home for this workload.
+Still far cheaper than a 24h soak, but v1's "one clean cycle" is too weak. The
+finite proof is:
+- **10–20 consecutive** real-corpus batch cycles;
+- fault injection: **timeout during computation**, **kill during bundle
+  publication**, corrupt-bundle rejection, stale-bundle rejection, **duplicate
+  import**, **concurrent import**;
+- recovery on the next scheduled tick after each fault;
+- website and recorder remain healthy throughout (blast-radius containment shown);
+- a **two-hour paper burn-in crossing an hourly partition boundary.**
+
+Deterministic and hours at most — not a full-day soak of a continuous daemon.
+
+## Codex's corrected node model (adopted)
+
+```text
+Serving node        web/API · cached operator view · bounded recording only if
+                    measured safe · NO heavy discovery
+Continuous paper    recorder · signal evaluator · outcome resolver · lifecycle
+  node              evaluator   (the ONLY writer of canonical lifecycle events)
+Research node       legacy multi-market flywheel batch · fast-perp challenger
+                    batch · disposable, capped jobs
+Bridge              immutable evidence bundles -> ; <- immutable research
+                    proposals ; atomic validated import
+```
+
+Note this is THREE roles, not two: v1 collapsed "serving" and "continuous paper"
+together. Codex correctly separates them — the recorder / evaluator / resolver /
+lifecycle loop is its own continuous node and the sole writer of canonical events;
+the serving node only serves and (maybe) does bounded recording.
+
+## Blocker before any of this is coded
+
+The recovery implementation is **not a reproducible checkpoint.** `465b553`
+committed this doc, but `claude/backend-buildout` is heavily dirty — most of the
+recovery files this references are uncommitted/untracked, so a clean clone does not
+contain the working system. **Codex must commit the recovery work at a green
+checkpoint first**, so there is a stable base to implement the split against (and so
+Claude can run the promised RED-on-old-code verification). This is the same
+uncommitted-module risk that took the site down on 2026-07-15.
 
 ## Non-goals
 - Not a rewrite of the flywheel engine — it already batches correctly.

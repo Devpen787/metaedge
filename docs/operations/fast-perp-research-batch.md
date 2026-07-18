@@ -57,8 +57,11 @@ LIVE_EXECUTION_ENABLED=false npm run fast-perp:import -- PROPOSAL_ID
 ```
 
 Import rejects unlocked, corrupt, expired, schema-incompatible, or stale-authority
-proposals. The import lock permits one writer, append-only IDs make retries safe,
-and the import receipt is written last. A repeated import returns
+proposals. It also requires a completed attempt and the exact originating evidence
+export to remain present with matching content hash and authority digest. The
+`committing` phase makes publication recoverable without making an unfinished
+proposal importable. The import lock permits one writer, append-only IDs make
+retries safe, and the import receipt is written last. A repeated import returns
 `already_imported`.
 
 ## Operator interpretation
@@ -73,6 +76,7 @@ status never authorizes live capital.
 
 - An overdue `running` attempt becomes `abandoned` before the next attempt starts.
 - `.staging`, `.tmp`, and `.lock` artifacts must be absent after a completed tick.
-- Proposal authority must still match canonical research-run and contract IDs.
+- Proposal authority must still match the full canonical research-run and contract
+  contents, and proposal provenance must match its local evidence export.
 - Import receipts, research runs, contracts, and lifecycle event IDs must be unique.
 - Serving and continuous nodes must keep `LIVE_EXECUTION_ENABLED=false`.

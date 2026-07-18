@@ -60,8 +60,8 @@ mostly about WHERE that trigger lives, not rewriting the engine.
 ### The e2-micro — serve + record (light, continuous)
 Runs and is proven to run fine here:
 - the web server / product
-- `startFastPerpRecorder()` — WebSocket market ingest (light; it only "stopped"
-  because the flywheel starved its CPU — remove the flywheel and it is fine)
+- `startFastPerpRecorder()` — WebSocket market ingest, but only on a serving node
+  after its bounded recorder profile is measured independently
 - the read-only scouts by cron: `kalshi_scout.mjs` (every 5m, flock-guarded, exits),
   the Polymarket scout
 - `startFastPerpOperatorSummary()` — cheap state read for the UI
@@ -186,9 +186,15 @@ concurrent Arena work entered that checkpoint.
 - The research child reads the verified artifact without duplicating it into a
   second raw store. A deliberately preserved first real attempt timed out at the
   five-minute cap; the optimized retry completed in about two minutes.
+- The parent uses a persisted `running -> committing -> completed` protocol.
+  Proposals may be published while `committing`, but canonical import requires a
+  completed attempt tied to the exact local evidence-export ID and payload hash;
+  a parent crash on either side of publication reconciles without a false completed
+  record or an importable abandoned proposal.
 - The continuous importer validates schema, full payload hash, per-chunk hashes,
-  live lock, expiry, and authority digest. Import is locked and idempotent; partial
-  research-run/contract writes resume safely because append-only IDs are stable.
+  live lock, expiry, evidence provenance, and full-content authority digest. Import
+  is locked and idempotent; partial research-run/contract writes resume safely
+  because append-only IDs are stable.
 - The real proposal `fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713`
   imported run `fast_perp_research_7a25be6616811b8ac90a`: 300 evaluations, zero
   contracts, explicit `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked. This is

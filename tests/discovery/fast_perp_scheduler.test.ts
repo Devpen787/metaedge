@@ -90,6 +90,12 @@ test('challenger research is not eligible for continuous heartbeat health', () =
   assert.equal(FAST_PERP_CLOCKS.map((row) => String(row.id)).includes('challenger_research'), false);
 });
 
+test('the continuous server launcher keeps research batches disabled', () => {
+  const launcher = fs.readFileSync(path.join(process.cwd(), 'scripts', 'run_fast_perp_final_server.sh'), 'utf8');
+  assert.match(launcher, /FAST_PERP_RESEARCH_ENABLED=false/);
+  assert.doesNotMatch(launcher, /FAST_PERP_RESEARCH_ENABLED=true/);
+});
+
 test('clock queue health measures schedule overrun instead of reporting a literal zero', () => {
   assert.deepEqual(measureFastPerpClockQueue({ cadenceMs: 250, startedAt: 1_000, completedAt: 1_800,
     reportedQueueDepth: 0, reportedQueueLagMs: 0 }), { queueDepth: 3, queueLagMs: 550, scheduleLagMs: 550 });

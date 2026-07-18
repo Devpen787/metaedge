@@ -18,6 +18,6 @@ exec env \
   FAST_PERP_OPERATION_ENABLED=true \
   FAST_PERP_SIGNAL_ENABLED=true \
   FAST_PERP_RESOLVER_ENABLED=true \
-  FAST_PERP_RESEARCH_ENABLED=true \
+  FAST_PERP_RESEARCH_ENABLED=false \
   FAST_PERP_LIFECYCLE_ENABLED=true \
   /opt/homebrew/bin/node dist/server.cjs >> "$1" 2>&1

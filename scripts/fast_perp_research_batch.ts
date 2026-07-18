@@ -19,8 +19,9 @@ try {
   const result = JSON.parse(line) as { proposalId: string; candidateFile: string; [key: string]: unknown };
   const proposal = bridge.readProposal(result.candidateFile);
   if (proposal.id !== result.proposalId) throw new Error('RESEARCH_CANDIDATE_ID_MISMATCH');
-  bridge.finishAttempt(attempt.id, 'completed', { proposalId: result.proposalId });
+  bridge.prepareAttemptCommit(attempt.id, result.proposalId);
   const file = bridge.publishProposal(proposal);
+  bridge.finishAttempt(attempt.id, 'completed', { proposalId: result.proposalId });
   console.log(JSON.stringify({ attemptId: attempt.id, ...result, file, status: 'proposed', liveExecution: 'locked' }));
 } catch (error) {
   const timedOut = Boolean((error as { killed?: boolean }).killed) || (error as { code?: string }).code === 'ETIMEDOUT';

@@ -46,14 +46,15 @@ function runProof() {
     const now = base + (nextIndex + 1) * 5_000;
     const exported = createFastPerpEvidenceExport({ evidenceStore: evidence, economicStore: economics, now });
     bridge.publishEvidence(exported); const attempt = bridge.beginAttempt(exported.id, now, 300_000);
-    const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'work'), now); bridge.publishProposal(proposal);
+    const proposal = executeFastPerpResearchBatch(exported, path.join(root, 'work'), now);
+    bridge.prepareAttemptCommit(attempt.id, proposal.id, now); bridge.publishProposal(proposal);
+    bridge.finishAttempt(attempt.id, 'completed', { completedAt: now + 1, proposalId: proposal.id });
     if (cycle === 3 || cycle === 11) {
       try { bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics,
         failAfter: cycle === 3 ? 'research_run' : 'contracts', now }); } catch { /* expected injected crash */ }
     }
     const imported = bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics, now });
     const duplicate = bridge.importProposal(proposal.id, { evidenceStore: evidence, economicStore: economics, now });
-    bridge.finishAttempt(attempt.id, 'completed', { completedAt: now + 1, proposalId: proposal.id });
     cycles.push({ cycle: cycle + 1, exportId: exported.id, proposalId: proposal.id, runId: proposal.payload.run.id,
       contracts: proposal.payload.contracts.length, lifecycleEvents: proposal.payload.lifecycleEvents.length,
       shadowCandidates: proposal.payload.run.evaluations.filter((row) => row.disposition === 'shadow_candidate').length,
@@ -73,7 +74,11 @@ function runProof() {
       && (!fs.existsSync(publicationRoot) || fs.readdirSync(publicationRoot).length === 0);
   }
   const currentProposal = executeFastPerpResearchBatch(currentExport, path.join(root, 'fault-work'), latestNow + 200);
-  const validFile = bridge.publishProposal(currentProposal); const corruptFile = path.join(root, 'corrupt-proposal.json');
+  const faultAttempt = bridge.beginAttempt(currentExport.id, latestNow + 200, 300_000);
+  bridge.prepareAttemptCommit(faultAttempt.id, currentProposal.id, latestNow + 200);
+  const validFile = bridge.publishProposal(currentProposal);
+  bridge.finishAttempt(faultAttempt.id, 'completed', { completedAt: latestNow + 201, proposalId: currentProposal.id });
+  const corruptFile = path.join(root, 'corrupt-proposal.json');
   fs.copyFileSync(validFile, corruptFile); const corrupt = JSON.parse(fs.readFileSync(corruptFile, 'utf8'));
   corrupt.payload.run.id = 'tampered'; fs.writeFileSync(corruptFile, JSON.stringify(corrupt));
   let corruptRejected = false; try { bridge.readProposal(corruptFile); } catch { corruptRejected = true; }

@@ -114,7 +114,7 @@ export interface OperatorClockHealth {
 
 export interface ResearchBatchHealth {
   id: 'challenger_research'; cadenceMs: number; timeoutMs: number; latestAttemptId: string | null;
-  status: 'disabled' | 'idle' | 'running' | 'completed' | 'failed' | 'timed_out' | 'abandoned';
+  status: 'disabled' | 'idle' | 'running' | 'committing' | 'completed' | 'failed' | 'timed_out' | 'abandoned';
   startedAt: number | null; completedAt: number | null; deadlineAt: number | null; failureReason: string | null;
   affectsContinuousOperation: false;
 }

@@ -78,7 +78,7 @@ export interface FastPerpResearchProposalBundle {
 
 export interface FastPerpResearchAttempt {
   schemaVersion: 1; id: string; evidenceExportId: string; startedAt: number; deadlineAt: number;
-  completedAt: number | null; status: 'running' | 'completed' | 'failed' | 'timed_out' | 'abandoned';
+  completedAt: number | null; status: 'running' | 'committing' | 'completed' | 'failed' | 'timed_out' | 'abandoned';
   proposalId: string | null; failureReason: string | null; liveExecution: 'locked';
 }
 
@@ -331,8 +331,8 @@ export class FastPerpResearchBridge {
   beginAttempt(evidenceExportId: string, now = Date.now(), timeoutMs = 5 * 60_000): FastPerpResearchAttempt {
     const lockFile = path.join(this.root, 'attempts', '.begin.lock'); const lock = this.acquireLock(lockFile, 30_000);
     try {
-      this.reconcileExpiredAttempts(now);
-      const running = this.readAttempts().find((row) => row.status === 'running');
+      this.reconcileAttempts(now);
+      const running = this.readAttempts().find((row) => row.status === 'running' || row.status === 'committing');
       if (running) throw new Error(`RESEARCH_BATCH_ALREADY_RUNNING:${running.id}`);
       const id = `fast_perp_attempt_${contentHash({ evidenceExportId, startedAt: now }).slice(0, 24)}`;
       const attempt: FastPerpResearchAttempt = { schemaVersion: 1, id, evidenceExportId, startedAt: now,
@@ -342,23 +342,50 @@ export class FastPerpResearchBridge {
     } finally { fs.closeSync(lock); try { fs.unlinkSync(lockFile); } catch { /* already released */ } }
   }
 
+  prepareAttemptCommit(id: string, proposalId: string, preparedAt = Date.now()): FastPerpResearchAttempt {
+    this.proposalFile(proposalId);
+    const file = this.attemptFile(id); const prior = JSON.parse(fs.readFileSync(file, 'utf8')) as FastPerpResearchAttempt;
+    if (prior.status === 'committing' && prior.proposalId === proposalId) return prior;
+    if (prior.status !== 'running') throw new Error(`RESEARCH_ATTEMPT_NOT_RUNNING:${prior.status}`);
+    if (preparedAt > prior.deadlineAt) throw new Error('RESEARCH_ATTEMPT_DEADLINE_EXCEEDED');
+    const committing: FastPerpResearchAttempt = { ...prior, status: 'committing', proposalId };
+    this.atomicJson(file, committing); return committing;
+  }
+
   finishAttempt(id: string, status: 'completed' | 'failed' | 'timed_out', options: {
     completedAt?: number; proposalId?: string | null; failureReason?: string | null } = {}): FastPerpResearchAttempt {
     const file = this.attemptFile(id); const prior = JSON.parse(fs.readFileSync(file, 'utf8')) as FastPerpResearchAttempt;
-    if (prior.status !== 'running') return prior;
+    if (!['running', 'committing'].includes(prior.status)) return prior;
+    if (status === 'completed' && prior.status !== 'committing') {
+      throw new Error('RESEARCH_ATTEMPT_NOT_COMMITTING');
+    }
     const completed: FastPerpResearchAttempt = { ...prior, status, completedAt: options.completedAt ?? Date.now(),
       proposalId: options.proposalId ?? null, failureReason: options.failureReason ?? null };
     this.atomicJson(file, completed); return completed;
   }
 
-  reconcileExpiredAttempts(now = Date.now()): FastPerpResearchAttempt[] {
+  reconcileAttempts(now = Date.now()): FastPerpResearchAttempt[] {
     return this.readAttempts().map((row) => {
-      if (row.status !== 'running' || row.deadlineAt >= now) return row;
+      if (row.status === 'committing' && row.proposalId && fs.existsSync(this.proposalFile(row.proposalId))) {
+        try {
+          this.readProposal(row.proposalId);
+          const completed: FastPerpResearchAttempt = { ...row, status: 'completed', completedAt: now,
+            failureReason: null };
+          this.atomicJson(this.attemptFile(row.id), completed); return completed;
+        } catch {
+          const failed: FastPerpResearchAttempt = { ...row, status: 'failed', completedAt: now,
+            failureReason: 'PUBLISHED_PROPOSAL_INVALID' };
+          this.atomicJson(this.attemptFile(row.id), failed); return failed;
+        }
+      }
+      if (!['running', 'committing'].includes(row.status) || row.deadlineAt >= now) return row;
       const abandoned: FastPerpResearchAttempt = { ...row, status: 'abandoned', completedAt: now,
         failureReason: 'PROCESS_ENDED_WITHOUT_TERMINAL_RESULT' };
       this.atomicJson(this.attemptFile(row.id), abandoned); return abandoned;
     });
   }
+
+  reconcileExpiredAttempts(now = Date.now()): FastPerpResearchAttempt[] { return this.reconcileAttempts(now); }
 
   readAttempts(): FastPerpResearchAttempt[] {
     const root = path.join(this.root, 'attempts'); if (!fs.existsSync(root)) return [];
@@ -370,7 +397,7 @@ export class FastPerpResearchBridge {
 
   researchBatchHealth(enabled: boolean, now = Date.now()): ResearchBatchHealth {
     const persisted = this.readAttempts().sort((a, b) => b.startedAt - a.startedAt)[0] ?? null;
-    const latest = persisted?.status === 'running' && persisted.deadlineAt < now
+    const latest = (persisted?.status === 'running' || persisted?.status === 'committing') && persisted.deadlineAt < now
       ? { ...persisted, status: 'abandoned' as const, completedAt: now,
         failureReason: 'PROCESS_ENDED_WITHOUT_TERMINAL_RESULT' } : persisted;
     return { id: 'challenger_research', cadenceMs: 6 * 60 * 60_000, timeoutMs: 5 * 60_000,
@@ -413,6 +440,8 @@ export class FastPerpResearchBridge {
     try {
       if (fs.existsSync(importedFile)) return { status: 'already_imported' as const, id };
       const bundle = this.readProposal(id);
+      const completedAttempt = this.readAttempts().some((row) => row.status === 'completed' && row.proposalId === id);
+      if (!completedAttempt) throw new Error('RESEARCH_PROPOSAL_ATTEMPT_NOT_COMPLETED');
       if ((options.now ?? Date.now()) > bundle.expiresAt) {
         this.atomicJson(path.join(this.root, 'rejections', `${id}.json`),
           { proposalId: id, rejectedAt: options.now ?? Date.now(), reason: 'RESEARCH_PROPOSAL_EXPIRED' });

@@ -1,34 +1,33 @@
 # MetaEdge Gemini Flywheel Recovery Proof Pack
 
-Status: **IN PROGRESS — AVAILABILITY ARCHITECTURE REPLACED; TWO-HOUR BURN-IN RUNNING**
+Status: **COMPLETE — AVAILABILITY SPLIT AND PAPER-TRUTH RECOVERY VERIFIED**
 
-This file is an evidence index, not a completion certificate. A row marked
-`PENDING` prevents certification. Historical replay, canary data, and invalidated
-soaks are plumbing evidence only and contribute zero promotable economic evidence.
-Live execution must remain locked throughout.
+This file is the evidence index for the completed engineering recovery. Historical
+replay, canary data, and invalidated soaks are plumbing evidence only and contribute
+zero promotable economic evidence. Live execution remained locked throughout.
 
 ## Acceptance evidence
 
 | Requirement | Authoritative evidence | Current status |
 | --- | --- | --- |
-| Legacy containment, 14,312-contract quarantine, archive hashes, recursive read-only state | `persisted-state-verification.json`; `data/archive/flywheel-recovery-preacceptance-1784201556251/manifest.json` | PASS in latest pre-soak independent verification; must be reverified post-soak |
-| Cutover separates `historical_replay` from `paper_forward` | `persisted-state-verification.json`; `data/opportunity-factory-v3/fast-perp-cutover.json` | PASS in latest pre-soak independent verification; must be reverified post-soak |
+| Legacy containment, 14,312-contract quarantine, archive hashes, recursive read-only state | `persisted-state-verification.json`; `data/archive/flywheel-recovery-preacceptance-1784201556251/manifest.json` | PASS post-burn-in with runtime required |
+| Cutover separates `historical_replay` from `paper_forward` | `persisted-state-verification.json`; `data/opportunity-factory-v3/fast-perp-cutover.json` | PASS post-burn-in |
 | Deterministic 10x canary replay, decision-before-outcome, restart/recovery paths, zero promotable evidence | `deterministic-replay.json` | PASS: 265 decisions / 265 outcomes twice; identical hash `0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2`; zero promotable |
 | Deliberate lies are rejected | `truth-mutation-proof.json` | PASS: clean control plus nine rejected mutations |
-| Full discovery, decision, Python parity, TypeScript, production build, strict capability, and product smoke commands | Fresh post-burn-in logs under `command-logs/` | **PENDING** — checkpoint commands passed; final fresh matrix follows the burn-in |
-| Cached operator UI and API truth | `output/playwright/flywheel-recovery/browser-proof.json`; desktop/mobile screenshots | PASS pre-soak; final API truth must match post-soak persisted truth |
-| Desktop and mobile screenshots | `output/playwright/flywheel-recovery/research-fleet-desktop.png`; `research-fleet-mobile.png` | PASS pre-soak |
-| Bounded hourly compression, manifest durability, retention/orphan integrity | `soak-availability-split-1784363625767/summary.json`; partition manifest; independent orphan/hash check | **RUNNING** — two-hour burn-in crosses UTC partitions with two-file maintenance cap |
-| Continuous-paper availability after removing challenger from liveness | `availability-split-proof.json`; real attempt/proposal/import records; two-hour burn-in | Finite 20-cycle/fault proof PASS; real 712 MB batch PASS after one safely preserved timeout; burn-in **RUNNING** |
-| Persisted decision/outcome/lifecycle/authorization uniqueness, causality, reconciliation, archive integrity, and current two-key live lock after burn-in | Fresh `persisted-state-verification.json` with `runtimeRequired: true` | **PENDING** — runs after the burn-in summary |
-| Invalid runs remain visibly excluded | Each invalid run's `INVALIDATED.json` | PASS for preserved invalidated runs; recheck final index post-soak |
+| Full discovery, decision, Python parity, TypeScript, production build, strict capability, and product smoke commands | `final-verification-matrix.json`; fresh logs under `command-logs/` | PASS: all 13 commands exit zero |
+| Cached operator UI and API truth | `output/playwright/flywheel-recovery/browser-proof.json`; desktop/mobile screenshots | PASS fresh post-burn-in; UI says paper-only, live locked, and `no_promoted_alpha` |
+| Desktop and mobile screenshots | `output/playwright/flywheel-recovery/research-fleet-desktop.png`; `research-fleet-mobile.png` | PASS fresh post-burn-in |
+| Bounded hourly compression, manifest durability, retention/orphan integrity | `soak-availability-split-1784363625767/summary.json`; `availability-burnin-verification.json` | PASS: 60 files, 30 batches, maximum two, zero orphans |
+| Continuous-paper availability after removing challenger from liveness | `availability-split-proof.json`; real attempt/proposal/import records; two-hour burn-in | PASS: finite 20-cycle/fault proof, real 712 MB batch, and 7,200,002 ms burn-in |
+| Persisted decision/outcome/lifecycle/authorization uniqueness, causality, reconciliation, archive integrity, and current two-key live lock after burn-in | Fresh `persisted-state-verification.json` with `runtimeRequired: true` | PASS |
+| Invalid runs remain visibly excluded | Each invalid run's `INVALIDATED.json`; `proof-manifest.json` | PASS: all invalid runs remain excluded from the completed evidence index |
 | Economic claim boundary | Final operator snapshot and proof conclusion | Current result is `no_promoted_alpha`; no profitability, HFT, or live-readiness claim is authorized |
 
 ## Availability-split evidence
 
 - Recovery checkpoint: `3b10d00`.
 - Deterministic fault proof: `availability-split-proof.json`, 20 cycles twice,
-  semantic hash `38fb4a85777b8bec7c504a4482f1f0d49d4d9e2e5108e16ee4dc1b3b05efdf66`.
+  semantic hash `44756b5a1e87cf5a8e3a71ada18e623a8cdfda565a33fb557b8546d59bf33c87`.
 - Exercised: partial research-run import, partial contract import, duplicate import,
   killed/abandoned attempt, kill-during-publication, concurrent import, stale,
   corrupt and expired bundles, and challenger exclusion
@@ -44,9 +43,11 @@ Live execution must remain locked throughout.
 - Sole-writer import persisted `fast_perp_research_7a25be6616811b8ac90a`: 300
   evaluations, zero contracts/lifecycle events, blocker
   `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked.
-- Active burn-in: `soak-availability-split-1784363625767`; server PID 10496;
-  continuous clock PIDs 10578/10579/10580. Research is disabled on this node and
-  reported separately with `affectsContinuousOperation: false`.
+- Completed burn-in: `soak-availability-split-1784363625767`; server PID 10496;
+  continuous clock PIDs 10578/10579/10580. Research was disabled on this node and
+  reported separately with `affectsContinuousOperation: false`. It passed 479
+  samples over 7,200,002 ms with zero violations. Session p95 34.30 ms; v3 p95/p99
+  33.67/42.41 ms; CPU average/p95 12.00/16.9%; final-window RSS growth 9.97%.
 
 ## Invalid first final soak
 
@@ -58,7 +59,7 @@ Live execution must remain locked throughout.
 - Permanent exclusion marker: `soak-final-1784219319422/INVALIDATED.json`
 - Failure: scheduled challenger research exceeded the 60-second running-heartbeat budget, produced non-operational samples, and drove CPU p95 above the fixed 70% gate.
 - The preserved partial series and post-invalidation shutdown record are diagnostic evidence only. They can never satisfy acceptance or be relabeled valid.
-- A repaired challenger completed once against the real corpus in 19.955 seconds, followed by the passing compiled all-clock boundary below. The replacement 24-hour soak may now begin.
+- A repaired challenger completed once against the real corpus in 19.955 seconds, followed by the passing compiled all-clock boundary below. This was an interim result under the superseded co-located-daemon design, not final acceptance.
 
 ## Passed repair boundary
 
@@ -66,7 +67,7 @@ Live execution must remain locked throughout.
 - Full scheduled challenger: policy v7, 1,820 global trials, 260 evaluations, 20.110 seconds.
 - Monitor: 600,000 ms / 120 samples, every declared gate true, zero violations, CPU p95 39.4%, live locked.
 - Independent persisted-state verification passed with runtime heartbeats required.
-- This stage proves the repaired boundary only. It does not replace the mandatory 24-hour final soak or authorize an economic claim.
+- This stage proved only the then-current repaired boundary. It did not authorize an economic claim and was later superseded by the three-role availability decision and its finite proof contract.
 
 ## Invalid second final soak
 
@@ -94,11 +95,13 @@ Live execution must remain locked throughout.
 - Permanent exclusion marker: `soak-final-1784284906426/INVALIDATED.json`; original `RUNNING.json` remains preserved as launch evidence.
 - Corrected failure sequence: at the first bad sample endpoints were still about 17 ms, recorder evidence was 254 ms old, storage was healthy, and the 12-core Mac was not proven starved. Challenger's running heartbeat reached 74,085 ms, exceeded its 60-second watchdog, and made operator health false; the monitor then wrote the global fail-closed pause, which stopped recorder and dependent clocks. The preserved 475-row series contains nine non-operational samples and can never be relabeled valid.
 
-## Remaining completion sequence
+## Completion result
 
-1. Require the two-hour monitor to write a full-duration `summary.json` with every gate true and no violations.
-2. Independently read persisted state and partition manifests; do not trust the API summary as the verifier's source.
-3. Persist fresh command logs for discovery, decision, Python parity, truth mutations, lint, build, strict capability matrix, and product browser smoke.
-4. Hash the final summary, series, verifier, replay, mutation proof, command logs, browser proof, screenshots, archive manifests, and lifecycle traces into a final manifest.
-5. Compare API/UI truth with persisted truth and retain `no_promoted_alpha` or `no_trade` when evidence has not promoted a strategy.
-6. Only after every row above passes may this recovery goal be marked complete. The obsolete 24-hour co-located-daemon acceptance is not waived; it is superseded by the implemented three-role boundary, finite batch/fault proof, and two-hour continuous-only burn-in defined in the corrected decision record. Do not start the canonical port or enable live execution as part of this goal.
+Every engineering row above passed. `proof-manifest.json` hashes the final summary,
+series, independent verifier, deterministic/fault/mutation proofs, fresh command
+logs, browser evidence, archive manifest, frozen schema, and decision record.
+Persisted truth and UI truth agree on `no_promoted_alpha`: the recovery proves a
+truthful, bounded paper system, not profitability. The obsolete 24-hour co-located
+daemon acceptance is superseded by the implemented three-role boundary, finite
+batch/fault proof, and two-hour continuous-only burn-in in the corrected decision
+record. Canonical Python integration and any live execution remain separate goals.

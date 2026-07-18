@@ -1,9 +1,10 @@
 # Flywheel availability: split the workload (corrected per Codex 2026-07-16)
 
 Date: 2026-07-16
-Status: IMPLEMENTED LOCALLY on `codex/flywheel-availability-split`; finite proof
-passed, real-corpus proposal/import passed, and the two-hour continuous-paper
-burn-in is running. Live execution remains locked. Canonical Python port deferred.
+Status: IMPLEMENTED AND VERIFIED on `codex/flywheel-availability-split`; finite
+proof, real-corpus proposal/import, two-hour continuous-paper burn-in, persisted
+state verification, and the clean final matrix passed. Live execution remains
+locked. Canonical Python port deferred.
 Author: Claude (v1), corrected after Codex's review.
 
 ## Correction notice (read first)
@@ -200,11 +201,24 @@ concurrent Arena work entered that checkpoint.
   contracts, explicit `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked. This is
   a valid no-edge/no-contract result, not a profitability claim.
 - The deterministic fault proof ran 20 cycles twice with semantic hash
-  `38fb4a85777b8bec7c504a4482f1f0d49d4d9e2e5108e16ee4dc1b3b05efdf66`.
+  `44756b5a1e87cf5a8e3a71ada18e623a8cdfda565a33fb557b8546d59bf33c87`.
   It exercised partial run and contract imports, duplicates, killed attempts,
   kill-during-publication, concurrent import, stale/corrupt/expired bundles, and
   challenger exclusion from continuous health. It produced two synthetic paper
   contracts solely as test fixtures.
+- The continuous-only burn-in ran 7,200,002 ms across UTC hours 08, 09, and 10
+  with 479 samples, zero endpoint/operational failures, zero queue lag, zero
+  restarts, zero unresolved state, no pause, and live locked. Session p95 was
+  34.30 ms; v3 p95/p99 were 33.67/42.41 ms; CPU average/p95 were 12.00/16.9%.
+  Final-window RSS growth was 9.97%, below the fixed 10% limit.
+- Partition maintenance compressed 60 files in 30 batches capped at two, with
+  zero orphan temporary files and every source/target pair reconciled. The server
+  and three clock PIDs were stable; one bounded ordinary-product child was observed
+  without being misclassified as a clock restart.
+- The clean final matrix passed all 13 commands: 157 discovery tests, 15 decision
+  tests, four Python reference vectors, deliberate truth mutations, deterministic
+  availability proof, typecheck, production build, fresh desktop/mobile browser
+  proof, isolated tab smoke, strict capability matrix, and diff integrity.
 
 ## Non-goals
 - Not a rewrite of the flywheel engine — it already batches correctly.

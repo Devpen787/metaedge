@@ -4,7 +4,7 @@
 
 Implement and verify the complete paper-first Flywheel v3 by combining the Max Dama quantitative research method with a durable Loop Engineering control plane. The system must improve how signals are discovered, prevent research self-deception, learn execution and portfolio behavior from forward paper evidence, run continuously with explicit budgets and circuit breakers, expose honest operator results, and keep live capital locked.
 
-## 2026-07-16 Recovery Goal (active)
+## 2026-07-16 Recovery Goal (completed)
 
 The July 15 fast-perps extension failed its completion audit in production shape: monolithic synchronous JSONL scans exhausted the server, rolling evidence created 14,312 short-lived contracts, and the runtime produced zero lifecycle events, shadow decisions, or shadow outcomes. Recover by preserving raw evidence as historical replay, quarantining all legacy derived state, implementing a bounded partitioned evidence store, recording decisions before outcomes exist, accumulating evidence on stable strategy versions, and proving the repaired paper-only path before any canonical integration.
 
@@ -12,7 +12,7 @@ The July 15 fast-perps extension failed its completion audit in production shape
 
 Re-audit the exact recovery build while its measured soak runs. Treat the audit as read-only: verify persisted/runtime truth, map every requested acceptance rule to code and evidence, trace storage/lifecycle/statistical/operator/wallet failure modes, and rank anything missed as a code defect, proof defect, or still-open time gate. Do not run CPU-heavy verification during the soak and do not repair findings without a separate implementation request.
 
-## 2026-07-18 Availability-split completion (active)
+## 2026-07-18 Availability-split completion (completed)
 
 Finish the recovery by replacing the fast-perp challenger's continuous liveness contract with a disposable one-shot research job and an immutable proposal bridge. Serving, continuous-paper, and research roles must have separate failure domains. The continuous-paper node is the sole writer of canonical decisions, outcomes, lifecycle events, and authorizations. Completion uses finite adversarial proof rather than a monolithic 24-hour soak: repeated real-corpus batches, killed/timeout/corrupt/stale/duplicate/concurrent bundle cases, and a two-hour partition-boundary burn-in. Live execution remains locked and profitability remains unproven.
 
@@ -24,8 +24,8 @@ Finish the recovery by replacing the fast-perp challenger's continuous liveness 
 4. **Completed - Honest economics and safety:** global trials, repeated-look accounting, risk reservations, wallet atomicity and no bypass.
 5. **Completed - reproducible green checkpoint:** recovery baseline preserved in `3b10d00` without raw data, secrets, or bulky soak series.
 6. **Completed - availability split implementation:** three continuous clocks; deadline-bound research attempt ledger; immutable chunked evidence exports and proposals; hash/schema/expiry/authority validation; locked idempotent import; serving-node discovery disabled.
-7. **In progress - finite availability proof:** deterministic 20-cycle proof passed twice; real 712 MB export, bounded batch, and canonical no-contract import passed; two-hour continuous-paper burn-in is running across hourly partition maintenance.
-8. **Pending - final verification and commit:** rerun discovery/decision/integration/recovery/performance tests, independent verifier, lint, build, smoke, and strict capability matrix; finalize the compact proof pack and commit. Canonical Python integration remains a later goal.
+7. **Completed - finite availability proof:** deterministic 20-cycle proof passed twice; real 712 MB export, bounded batch, and canonical no-contract import passed; the 7,200,002 ms continuous-paper burn-in passed across two hourly partition-maintenance boundaries.
+8. **Completed - final verification and commit:** discovery/decision/integration/recovery/performance tests, independent persisted-state verifier, Python parity, truth mutations, lint, build, fresh browser proof, isolated smoke, strict capability matrix, and proof packaging passed. Canonical Python integration remains a later goal.
 
 ### Recovery invariants
 

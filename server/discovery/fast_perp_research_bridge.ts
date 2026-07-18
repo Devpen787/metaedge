@@ -359,8 +359,16 @@ export class FastPerpResearchBridge {
     if (status === 'completed' && prior.status !== 'committing') {
       throw new Error('RESEARCH_ATTEMPT_NOT_COMMITTING');
     }
+    if (status === 'completed') {
+      const proposalId = options.proposalId ?? prior.proposalId;
+      if (!proposalId || proposalId !== prior.proposalId || !fs.existsSync(this.proposalFile(proposalId))) {
+        throw new Error('RESEARCH_PROPOSAL_NOT_PUBLISHED');
+      }
+      this.readProposal(proposalId);
+    }
     const completed: FastPerpResearchAttempt = { ...prior, status, completedAt: options.completedAt ?? Date.now(),
-      proposalId: options.proposalId ?? null, failureReason: options.failureReason ?? null };
+      proposalId: options.proposalId === undefined ? prior.proposalId : options.proposalId,
+      failureReason: options.failureReason ?? null };
     this.atomicJson(file, completed); return completed;
   }
 

@@ -87,6 +87,9 @@ test('proposal import requires a completed attempt and recovers a parent crash a
   const second = fixture();
   const abandoned = second.bridge.beginAttempt('unpublished-export', 800_000, 100);
   second.bridge.prepareAttemptCommit(abandoned.id, proposal.id, 800_001);
+  assert.throws(() => second.bridge.finishAttempt(abandoned.id, 'completed', {
+    completedAt: 800_002, proposalId: proposal.id,
+  }), /PROPOSAL_NOT_PUBLISHED/);
   assert.equal(second.bridge.reconcileAttempts(800_101).find((row) => row.id === abandoned.id)?.status, 'abandoned');
 });
 

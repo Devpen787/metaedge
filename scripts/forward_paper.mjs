@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { computeFeatures, runStrategy, metrics } from './lib/strategy_core.mjs';
 import { flag } from './lib/universe.mjs';
+import { evaluateKill, MIN_N } from '../server/killrule.mjs';
 
 const args = process.argv.slice(2);
 const SINCE = flag(args, 'since', new Date().toISOString().slice(0, 10));
@@ -50,14 +51,31 @@ const OUT_DIR = path.join(process.cwd(), 'data', 'edgeops', 'forward');
 // while changed params produce a new id — correctly a NEW trial, because it is a
 // different strategy.
 const SURVIVORS_FILE = path.join(process.cwd(), 'data', 'edgeops', 'survivors.jsonl');
+// Retirement is the missing half of automation: promotion armed itself from the
+// survivor ledger, but a dead trial had nothing to stop it — an asymmetry that
+// accumulates zombies. A trial that reaches MIN_N forward trades and FAILS the
+// kill rule appends its id here and is never re-armed. Self-pruning, not just
+// self-arming.
+const RETIRED_FILE = path.join(process.cwd(), 'data', 'edgeops', 'retired.jsonl');
+
+function loadRetired() {
+  if (!fs.existsSync(RETIRED_FILE)) return new Set();
+  const ids = new Set();
+  for (const line of fs.readFileSync(RETIRED_FILE, 'utf8').split('\n').filter(Boolean)) {
+    try { ids.add(JSON.parse(line).id); } catch { /* a bad row must not un-retire anything */ }
+  }
+  return ids;
+}
 
 function loadTrials() {
   if (!fs.existsSync(SURVIVORS_FILE)) return [];
+  const retired = loadRetired();
   const byId = new Map();
   for (const line of fs.readFileSync(SURVIVORS_FILE, 'utf8').split('\n').filter(Boolean)) {
     try {
       const row = JSON.parse(line);
       if (!row.id || !row.symbol || !row.family || !row.params) continue;
+      if (retired.has(row.id)) continue;                 // a killed trial never re-arms
       const prev = byId.get(row.id);
       if (!prev || (row.t || 0) >= (prev.t || 0)) byId.set(row.id, row);
     } catch { /* a malformed row must not blank the ledger */ }
@@ -95,9 +113,26 @@ for (const trial of TRIALS) {
   const trades = runStrategy(trial.family, trial.params, bars, F, startIdx, bars.length, COST);
   const m = metrics(trades);
 
+  // Self-pruning: once forward evidence reaches MIN_N, apply the SAME kill rule
+  // the server's paper fleet uses. A killed trial is recorded and never re-armed.
+  let retiredReason = null;
+  if (trades.length >= MIN_N) {
+    const rets = trades.map((t) => t.ret);
+    const grossWin = rets.filter((r) => r > 0).reduce((s, r) => s + r, 0);
+    const grossLoss = -rets.filter((r) => r <= 0).reduce((s, r) => s + r, 0);
+    const netPnl = rets.reduce((s, r) => s + r, 0);
+    const k = evaluateKill({ n: trades.length, grossWin, grossLoss, netPnl });
+    if (k.verdict === 'KILL') {
+      fs.appendFileSync(RETIRED_FILE, JSON.stringify({ id: trial.id, symbol: trial.symbol,
+        family: trial.family, t: Date.now(), forwardN: trades.length, reason: k.reason }) + '\n');
+      retiredReason = k.reason;
+    }
+  }
+
   report.push({
     ...trial,
-    status: 'RUNNING',
+    status: retiredReason ? 'RETIRED' : 'RUNNING',
+    retiredReason,
     warmupBars: startIdx,
     forwardBars: bars.length - startIdx,
     forwardFrom: new Date(bars[startIdx].t).toISOString(),

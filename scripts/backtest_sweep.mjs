@@ -43,8 +43,14 @@ const MARKET = flag(args, 'market', 'crypto');          // label for the report 
 const FROZEN = flag(args, 'frozen', '') ? JSON.parse(flag(args, 'frozen', '')) : null;
 const ALL_FAMILIES = ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab', 'vol_squeeze', 'volume_surge'];
 const ONLY_FAMILY = flag(args, 'family', '');
-const FAMILIES = ONLY_FAMILY ? [ONLY_FAMILY] : ALL_FAMILIES;
-if (FROZEN && !ONLY_FAMILY) throw new Error('--frozen requires --family (params belong to exactly one family)');
+// --family accepts a comma list (rsi_meanrev,meanrev_stab). Splitting matters:
+// treating the whole string as one family name silently matches NOTHING and
+// prints a false "no survivors" — the exact false-negative this repo exists to
+// prevent. Unknown names THROW rather than quietly evaluate zero hypotheses.
+const FAMILIES = ONLY_FAMILY ? ONLY_FAMILY.split(',').map((s) => s.trim()).filter(Boolean) : ALL_FAMILIES;
+const UNKNOWN = FAMILIES.filter((f) => !ALL_FAMILIES.includes(f));
+if (UNKNOWN.length) throw new Error(`unknown --family: ${UNKNOWN.join(',')} (valid: ${ALL_FAMILIES.join(', ')})`);
+if (FROZEN && FAMILIES.length !== 1) throw new Error('--frozen requires exactly one --family (params belong to exactly one family)');
 const dstr = new Date().toISOString().slice(0, 10);
 
 

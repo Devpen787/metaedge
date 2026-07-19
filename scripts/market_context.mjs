@@ -34,31 +34,40 @@ const okxFunding = (inst) => gj(`https://www.okx.com/api/v5/public/funding-rate?
 const wiki = (article) => { const d = (x) => x.toISOString().slice(0, 10).replace(/-/g, ''); const now = new Date(); return gj(`https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/all-agents/${article}/daily/${d(new Date(Date.now() - 9 * 86400000))}/${d(now)}`).then((j) => { const v = j.items; return v[v.length - 1].views; }); }; // attention
 const fred = (id) => fetch(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}`).then((r) => r.text()).then((t) => { const rows = t.trim().split('\n').slice(1).filter((l) => { const v = l.split(',')[1]; return v && v !== '.' && !isNaN(Number(v)); }); return Number(rows[rows.length - 1].split(',')[1]); }); // macro
 const btcpx = () => gj('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&include_24hr_change=true').then((j) => ({ p: Math.round(j.bitcoin.usd), c: +j.bitcoin.usd_24h_change.toFixed(2) }));
+// OKX rubik — all NO-KEY: positioning, order flow, forced flow
+const okxLongShort = (ccy) => gj(`https://www.okx.com/api/v5/rubik/stat/contracts/long-short-account-ratio?ccy=${ccy}&period=1H`).then((j) => j.data?.length ? +Number(j.data[0][1]).toFixed(2) : null); // >1 = crowd long
+const okxTakerBuyRatio = (ccy) => gj(`https://www.okx.com/api/v5/rubik/stat/taker-volume?ccy=${ccy}&instType=SPOT&period=1H`).then((j) => { const d = j.data?.[0]; if (!d) return null; const sell = Number(d[1]), buy = Number(d[2]); return sell > 0 ? +(buy / sell).toFixed(2) : null; }); // >1 = aggressive buying
+const okxLiq = (uly) => gj(`https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP&state=filled&uly=${uly}`).then((j) => { const det = j.data?.[0]?.details || []; let L = 0, S = 0; for (const d of det) { const n = Number(d.sz) * Number(d.bkPx); if (d.posSide === 'long') L += n; else if (d.posSide === 'short') S += n; } return { long: Math.round(L), short: Math.round(S) }; }); // which side got flushed
 
 async function run() {
   fs.mkdirSync(DIR, { recursive: true });
-  const [fng, dexV, fees, stables, tvl, btcDvol, ethDvol, hl, okxBtc, okxEth, wBtc, wEth, y10, dxy, px] = await Promise.all([
+  const [fng, dexV, fees, stables, tvl, btcDvol, ethDvol, hl, okxBtc, okxEth, wBtc, wEth, y10, dxy, px,
+    lsBtc, lsEth, takerBtc, liqBtc] = await Promise.all([
     safe(fearGreed), safe(dexVol24h), safe(feesRev24h), safe(stablecoinSupply), safe(totalTvl),
     safe(() => dvol('BTC')), safe(() => dvol('ETH')), safe(hlFunding),
     safe(() => okxFunding('BTC-USD-SWAP')), safe(() => okxFunding('ETH-USD-SWAP')),
     safe(() => wiki('Bitcoin')), safe(() => wiki('Ethereum')),
     safe(() => fred('DGS10')), safe(() => fred('DTWEXBGS')), safe(btcpx),
+    safe(() => okxLongShort('BTC')), safe(() => okxLongShort('ETH')), safe(() => okxTakerBuyRatio('BTC')), safe(() => okxLiq('BTC-USDT')),
   ]);
   const btcFundHL = hl?.BTC ?? null;
   const row = {
     t: Date.now(),
     sentiment: { fearGreed: fng },
-    flow: { dexVol24h: dexV, feesRev24h: fees, stablecoinSupply: stables, totalTvl: tvl },
+    flow: { dexVol24h: dexV, feesRev24h: fees, stablecoinSupply: stables, totalTvl: tvl, btcTakerBuyRatio: takerBtc },
     positioning: { btcDvol, ethDvol, btcFundingHL: btcFundHL, ethFundingHL: hl?.ETH ?? null, btcFundingOKX: okxBtc, ethFundingOKX: okxEth,
-      btcFundingDivergence: (okxBtc != null && btcFundHL != null) ? +(okxBtc - btcFundHL).toFixed(1) : null },
+      btcFundingDivergence: (okxBtc != null && btcFundHL != null) ? +(okxBtc - btcFundHL).toFixed(1) : null,
+      btcLongShortRatio: lsBtc, ethLongShortRatio: lsEth },
+    forcedFlow: { btcLiqLong: liqBtc?.long ?? null, btcLiqShort: liqBtc?.short ?? null },
     attention: { btcWiki: wBtc, ethWiki: wEth },
     macro: { us10y: y10, dollarIndex: dxy },
     anchor: { btcPrice: px?.p ?? null, btc24h: px?.c ?? null },
   };
   fs.appendFileSync(path.join(DIR, `context-${new Date().toISOString().slice(0, 10)}.jsonl`), JSON.stringify(row) + '\n');
-  const ok = Object.values({ fng, dexV, stables, btcDvol, btcFundHL, okxBtc, wBtc, y10, px }).filter((x) => x != null).length;
-  console.log(`[context] ${new Date().toISOString()} angles=${ok}/9 recorded`);
-  console.log(`  sentiment F&G ${fng} | flow: DEX $${(dexV / 1e9).toFixed(1)}B stables $${(stables / 1e9).toFixed(0)}B | vol BTC-DVOL ${btcDvol}`);
-  console.log(`  positioning: BTC funding HL ${btcFundHL}% vs OKX ${okxBtc}% (div ${row.positioning.btcFundingDivergence}) | attention BTC-wiki ${wBtc} | macro 10Y ${y10}% | BTC $${px?.p} (${px?.c}%)`);
+  const ok = Object.values({ fng, dexV, stables, btcDvol, btcFundHL, okxBtc, wBtc, y10, px, lsBtc, takerBtc, liqBtc }).filter((x) => x != null).length;
+  console.log(`[context] ${new Date().toISOString()} signals=${ok}/12 recorded`);
+  console.log(`  sentiment F&G ${fng} | flow: DEX $${(dexV / 1e9).toFixed(1)}B stables $${(stables / 1e9).toFixed(0)}B taker buy/sell ${takerBtc} | vol BTC-DVOL ${btcDvol}`);
+  console.log(`  positioning: funding HL ${btcFundHL}% vs OKX ${okxBtc}% (div ${row.positioning.btcFundingDivergence}) | L/S ratio ${lsBtc} | forced: liq long $${((liqBtc?.long || 0) / 1e6).toFixed(1)}M vs short $${((liqBtc?.short || 0) / 1e6).toFixed(1)}M`);
+  console.log(`  attention BTC-wiki ${wBtc} | macro 10Y ${y10}% DXY ${dxy} | BTC $${px?.p} (${px?.c}%)`);
 }
 run().catch((e) => console.error('[context] failed:', e.message));

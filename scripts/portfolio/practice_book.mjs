@@ -3,23 +3,25 @@
 // argued for. Its job is NOT to find edge; it is to EXERCISE and validate the risk
 // machinery we deferred: hard stop, time-stop, daily max-DD kill, risk-based sizing.
 // Scored on EXIT DISCIPLINE (did every position have a stop? did losers get cut
-// small? did the kill switch fire on time?) — PnL is secondary.
+// small? did the kill switch fire on time?) — PnL is secondary and NOT A SIGNAL
+// WORTH OPTIMIZING. See docs/decision_records/2026-07-20-practice-book-engines-
+// never-validated.md: the 6 crypto_core.mjs engines (rsi_meanrev, meanrev_stab,
+// vol_squeeze, momentum_breakout, trend_atr, volume_surge) never passed the
+// operating model's own gate 1-2 (named participant, mechanism, falsifier) —
+// they're generic technical-analysis recipes, explicitly built as anti-
+// overfitting scaffolding AFTER an optimized version of the same families
+// failed robustness testing. A better equity curve here does not mean an edge
+// was found; it means an unvalidated strategy lost less on paper.
 //
-// MEASURED, not assumed (a direct investigation after a Cluster-1a A/B test
-// surfaced this file running -73% to -80% equity, far outside an earlier
-// "break-even-ish" assumption): all 6 signal families, tested independently,
-// land in a uniform 43-45.5% win rate on the FULL backfilled universe (then
-// ~616 instruments) — not one bad family, a structural characteristic of
-// generic technical signals against a wide, largely illiquid/volatile
-// universe. The SAME families on a real, liquid large-cap universe (~24
-// coins) tested +16.4% GROSS of cost, ~46.7% win rate — nearly identical win
-// rate, but a much better win/loss payoff skew. Real trading costs still ate
-// that down to -34.9% net, a separate, trade-frequency-driven problem (3710
-// trades across 24 instruments). Both findings pointed the same direction:
-// universe breadth was hurting more than helping THIS ensemble. Restricted
-// the tradeable universe below to real, liquidity-derived large-caps —
-// same "derive live, don't hand-pick" discipline as mm_scout.mjs's pair list
-// — rather than a hardcoded list of tickers.
+// A universe-breadth fix below DID meaningfully change the loss magnitude
+// (-79.1% -> -23.3% net equity, see the decision record for the full A/B
+// investigation) — that fix is kept because it's a real, verified engineering
+// improvement to how the file sources instruments (liquidity-derived, not
+// hand-picked, same discipline as everywhere else) and does no harm. But
+// -23.3% is still a loss, from a strategy with no stated reason to expect
+// otherwise, and no further effort should go into chasing this number down —
+// that would be optimizing the wrong target, exactly as the decision record
+// describes.
 //
 // Split the bar (per the canvas): the STRICT survivor/grader bar governs promotion
 // to LIVE. This practice book runs freely in PAPER so the agent learns exits.
@@ -216,7 +218,9 @@ console.log(`    losers cut within stop distance: ${cutSmall}/${losers.length} (
 console.log(`    daily DD-kill fired: ${byReason.dd_kill || 0} time(s)`);
 const scaledTrades = closed.filter((c) => c.scaledOutFraction > 0).length;
 console.log(`    scaled exits: ${scaleOuts.length} partial closes fired, across ${scaledTrades}/${closed.length} trades that reached at least one scale-out level before their final close (levels: ${SCALE_LEVELS.map((l) => `+${(l.trigger * 100).toFixed(0)}%->sell ${(l.fraction * 100).toFixed(0)}%`).join(', ')})`);
-console.log(`\n  PnL (secondary — baseline entries, not edge):`);
+console.log(`\n  PnL (NOT A SIGNAL — the 6 engines here never passed the real research gate, see`);
+console.log(`  docs/decision_records/2026-07-20-practice-book-engines-never-validated.md.`);
+console.log(`  Do not read a better number below as progress; it is not evidence of anything):`);
 console.log(`    final equity $${eq.toFixed(0)} (${((eq / START - 1) * 100).toFixed(1)}%) | max DD ${(mdd * 100).toFixed(1)}%`);
 console.log(`    avg win ${(closed.filter((c) => c.retPct > 0).reduce((s, c) => s + c.retPct, 0) / (closed.filter((c) => c.retPct > 0).length || 1)).toFixed(1)}% | avg loss ${(losers.reduce((s, c) => s + c.retPct, 0) / (losers.length || 1)).toFixed(1)}%`);
 console.log(`\n  This validates the risk machinery, not an edge. Live stays locked.\n`);

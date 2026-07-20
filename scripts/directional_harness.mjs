@@ -49,7 +49,7 @@ import { nextLongStop, nextShortStop } from './lib/trailing_stop.mjs';
 export const LEGIBILITY = {
   doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
   notYet: [
-    'No scaled/laddered entries or exits yet — a position is still fully open or fully closed, nothing in between (trailing stop shipped; scaled exits are next in the same cluster).',
+    'Scaled exits are tick-granularity, not intrabar — a level crossed and reversed between two ticks is missed, an honest limitation of periodic snapshots vs practice_book.mjs\'s OHLC bars.',
     'Only 2 close reasons recorded (\'stop\', \'time\') — no richer exit-reason taxonomy yet, so "why did most positions close this way" cannot currently be answered from this data alone.',
     'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing, so these adapters exist and are tested but have not yet actually opened a real spun-up position.',
   ],
@@ -59,11 +59,21 @@ export const LEGIBILITY = {
     'COST_RT=0.003 (0.3% round-trip) is applied explicitly on close because an earlier version imported portfolio/ledger.mjs but never called it, meaning zero-cost fills — caught before deploy, not after.',
     'Uses a lightweight JSON position tracker instead of the full portfolio/ledger.mjs Map-based ledger because this only ever holds one position per symbol per lane and needs to be trivially serializable across separate cron invocations — the ledger\'s multi-engine attribution machinery is unnecessary overhead here.',
     'direction defaults to \'long\' when a candidate omits it, specifically so the pre-existing momentum/memecoin/stocks adapters needed zero behavioral change when short support was added for perps/FX — confirmed with a synthetic injection test on a long position (stocks/AAPL, entry far below a trivially-crossed stop) alongside a new synthetic short-stop-out test (perps/BTC, entry set below the real live price so the short was genuinely underwater, confirming both the stop trigger AND the return-sign math for the new short code path).',
+    'Scaled exits (SCALE_LEVELS: +4%->sell 33%, +8%->sell 33%, remainder rides the trail) fill at the TRIGGER price, not the (better) observed price, and each tranche pays its own COST_RT share — a real scaled exit is genuinely more transactions, not a free lunch. The reported retPct on a closed position is the BLENDED weighted-average return across every tranche, not just the last remaining slice — verified against a hand-calculated case (two tranches at +4%/+8%, final tranche at -5%) before trusting the live output.',
   ],
 };
 
 const DIR = path.join(process.cwd(), 'data', 'edgeops', 'directional_harness');
 const STOP_PCT = 0.06, TIME_STOP_HOURS = 72, COST_RT = 0.003; // 0.3% RT, liquid crypto/stocks — matches confluence_search.mjs's assumption
+// Laddered/scaled exits (Cluster 1b, same design as practice_book.mjs): sell
+// a fixed fraction of the ORIGINAL position at each favorable-move trigger,
+// direction-aware (works for shorts too), letting the remainder ride the
+// trailing stop. Each tranche (partial or final) pays its own COST_RT share
+// — a real scaled exit is genuinely more transactions, not a free lunch.
+const SCALE_LEVELS = [
+  { trigger: 0.04, fraction: 0.33 },
+  { trigger: 0.08, fraction: 0.33 },
+];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 fs.mkdirSync(DIR, { recursive: true });
 
@@ -332,7 +342,7 @@ export async function spinUp(laneName) {
     if (state.positions[c.symbol]) continue;               // already holding, don't pyramid
     const direction = c.direction === 'short' ? 'short' : 'long';   // defaults to 'long' — preserves prior long-only adapters' exact behavior
     const stopPx = direction === 'long' ? c.price * (1 - STOP_PCT) : c.price * (1 + STOP_PCT);
-    state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score, extremePx: c.price };
+    state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score, extremePx: c.price, scaledFired: SCALE_LEVELS.map(() => false), weightedRetSum: 0, soldFraction: 0 };
     opened++;
   }
   saveLedgerState(laneName, state);
@@ -364,6 +374,26 @@ export async function tick() {
         pos.stopPx = nextLongStop(pos.entry, pos.extremePx, pos.stopPx);
       }
       const dirSign = pos.direction === 'short' ? -1 : 1;
+
+      // scaled exits: direction-aware favorable-move triggers, checked
+      // against the same per-tick price used for everything else here (no
+      // intrabar high/low available at this granularity, unlike
+      // practice_book.mjs — a level crossed BETWEEN ticks and reversed
+      // before the next tick will be missed, an honest limitation of
+      // tick-granularity tracking, not hidden).
+      if (pos.scaledFired == null) { pos.scaledFired = SCALE_LEVELS.map(() => false); pos.weightedRetSum = 0; pos.soldFraction = 0; }  // backfill for positions opened before this field existed
+      for (let lvl = 0; lvl < SCALE_LEVELS.length; lvl++) {
+        if (pos.scaledFired[lvl]) continue;
+        const { trigger, fraction } = SCALE_LEVELS[lvl];
+        const gainPct = dirSign * (px / pos.entry - 1);
+        if (gainPct < trigger) continue;
+        pos.scaledFired[lvl] = true;
+        const scalePx = pos.entry * (1 + dirSign * trigger);          // fill at the trigger level, not the (better) current price — pessimistic
+        const scaleRawRetPct = dirSign * (scalePx / pos.entry - 1) * 100;
+        pos.weightedRetSum += fraction * (scaleRawRetPct - COST_RT * 100);   // this tranche pays its own exit cost
+        pos.soldFraction += fraction;
+      }
+
       const stopHit = pos.direction === 'short' ? px >= pos.stopPx : px <= pos.stopPx;
       const ageH = (Date.now() - pos.openedAt) / 3600000;
       let closeReason = null;
@@ -371,10 +401,12 @@ export async function tick() {
       else if (ageH >= TIME_STOP_HOURS) closeReason = 'time';
       if (closeReason) {
         const rawRetPct = dirSign * (px / pos.entry - 1) * 100;   // sign-flipped for shorts: profit when price falls
-        const netRetPct = rawRetPct - COST_RT * 100;
+        const finalTrancheNetRetPct = rawRetPct - COST_RT * 100;
+        const remainingFraction = 1 - pos.soldFraction;
+        const netRetPct = pos.weightedRetSum + remainingFraction * finalTrancheNetRetPct;   // whole-position blended return across every tranche
         const origStop = pos.direction === 'short' ? pos.entry * (1 + STOP_PCT) : pos.entry * (1 - STOP_PCT);
         const trailed = closeReason === 'stop' && (pos.direction === 'short' ? pos.stopPx < origStop - 1e-9 : pos.stopPx > origStop + 1e-9);
-        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), heldHours: +ageH.toFixed(1), trailed, closedAt: Date.now() });
+        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), scaledOutFraction: pos.soldFraction, heldHours: +ageH.toFixed(1), trailed, closedAt: Date.now() });
         delete state.positions[sym];
       }
     }

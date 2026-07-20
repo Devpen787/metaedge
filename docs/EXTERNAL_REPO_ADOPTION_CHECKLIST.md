@@ -1,8 +1,10 @@
 # External repo adoption checklist — Freqtrade / OctoBot / Vibe-Trading
 
-Date opened: 2026-07-20, revised same day (first pass was headline-only; this
-pass went deeper across the whole pipeline — discover, data, backtest,
-paper-execute, learn — per direct instruction not to skim). Status: LIVING —
+Date opened: 2026-07-20, revised same day twice (first pass was
+headline-only; second pass went deeper across the whole pipeline; this THIRD
+pass dug into OctoBot's trading-mode layer, Freqtrade's edge module fate, and
+Vibe-Trading's correlation-regime skill, per explicit "no skimming" repeat
+instruction). Status: LIVING —
 work through in priority order, check off as implemented, do not silently
 drop an item (reject explicitly with a reason instead). Companion to
 [[2026-07-16-external-framework-evaluation]] (that record's "do not migrate to
@@ -66,6 +68,18 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   `social_evaluator.py`, 📄 DOCS/code path confirmed, formulas not read) — TIER 2
   Extends the attention axis in `market_context.mjs` beyond Wikipedia
   pageviews alone — cheap, same pattern already proven there.
+
+- [ ] **Event-driven / real-time re-triggering, not just fixed-interval polling**
+  (OctoBot `EvaluatorMatrixTypes.REAL_TIME`, ✅ CODE — read the actual
+  matrix-callback trigger logic) — TIER 2, NEW this pass
+  A real-time evaluator can wake the strategy matrix mid-interval on a sudden
+  price/volume move, instead of waiting for the next fixed cron tick.
+  **Why it matters:** every one of our scouts (momentum, memecoin, stocks,
+  Kalshi harness) is strictly cron-interval-driven (1-5 min, sometimes
+  hourly). A fast, sharp move between ticks is invisible until the next
+  scheduled run. Architecturally distinct from widening WHAT we scan (already
+  underway) — this is about WHEN we scan. Lower priority than the universe-size
+  work already shipped, but a real gap for anything hourly-cadenced.
 
 ### DATA — sourcing, storing, and keeping it honest
 
@@ -146,6 +160,30 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   subset (10-15 momentum + 10-15 reversal), not all 461 at once — same
   multiple-testing discipline as everything else here.
 
+- [ ] **Dual-timeframe RSI + Klinger Oscillator dip-detection signal**
+  (OctoBot `dip_analyser_strategy_evaluator` — read
+  `DipAnalyserStrategyEvaluator.md`, `dip_analyser_strategy.py`'s
+  `matrix_callback`, AND the concrete
+  `profiles/dip_analyser/specific_config/RSIWeightMomentumEvaluator.json`
+  config, ✅ CODE) — TIER 1, NEW this pass
+  A real, specific, portable signal (not just an architecture pattern):
+  **gate-then-weight** combination — the Klinger Oscillator (volume-force,
+  confirms a reversal is underway) must fire TRUE before RSI is even
+  consulted; RSI then sets the signal's magnitude via a **dual-timeframe**
+  read (slow RSI period=14/eval_count=16 for the base momentum reading, fast
+  RSI eval_count=4 for a shorter confirmation window), mapped through a
+  graduated threshold→weight table (not one fixed RSI<30 cutoff). Docs
+  explicitly note it "works best on larger time frames such as 4h and more."
+  **Why it matters:** our `rsi_meanrev` family (added this session) is a
+  single-timeframe, single-threshold signal. This is a genuinely more
+  nuanced, published, reimplementable design — a real config with real
+  numbers, not a vague idea. The Klinger Oscillator itself is a standard,
+  well-documented volume-based indicator we've never implemented (same
+  reimplement-from-formula approach already used for MACD/RSI/golden-cross
+  this session, not a code port). Add as a 5th signal family:
+  `klinger_rsi_dip` in `strategy_core.mjs`, run through our existing
+  walk-forward + timeframe-robustness rails — same as every other family.
+
 - [ ] **Risk-adjusted parameter-search objective** (Freqtrade
   `optimize/hyperopt_loss/` — Sharpe, Sortino, Calmar, max-drawdown-relative,
   multi-metric, ✅ CODE — file list confirmed, math not read per-file) — TIER 2
@@ -164,6 +202,22 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   only have a **fixed** hard-stop and a time-stop — never "let a winner run
   and protect the gain as it goes." This is a genuinely missing, standard
   risk technique, not a refinement of something we have. Real gap.
+
+- [ ] **Laddered / scaled exit orders** (confirmed independently in BOTH
+  repos, ✅ CODE — Freqtrade's `adjust_trade_position` position-scaling hook,
+  AND OctoBot's `dip_analyser_trading_mode/dip_analyser_trading.py`
+  `self.sell_orders_per_buy = 3` plus a dedicated `scaled_order.py` order
+  type; also found OctoBot's `trailing_limit_order.py` — a second,
+  independent confirmation of the trailing-stop gap already logged above) —
+  TIER 1, NEW this pass
+  Place multiple exit orders at different price levels after a single entry,
+  instead of one all-or-nothing exit.
+  **Why it matters:** `directional_harness.mjs` and `practice_book.mjs` are
+  strictly single-entry/single-exit — a position is either fully open or
+  fully closed, nothing in between. Two independent mature frameworks both
+  treat scaled exits as standard; this is a real, not hypothetical, gap.
+  Lower priority than trailing-stop (bigger single win) but should ship in
+  the same pass since the Risk OS changes overlap.
 
 - [ ] **Exit-reason taxonomy** (Freqtrade `enums/exittype.py` — ROI,
   STOP_LOSS, TRAILING_STOP_LOSS, LIQUIDATION, EXIT_SIGNAL, FORCE_EXIT,
@@ -201,6 +255,36 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   make "what happened to idea X and why" answerable in one lookup instead of
   cross-referencing three files.
 
+- [ ] **Correlation-regime detection + "de-grossing" risk-sizing rule**
+  (Vibe-Trading `agent/src/skills/correlation-regime/SKILL.md`, ✅ CODE —
+  read the actual `compute_edge_density` and `regime_exposure_context`
+  functions, not just the README) — TIER 1, NEW this pass
+  Two real, separable mechanisms:
+  1. **Regime detection (Mode 1):** edge-density (fraction of asset pairs
+     with |correlation| ≥ threshold) run through a hysteresis/Schmitt-trigger
+     state machine (separate enter/exit thresholds with a dead band) to
+     detect when the market fuses into one correlated bloc, without
+     flip-flopping on noise near a single threshold.
+  2. **Risk response (Mode 2, "de-grossing"):** when FUSED, halve gross
+     exposure — `regime_exposure_context(regimes, base_gross=1.0,
+     fused_gross=0.5)` — never fully liquidate. Their own stated reasoning:
+     "regime onset lags the price top, so full liquidation locks in the
+     worst prints."
+  **Why it matters:** fills `portfolio/regime.mjs`, which has sat as an
+  unbuilt pass-through stub since the portfolio system was first built. This
+  is a sizing/risk mechanism, not a signal — it changes HOW MUCH is at risk
+  across the whole book when correlation regime shifts, independent of any
+  individual lane's edge.
+  **Load-bearing honest caveat, carried over from their own docs so we don't
+  mistake this for more than it is:** their own SKILL.md states plainly —
+  *"What this skill is NOT: a trade-timing signal. The same validation
+  program tested regime-based exits head-to-head against a plain price stop
+  and lost — correlation regimes cannot time tops."* This is a genuinely
+  self-honest negative finding baked into their own documentation, matching
+  our own accumulated skepticism about regime-as-trigger. Adopt Mode 2
+  (portfolio-wide exposure sizing) — do NOT adopt this as a per-trade entry
+  or exit signal; that was tested and lost even in their own hands.
+
 - [x] **DEFERRED, not rejected — Vibe-Trading's "Shadow Account"** (parses
   broker trade history → extracts behavioral biases → reconstructs implicit
   rules → backtests against actual behavior). Genuinely good idea, ✅ CODE
@@ -234,10 +318,25 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   Confirms our own walk-forward + chance-baseline + timeframe-robustness
   discipline stays genuinely ours and load-bearing, not automatically
   inherited by adopting any of these three repos.
-- [x] **NOTED, not a gap — Freqtrade's core backtest engine has NO slippage
-  model** (fees only, conservative worst-tier default). Every grader we've
-  built (memecoin/momentum/stocks) scales slippage by liquidity tier. One
-  specific axis where we're already ahead.
+- [x] **NOTED, not a gap — NEITHER Freqtrade's NOR OctoBot's core backtest
+  engine models slippage** (fees/order-tolerance only). Checked OctoBot's
+  `packages/backtesting/octobot_backtesting/backtesting.py` directly this
+  pass — no slippage handling in the core engine; the only "slippage" hits
+  repo-wide are in order-TYPE scripting (e.g., limit-order tolerance), not a
+  systematic backtest cost model. Freqtrade finding stands unchanged (fees
+  only, conservative worst-tier default). Every grader we've built
+  (memecoin/momentum/stocks) scales slippage by liquidity tier. Now confirmed
+  across TWO mature, widely-used frameworks — this is genuinely uncommon
+  rigor on our side, not something to feel behind on.
+- [x] **REJECTED — Freqtrade's "edge" module (risk-of-ruin position sizing).**
+  Found the docs page for this earlier, but `freqtrade/edge/
+  edge_positioning.py` does not exist in current source — confirmed via
+  `docs/deprecated.md`: **"The edge module has been deprecated in 2023.9 and
+  removed in 2025.6... having edge configured will result in an error."**
+  Not a code-reading miss on our part — the framework's own maintainers
+  abandoned it. Worth recording as evidence the idea itself (or at least
+  their implementation of it) didn't hold up in production use, not just an
+  item we happened to skip.
 - [ ] **UNVERIFIED — Vibe-Trading's claimed "Monte Carlo, Bootstrap,
   Walk-Forward, run cards" validation layer.** README claims this; only found
   skill-markdown *references*, not a dedicated validation module at the depth

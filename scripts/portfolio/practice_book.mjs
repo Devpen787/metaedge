@@ -103,15 +103,25 @@ for (const t of timeline) {
       scaleOuts.push({ instrument: sym, trigger, fraction, retPct: +scaleRetPct.toFixed(2), barsHeld: barNo - pos.entryBar });
     }
 
+    let stopHit = bar.l <= pos.stopPx, timeHit = barNo - pos.entryBar >= MAX_HOLD;
     let reason = null, exitPx = bar.c;
-    if (bar.l <= pos.stopPx) { reason = 'stop'; exitPx = pos.stopPx; }           // stop checked on the low (conservative)
-    else if (barNo - pos.entryBar >= MAX_HOLD) { reason = 'time'; exitPx = bar.c; }
+    // Exit-reason taxonomy (Cluster 1c): a bare 'stop' told us THAT a position
+    // closed defensively, never WHY the stop was where it was — a hard stop
+    // hitting immediately means the entry was bad; a trailed stop hitting
+    // after ratcheting up means the position ran favorably first and gave
+    // some back. Distinguishing them is what lets "why do most exits happen
+    // this way" actually be answerable from this data, per
+    // EXTERNAL_REPO_ADOPTION_CHECKLIST.md's exit-reason-taxonomy item.
+    if (stopHit) {
+      const trailed = pos.stopPx > pos.entryPx * (1 - STOP_PCT) + 1e-9;   // did the trail actually ratchet above the original hard stop before this exit?
+      reason = trailed ? 'stop_trailed' : 'stop_hard';
+      exitPx = pos.stopPx;
+    } else if (timeHit) { reason = 'time'; exitPx = bar.c; }
     if (reason) {
-      const trailed = reason === 'stop' && pos.stopPx > pos.entryPx * (1 - STOP_PCT) + 1e-9;   // did the trail actually ratchet above the original hard stop before this exit?
       const finalTrancheRetPct = (exitPx / pos.entryPx - 1) * 100;
       const remainingFraction = 1 - pos.soldFraction;
       const blendedRetPct = pos.weightedRetSum + remainingFraction * finalTrancheRetPct;   // whole-position return across every tranche, not just the last slice
-      closed.push({ instrument: sym, reason, retPct: blendedRetPct, finalTrancheRetPct, scaledOutFraction: pos.soldFraction, barsHeld: barNo - pos.entryBar, trailed });
+      closed.push({ instrument: sym, reason, retPct: blendedRetPct, finalTrancheRetPct, scaledOutFraction: pos.soldFraction, barsHeld: barNo - pos.entryBar });
       open.delete(sym);
     }
   }
@@ -150,8 +160,8 @@ const byReason = {}; for (const c of closed) byReason[c.reason] = (byReason[c.re
 const losers = closed.filter((c) => c.retPct < 0);
 const cutSmall = losers.filter((c) => c.retPct >= -(STOP_PCT * 100 + 1)).length;   // loss within ~stop distance = clean cut
 let peak = -Infinity, mdd = 0; for (const p of ledger.curve) { peak = Math.max(peak, p.equity); mdd = Math.max(mdd, 1 - p.equity / peak); }
-const stopExits = closed.filter((c) => c.reason === 'stop');
-const trailedExits = stopExits.filter((c) => c.trailed);
+const stopExits = closed.filter((c) => c.reason === 'stop_hard' || c.reason === 'stop_trailed');
+const trailedExits = closed.filter((c) => c.reason === 'stop_trailed');
 console.log(`\n=== PRACTICE BOOK — always-on paper, Risk OS (stop ${STOP_PCT * 100}% trailing / time ${MAX_HOLD}h / dd-kill ${DAILY_DD_KILL * 100}% / risk ${PER_TRADE_RISK * 100}%/trade) ===`);
 console.log(`  ${syms.length} instruments, ${SLOTS} slots | ${closed.length} paper trades closed`);
 console.log(`\n  EXIT DISCIPLINE (the point):`);

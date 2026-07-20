@@ -50,7 +50,7 @@ export const LEGIBILITY = {
   doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
   notYet: [
     'Scaled exits are tick-granularity, not intrabar — a level crossed and reversed between two ticks is missed, an honest limitation of periodic snapshots vs practice_book.mjs\'s OHLC bars.',
-    'Only 2 close reasons recorded (\'stop\', \'time\') — no richer exit-reason taxonomy yet, so "why did most positions close this way" cannot currently be answered from this data alone.',
+    'No emergency/liquidation/custom-exit reasons beyond stop_hard/stop_trailed/time — this taxonomy grew from 2 to 3 close reasons plus a separate scale-out event log, matched to what this harness actually needs (Freqtrade\'s full ExitType enum has categories like LIQUIDATION that don\'t apply here — no leverage, no liquidation risk in these lanes yet).',
     'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing, so these adapters exist and are tested but have not yet actually opened a real spun-up position.',
   ],
   why: [
@@ -392,21 +392,31 @@ export async function tick() {
         const scaleRawRetPct = dirSign * (scalePx / pos.entry - 1) * 100;
         pos.weightedRetSum += fraction * (scaleRawRetPct - COST_RT * 100);   // this tranche pays its own exit cost
         pos.soldFraction += fraction;
+        // Explicit audit-trail entry — previously a partial close here was
+        // only inferable from the final closed record's scaledOutFraction,
+        // unlike practice_book.mjs's separate scaleOuts[] log. Fixed for
+        // consistency: every partial close is now independently queryable.
+        if (!state.scaleOuts) state.scaleOuts = [];
+        state.scaleOuts.push({ symbol: sym, direction: pos.direction, trigger, fraction, retPct: +(scaleRawRetPct - COST_RT * 100).toFixed(2), t: Date.now() });
       }
 
       const stopHit = pos.direction === 'short' ? px >= pos.stopPx : px <= pos.stopPx;
       const ageH = (Date.now() - pos.openedAt) / 3600000;
       let closeReason = null;
-      if (stopHit) closeReason = 'stop';
+      const origStop = pos.direction === 'short' ? pos.entry * (1 + STOP_PCT) : pos.entry * (1 - STOP_PCT);
+      const trailed = pos.direction === 'short' ? pos.stopPx < origStop - 1e-9 : pos.stopPx > origStop + 1e-9;
+      // Exit-reason taxonomy (Cluster 1c): distinguish a hard stop (bad entry,
+      // never ran favorably) from a trailed stop (ran favorably, gave some
+      // back) — a bare 'stop' couldn't answer "why do most exits happen this
+      // way," per EXTERNAL_REPO_ADOPTION_CHECKLIST.md's taxonomy item.
+      if (stopHit) closeReason = trailed ? 'stop_trailed' : 'stop_hard';
       else if (ageH >= TIME_STOP_HOURS) closeReason = 'time';
       if (closeReason) {
         const rawRetPct = dirSign * (px / pos.entry - 1) * 100;   // sign-flipped for shorts: profit when price falls
         const finalTrancheNetRetPct = rawRetPct - COST_RT * 100;
         const remainingFraction = 1 - pos.soldFraction;
         const netRetPct = pos.weightedRetSum + remainingFraction * finalTrancheNetRetPct;   // whole-position blended return across every tranche
-        const origStop = pos.direction === 'short' ? pos.entry * (1 + STOP_PCT) : pos.entry * (1 - STOP_PCT);
-        const trailed = closeReason === 'stop' && (pos.direction === 'short' ? pos.stopPx < origStop - 1e-9 : pos.stopPx > origStop + 1e-9);
-        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), scaledOutFraction: pos.soldFraction, heldHours: +ageH.toFixed(1), trailed, closedAt: Date.now() });
+        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), scaledOutFraction: pos.soldFraction, heldHours: +ageH.toFixed(1), closedAt: Date.now() });
         delete state.positions[sym];
       }
     }

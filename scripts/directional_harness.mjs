@@ -11,6 +11,14 @@
  * Tracking only needs a TARGETED lookup for the specific symbols still open —
  * a different, cheaper operation, not a full re-scan.
  *
+ * DIRECTIONAL (long/short), not just long-only: a candidate may carry
+ * `direction: 'short'` (perps fade-the-funding, FX counter-trend are both
+ * real short signals). spinUp()/tick() size the stop and sign the return by
+ * direction. This was a real gap fixed alongside adding the perp/FX adapters
+ * — the original three adapters (momentum/memecoin/stocks) are all
+ * implicitly long-only, so `direction` defaults to 'long' when a candidate
+ * doesn't specify one, preserving their exact prior behavior.
+ *
  * Uses a lightweight, trivially-persistable JSON position tracker (not the full
  * portfolio/ledger.mjs Map-based ledger — not cheaply serializable across
  * separate cron invocations, and this only ever holds one position per symbol,
@@ -23,10 +31,12 @@
  * own tick() on a regular cadence (marks every open position across every
  * lane with a built adapter: hard stop, time-stop, records the close).
  *
- * HONEST SCOPE: three adapters built and tested (crypto momentum, memecoin
- * pops, stocks momentum). Perps and FX do NOT have adapters yet — spinUp()
- * reports that plainly. Each adapter here was proven with a synthetic
- * stop/time-stop injection test before deploy, not assumed to work.
+ * HONEST SCOPE: all 5 directional-kind lanes now have a built adapter (crypto
+ * momentum, memecoin pops, stocks momentum, perps funding-fade, FX trend).
+ * Each adapter here was proven with a synthetic stop/time-stop injection test
+ * before deploy, not assumed to work — the perp/FX adapters were specifically
+ * tested with a synthetic SHORT stop-out (not just long) since that's the new
+ * code path.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -35,16 +45,17 @@ import path from 'node:path';
 // file's own header comment already states the adapter interface, scope, and
 // honest gaps in prose; this const is the machine-readable mirror.
 export const LEGIBILITY = {
-  doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
+  doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
   notYet: [
-    'Only 3 of 5 directional-kind lanes have a built adapter: crypto momentum, memecoin pops, stocks momentum. Perps and FX do NOT have adapters yet — spinUp() reports this plainly rather than silently no-op-ing.',
     'No trailing stop, no scaled/laddered entries or exits — single fixed hard-stop (STOP_PCT=0.06) and time-stop (TIME_STOP_HOURS=72) only. See EXTERNAL_REPO_ADOPTION_CHECKLIST.md PAPER-EXECUTE items for the planned upgrade.',
     'Only 2 close reasons recorded (\'stop\', \'time\') — no richer exit-reason taxonomy yet, so "why did most positions close this way" cannot currently be answered from this data alone.',
+    'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing, so these adapters exist and are tested but have not yet actually opened a real spun-up position.',
   ],
   why: [
     'discover()/priceOf() are deliberately split (not one function) because discovery scans a wide universe (stocks ~9,900 tickers, memecoin hundreds of pools) too slow to re-run every tick just to price a few open positions — an earlier single-function design made a position permanently untrackable once its score naturally fell below the discovery bar, caught via synthetic injection testing.',
     'COST_RT=0.003 (0.3% round-trip) is applied explicitly on close because an earlier version imported portfolio/ledger.mjs but never called it, meaning zero-cost fills — caught before deploy, not after.',
     'Uses a lightweight JSON position tracker instead of the full portfolio/ledger.mjs Map-based ledger because this only ever holds one position per symbol per lane and needs to be trivially serializable across separate cron invocations — the ledger\'s multi-engine attribution machinery is unnecessary overhead here.',
+    'direction defaults to \'long\' when a candidate omits it, specifically so the pre-existing momentum/memecoin/stocks adapters needed zero behavioral change when short support was added for perps/FX — confirmed with a synthetic injection test on a long position (stocks/AAPL, entry far below a trivially-crossed stop) alongside a new synthetic short-stop-out test (perps/BTC, entry set below the real live price so the short was genuinely underwater, confirming both the stop trigger AND the return-sign math for the new short code path).',
   ],
 };
 
@@ -217,10 +228,96 @@ const stocksAdapter = {
   async priceOf(symbols) { return stockPriceOf(symbols); },
 };
 
+// ====================================================================== perps
+// Score + direction identical to perp_scout.mjs (contrarian-funding fade).
+// Discovery bar 40 = perp_grader's real flagged ("40+ extreme") band, not the
+// scout's looser screening threshold — same pattern as every other adapter
+// here. Small universe (one Hyperliquid call, like crypto momentum), so
+// discover() doubles as its own priceOf() source.
+const ANN = 24 * 365 * 100;
+function perpScore(fundingApr, dayVol) {
+  let s = Math.min(45, Math.abs(fundingApr) / 3);
+  s += Math.min(15, Math.log10(Math.max(1, dayVol / 1e6)) * 8);
+  return Math.round(s);
+}
+async function perpUniverse() {
+  const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
+  if (!r.ok) return [];
+  const j = await r.json();
+  const meta = j[0]?.universe || [], ctx = j[1] || [];
+  const out = [];
+  for (let i = 0; i < meta.length; i++) {
+    const c = ctx[i]; if (!c) continue;
+    const price = N(c.markPx), funding = N(c.funding), oi = N(c.openInterest), dayVol = N(c.dayNtlVlm);
+    if (!(price > 0) || funding == null) continue;
+    const oiUsd = oi != null ? oi * price : null;
+    if (!(dayVol >= 2e6) || !(oiUsd >= 1e6)) continue;         // same VOL_FLOOR/OI_FLOOR as perp_scout.mjs
+    const fundingApr = funding * ANN;
+    out.push({ symbol: meta[i].name, price, score: perpScore(fundingApr, dayVol), direction: funding < 0 ? 'long' : 'short' }); // fade the funding
+  }
+  return out;
+}
+const perpAdapter = {
+  async discover() { const all = await perpUniverse(); return all.filter((c) => c.score >= 40); },
+  async priceOf() { const all = await perpUniverse(); return new Map(all.map((c) => [c.symbol, c.price])); },
+};
+
+// ======================================================================== fx
+// Score + direction identical to fx_scout.mjs (trend-alignment). Discovery
+// bar 40 = fx_grader's real flagged ("40+ strong") band. Universe is a fixed
+// 24-pair list (same one fx_scout.mjs uses — see EXTERNAL_REPO_ADOPTION_
+// CHECKLIST.md for the pending fix to derive this live like crypto/stocks/mm
+// do), cheap enough to fully rescan for discover(); priceOf() does a
+// TARGETED per-pair lookup for open positions only, consistent with every
+// other adapter's discover-wide/price-targeted split.
+const FX_PAIRS = ['EURUSD', 'USDJPY', 'GBPUSD', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
+  'EURGBP', 'EURJPY', 'GBPJPY', 'AUDJPY', 'EURAUD', 'EURCHF', 'CADJPY', 'NZDJPY', 'EURCAD', 'GBPAUD',
+  'USDMXN', 'USDZAR', 'USDTRY', 'USDSEK', 'USDNOK', 'USDPLN', 'USDSGD'];
+function fxScore(r5, r20, r60) {
+  const aligned = Math.sign(r5) === Math.sign(r20) && r20 !== 0;
+  let s = 0;
+  if (aligned) { s += Math.min(30, Math.abs(r20) * 10); s += Math.min(15, Math.abs(r5) * 8); s += 10; }
+  if (Math.abs(r60) > 15) s -= 10;
+  return Math.round(Math.max(0, s));
+}
+async function fxChart(sym, range) {
+  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}=X?range=${range}&interval=1d`, { headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' } }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const j = await r.json().catch(() => null);
+  const q = j?.chart?.result?.[0]?.indicators?.quote?.[0]?.close;
+  return Array.isArray(q) ? q.filter((x) => x != null) : null;
+}
+async function fxUniverse() {
+  const out = [];
+  for (const sym of FX_PAIRS) {
+    const c = await fxChart(sym, '4mo');
+    await sleep(600);
+    if (!c || c.length < 65) continue;
+    const px = c[c.length - 1];
+    const r5 = (px / c[c.length - 6] - 1) * 100, r20 = (px / c[c.length - 21] - 1) * 100, r60 = (px / c[c.length - 61] - 1) * 100;
+    out.push({ symbol: sym, price: px, score: fxScore(r5, r20, r60), direction: r20 >= 0 ? 'long' : 'short' });
+  }
+  return out;
+}
+const fxAdapter = {
+  async discover() { const all = await fxUniverse(); return all.filter((c) => c.score >= 40); },
+  async priceOf(symbols) {
+    const out = new Map();
+    for (const sym of symbols) {
+      const c = await fxChart(sym, '5d');
+      await sleep(600);
+      if (c && c.length) out.set(sym, c[c.length - 1]);
+    }
+    return out;
+  },
+};
+
 const ADAPTERS = {
   'Crypto momentum': cryptoMomentumAdapter,
   'Memecoin pops': memecoinAdapter,
   'Stocks momentum': stocksAdapter,
+  'Perps (funding)': perpAdapter,
+  'FX trend': fxAdapter,
 };
 
 export async function spinUp(laneName) {
@@ -231,7 +328,9 @@ export async function spinUp(laneName) {
   let opened = 0;
   for (const c of cands) {
     if (state.positions[c.symbol]) continue;               // already holding, don't pyramid
-    state.positions[c.symbol] = { entry: c.price, stopPx: c.price * (1 - STOP_PCT), openedAt: Date.now(), score: c.score };
+    const direction = c.direction === 'short' ? 'short' : 'long';   // defaults to 'long' — preserves prior long-only adapters' exact behavior
+    const stopPx = direction === 'long' ? c.price * (1 - STOP_PCT) : c.price * (1 + STOP_PCT);
+    state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score };
     opened++;
   }
   saveLedgerState(laneName, state);
@@ -250,14 +349,16 @@ export async function tick() {
       const pos = state.positions[sym];
       const px = priceOf.get(sym);
       if (px == null) continue;                              // no price this tick (delisted/rugged/API miss) — leave open, retry next tick
+      const dirSign = pos.direction === 'short' ? -1 : 1;
+      const stopHit = pos.direction === 'short' ? px >= pos.stopPx : px <= pos.stopPx;
       const ageH = (Date.now() - pos.openedAt) / 3600000;
       let closeReason = null;
-      if (px <= pos.stopPx) closeReason = 'stop';
+      if (stopHit) closeReason = 'stop';
       else if (ageH >= TIME_STOP_HOURS) closeReason = 'time';
       if (closeReason) {
-        const rawRetPct = (px / pos.entry - 1) * 100;
+        const rawRetPct = dirSign * (px / pos.entry - 1) * 100;   // sign-flipped for shorts: profit when price falls
         const netRetPct = rawRetPct - COST_RT * 100;
-        state.closed.push({ symbol: sym, reason: closeReason, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), heldHours: +ageH.toFixed(1), closedAt: Date.now() });
+        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), heldHours: +ageH.toFixed(1), closedAt: Date.now() });
         delete state.positions[sym];
       }
     }

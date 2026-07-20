@@ -43,3 +43,17 @@ export function realizedVolPctPerHour(closes, windowSize = 25) {
   return Math.sqrt(variance) * 100;
 }
 
+// Exponential moving average, seeded with a plain average of the first `period`
+// values (the standard convention) so the first `period-1` entries are null.
+export function exponentialMovingAverageSeries(values, period) {
+  const out = new Array(values.length).fill(null);
+  const k = 2 / (period + 1);
+  let seed = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (i < period - 1) continue;
+    if (i === period - 1) { for (let j = 0; j <= i; j++) seed += values[j]; seed /= period; out[i] = seed; continue; }
+    out[i] = values[i] * k + out[i - 1] * (1 - k);
+  }
+  return out;
+}
+

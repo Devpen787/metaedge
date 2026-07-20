@@ -10,7 +10,7 @@
 // Extracted verbatim from scripts/backtest_sweep.mjs. Only change: `cost` is an
 // explicit argument to runStrategy instead of a module-level constant, so every
 // caller must state its cost assumption rather than inherit a hidden one.
-import { simpleMovingAverageSeries, wilderRsiSeries } from '../../server/feature_math.mjs';
+import { simpleMovingAverageSeries, wilderRsiSeries, exponentialMovingAverageSeries } from '../../server/feature_math.mjs';
 
 // ---------- causal features (bar i uses bars ≤ i only) ----------
 export function computeFeatures(bars) {
@@ -42,7 +42,42 @@ export function computeFeatures(bars) {
     for (let j = i - 240; j < i; j++) if (atrPct[j] != null) { cnt++; if (atrPct[j] < atrPct[i]) below++; }
     if (cnt > 100) atrRank[i] = below / cnt;
   }
-  return { rsi, atr, volR, sma200: sma(200), sma72: sma(72), sma168: sma(168), atrRank, rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168) };
+  // ---- MACD (EMA12/26, signal EMA9 of the MACD line) — genuinely different
+  // information from a plain SMA/RSI threshold: it's rate-of-change-of-momentum.
+  const ema12 = exponentialMovingAverageSeries(closes, 12), ema26 = exponentialMovingAverageSeries(closes, 26);
+  const macdLine = closes.map((_, i) => (ema12[i] != null && ema26[i] != null) ? ema12[i] - ema26[i] : null);
+  const macdVals = macdLine.filter((v) => v != null);
+  const macdSignalDense = exponentialMovingAverageSeries(macdVals, 9);
+  const macdSignal = new Array(n).fill(null);
+  { let k = 0; for (let i = 0; i < n; i++) if (macdLine[i] != null) { macdSignal[i] = macdSignalDense[k]; k++; } }
+  const sma50 = sma(50);
+
+  // ---- volume z-score vs a TRAILING (prior-bar-only) 20-bar mean/std — causal:
+  // bar i's own volume is compared to bars strictly before it, so a spike is
+  // measured against what was "normal" walking in, never against itself.
+  const volZ = new Array(n).fill(null);
+  for (let i = 20; i < n; i++) {
+    let sum = 0; for (let j = i - 20; j < i; j++) sum += bars[j].v;
+    const mean = sum / 20;
+    let sq = 0; for (let j = i - 20; j < i; j++) sq += (bars[j].v - mean) ** 2;
+    const sd = Math.sqrt(sq / 20) || 1e-9;
+    volZ[i] = (bars[i].v - mean) / sd;
+  }
+
+  // ---- rolling swing-low reference for RSI divergence: the lowest CLOSE in a
+  // [i-40, i-5] window (excludes the 4 most-recent bars so "the prior low" can't
+  // be the bar right next to today), plus the RSI reading at that same bar —
+  // causal, uses only bars < i-4.
+  const swingLowPx = new Array(n).fill(null), swingLowRsi = new Array(n).fill(null);
+  for (let i = 45; i < n; i++) {
+    let lo = Infinity, loIdx = -1;
+    for (let j = i - 40; j <= i - 5; j++) if (bars[j].c < lo) { lo = bars[j].c; loIdx = j; }
+    if (loIdx >= 0 && rsi[loIdx] != null) { swingLowPx[i] = lo; swingLowRsi[i] = rsi[loIdx]; }
+  }
+
+  return { rsi, atr, volR, sma200: sma(200), sma72: sma(72), sma168: sma(168), sma50, atrRank,
+    rollMax24: rollMax(24), rollMax72: rollMax(72), rollMax168: rollMax(168),
+    macdLine, macdSignal, volZ, swingLowPx, swingLowRsi };
 }
 
 // ---------- strategy templates (signal on bar i → entry at OPEN of i+1) ----------
@@ -76,6 +111,42 @@ export function signalAt(family, p, bars, F, i) {
     if (i < 25) return false;
     const drop = (bars[i].c - bars[i - 24].c) / bars[i - 24].c;
     return drop <= -p.dropPct && bars[i].c > bars[i - 1].h; // deliberately no trend filter: sharp dips mostly happen in downtrends
+  }
+  // ---- new families: classic TA the crash-detector shape (meanrev_stab) misses,
+  // because a SLOW grind down never trips an 8%-in-24h trigger. ----
+  if (family === 'golden_cross') {
+    // sma50 crosses ABOVE sma200 from below — the classic long-horizon trend flip,
+    // widely watched (a real "other participants act on this too" flow argument).
+    if (F.sma50[i] == null || F.sma50[i - 1] == null || F.sma200[i - 1] == null) return false;
+    return F.sma50[i - 1] <= F.sma200[i - 1] && F.sma50[i] > F.sma200[i];
+  }
+  if (family === 'rsi_divergence') {
+    // BULLISH DIVERGENCE: price makes a LOWER low than the recent swing low, but
+    // RSI makes a HIGHER low at the same time — momentum improving while price
+    // still falls, a classic exhaustion signal. Genuinely different from the plain
+    // "RSI <= threshold" test (rsi_meanrev): that fires on ANY dip; this fires only
+    // when the dip's INTERNAL momentum is decelerating. Confirmed on a
+    // stabilization bar (close > prior high), same discipline as meanrev_stab.
+    if (F.swingLowPx[i] == null || F.rsi[i] == null) return false;
+    return bars[i].c < F.swingLowPx[i] && F.rsi[i] > F.swingLowRsi[i] && bars[i].c > bars[i - 1].h;
+  }
+  if (family === 'macd_cross') {
+    // MACD line crosses above its signal line from below — momentum turning up,
+    // independent of any fixed threshold (unlike RSI<35, it's relative to the
+    // trend's own recent behavior).
+    if (F.macdLine[i] == null || F.macdSignal[i] == null || F.macdLine[i - 1] == null || F.macdSignal[i - 1] == null) return false;
+    return F.macdLine[i - 1] <= F.macdSignal[i - 1] && F.macdLine[i] > F.macdSignal[i];
+  }
+  if (family === 'volume_climax') {
+    // Capitulation-reversal: a volume SPIKE (vs the trailing 20-bar normal) on a
+    // fresh local low, with the bar itself closing back above its open — the
+    // "smart money absorbed the panic sellers" footprint. Distinct from
+    // meanrev_stab's pure % move test: this reacts to an ANOMALOUS participation
+    // event, not a fixed price-drop threshold, so it can fire on a slow grind's
+    // final flush even when no single day dropped 8%.
+    if (i < 21 || F.volZ[i] == null) return false;
+    let lo = Infinity; for (let j = i - 20; j < i; j++) lo = Math.min(lo, bars[j].l);
+    return F.volZ[i] >= p.zThresh && bars[i].l <= lo && bars[i].c > bars[i].o;
   }
   return false;
 }

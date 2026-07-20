@@ -32,7 +32,7 @@ export const LANES = [
   { name: 'FX trend', scan: [M, 'fx', 'scan-'], log: [M, 'fx', 'grader-report.log'], tag: 'FX GRADER VERDICT', kind: 'directional', legibilityModules: ['./fx_scout.mjs', './fx_grader.mjs'] },
   { name: 'Market-making', scan: [M, 'mm', 'trades-'], log: [M, 'mm', 'grader-report.log'], tag: 'MM GRADER VERDICT', kind: null, legibilityModules: ['./mm_scout.mjs', './mm_grader.mjs'] },
   { name: 'Cross-venue arb', scan: [M, 'xvenue', 'gaps-'], log: null, tag: null, kind: null, legibilityModules: ['./xvenue_scout.mjs'] },
-  { name: 'Funding carry', scan: null, log: [M, 'carry-report.log'], tag: 'CARRY VERDICT', kind: null, legibilityModules: ['./carry_analyzer.mjs'] },
+  { name: 'Funding carry', scan: [M, 'carry', 'scan-'], log: [M, 'carry-report.log'], tag: 'CARRY VERDICT', kind: null, legibilityModules: ['./carry_analyzer.mjs'] },
 ];
 
 export function countRows(dir, prefix) {

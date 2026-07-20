@@ -23,9 +23,12 @@
  * Usage: node scripts/carry_analyzer.mjs [--min-apr 20] [--window-days 14]
  *        [--hold-days 14] [--cost-rt-pct 1.2] [--floor-apr 5]
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
-  doing: 'Measures REALIZED (window-averaged, not snapshot) funding APR on every Hyperliquid perp with a live Coinbase spot pair (hedgeable) currently showing |APR|>=MIN_APR (default 20%), net of amortized round-trip cost, against a 5% floor.',
+  doing: 'Measures REALIZED (window-averaged, not snapshot) funding APR on every Hyperliquid perp with a live Coinbase spot pair (hedgeable) currently showing |APR|>=MIN_APR (default 20%), net of amortized round-trip cost, against a 5% floor. Appends every run\'s full candidate set to data/market/carry/scan-<date>.jsonl.',
   notYet: [
     'Hyperliquid perp + Coinbase spot only — a coin with high funding on another perp venue, or hedgeable only via a different spot exchange, is invisible to this specific pairing.',
     'This measures a snapshot-in-time candidate set (current |APR|>=20%) — it is not itself a forward-paper harness; no position is opened or tracked here (see the master plan\'s Stage 2 for the forward-paper gate this is meant to feed).',
@@ -35,9 +38,11 @@ export const LEGIBILITY = {
     'Uses REALIZED (mean-over-window) funding, never the current snapshot, because funding spikes and reverts — a position held through the full window pays during the reversions too, so averaging is the honest number, not the flattering one.',
     'HEDGEABLE-only filter (excludes perp-only/DEX-only coins) because delta-neutral carry structurally requires a spot leg — without one this would be a directional bet mislabeled as carry.',
     'Cost is amortized over the stated HOLD period (not charged once and ignored) because entry+exit cost is one-time but its APR drag depends entirely on how long the position is actually held — reported alongside the break-even hold length so the floor comparison is honest at the stated horizon.',
+    'Persists every run\'s full candidate set to data/market/carry/scan-<date>.jsonl — a real gap flagged during a cross-lane legibility review: this was the only lane with no data trail independent of its own printed verdict (every other lane writes blind scout records first, specifically so there\'s an audit trail even if a grader\'s logic changes later). Re-running this next week with different market conditions now leaves a record of what today\'s answer was.',
   ],
 };
 
+const DIR = path.join(process.cwd(), 'data', 'market', 'carry');
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const MIN_APR = Number(flag('min-apr', '20'));
@@ -88,15 +93,25 @@ async function main() {
     const netApr = realizedApr - costApr;
     // fraction of the window funding stayed the collectable sign (persistence quality)
     const sameSign = rates.filter((r) => Math.sign(r) === Math.sign(meanF)).length / rates.length;
-    out.push({ ...c, realizedApr, netApr, sameSignPct: sameSign * 100, n: rates.length });
+    const pass = netApr >= FLOOR && sameSign * 100 >= 65;        // clears floor AND funding mostly held its sign
+    out.push({ ...c, realizedApr, netApr, sameSignPct: sameSign * 100, n: rates.length, pass });
   }
   out.sort((a, b) => b.netApr - a.netApr);
+
+  // Persist every run's full candidate set — the audit trail this lane
+  // previously had none of (see LEGIBILITY.why). One row per candidate per
+  // run, appended, never overwritten — same shape discipline as every other
+  // lane's scan-*.jsonl.
+  fs.mkdirSync(DIR, { recursive: true });
+  const runT = Date.now(), day = new Date().toISOString().slice(0, 10);
+  const scanRows = out.map((r) => ({ t: runT, coin: r.name, currentApr: +r.currentApr.toFixed(1), realizedApr: +r.realizedApr.toFixed(2), netApr: +r.netApr.toFixed(2), sameSignPct: +r.sameSignPct.toFixed(1), n: r.n, windowDays: WINDOW, holdDays: HOLD, costRtPct: COST_RT, floorApr: FLOOR, pass: r.pass }));
+  if (scanRows.length) fs.appendFileSync(path.join(DIR, `scan-${day}.jsonl`), scanRows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+
   console.log(`  ${'coin'.padEnd(8)} ${'nowAPR'.padStart(9)} ${'realizedAPR'.padStart(12)} ${'netAPR'.padStart(9)} ${'persist'.padStart(8)}  verdict`);
   let flags = 0;
   for (const r of out) {
-    const pass = r.netApr >= FLOOR && r.sameSignPct >= 65;      // clears floor AND funding mostly held its sign
-    if (pass) flags++;
-    console.log(`  ${r.name.padEnd(8)} ${(r.currentApr >= 0 ? '+' : '') + r.currentApr.toFixed(0) + '%'} ${(r.realizedApr).toFixed(1).padStart(11) + '%'} ${(r.netApr >= 0 ? '+' : '') + r.netApr.toFixed(1) + '%'} ${r.sameSignPct.toFixed(0).padStart(7) + '%'}  ${pass ? 'CLEARS FLOOR' : (r.netApr < FLOOR ? 'below floor' : 'too flippy')}`);
+    if (r.pass) flags++;
+    console.log(`  ${r.name.padEnd(8)} ${(r.currentApr >= 0 ? '+' : '') + r.currentApr.toFixed(0) + '%'} ${(r.realizedApr).toFixed(1).padStart(11) + '%'} ${(r.netApr >= 0 ? '+' : '') + r.netApr.toFixed(1) + '%'} ${r.sameSignPct.toFixed(0).padStart(7) + '%'}  ${r.pass ? 'CLEARS FLOOR' : (r.netApr < FLOOR ? 'below floor' : 'too flippy')}`);
   }
   const breakeven = COST_RT / (Math.max(...out.map((r) => r.realizedApr), 1) / 100 - FLOOR / 100) * 365;
   console.log(`\n  realizedAPR = |mean funding| over ${WINDOW}d (flips averaged in). netAPR subtracts ${COST_RT}% round-trip over a ${HOLD}d hold.`);

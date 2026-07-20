@@ -40,6 +40,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fxUniverseSymbols } from './lib/fx_universe.mjs';
+import { nextLongStop, nextShortStop } from './lib/trailing_stop.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md. This
 // file's own header comment already states the adapter interface, scope, and
@@ -47,12 +49,13 @@ import path from 'node:path';
 export const LEGIBILITY = {
   doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
   notYet: [
-    'No trailing stop, no scaled/laddered entries or exits — single fixed hard-stop (STOP_PCT=0.06) and time-stop (TIME_STOP_HOURS=72) only. See EXTERNAL_REPO_ADOPTION_CHECKLIST.md PAPER-EXECUTE items for the planned upgrade.',
+    'No scaled/laddered entries or exits yet — a position is still fully open or fully closed, nothing in between (trailing stop shipped; scaled exits are next in the same cluster).',
     'Only 2 close reasons recorded (\'stop\', \'time\') — no richer exit-reason taxonomy yet, so "why did most positions close this way" cannot currently be answered from this data alone.',
     'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing, so these adapters exist and are tested but have not yet actually opened a real spun-up position.',
   ],
   why: [
     'discover()/priceOf() are deliberately split (not one function) because discovery scans a wide universe (stocks ~9,900 tickers, memecoin hundreds of pools) too slow to re-run every tick just to price a few open positions — an earlier single-function design made a position permanently untrackable once its score naturally fell below the discovery bar, caught via synthetic injection testing.',
+    'Stop trails the best price observed since entry (scripts/lib/trailing_stop.mjs, step profile, ratchets one-directionally) rather than staying fixed at the entry-derived hard stop — "let a winner run and protect the gain as it goes," the real gap flagged in EXTERNAL_REPO_ADOPTION_CHECKLIST.md. This tick-level version only sees one price per tick (not intrabar OHLC like practice_book.mjs), so "peak" here means best-observed-across-ticks, a coarser but still real and ratchet-safe approximation.',
     'COST_RT=0.003 (0.3% round-trip) is applied explicitly on close because an earlier version imported portfolio/ledger.mjs but never called it, meaning zero-cost fills — caught before deploy, not after.',
     'Uses a lightweight JSON position tracker instead of the full portfolio/ledger.mjs Map-based ledger because this only ever holds one position per symbol per lane and needs to be trivially serializable across separate cron invocations — the ledger\'s multi-engine attribution machinery is unnecessary overhead here.',
     'direction defaults to \'long\' when a candidate omits it, specifically so the pre-existing momentum/memecoin/stocks adapters needed zero behavioral change when short support was added for perps/FX — confirmed with a synthetic injection test on a long position (stocks/AAPL, entry far below a trivially-crossed stop) alongside a new synthetic short-stop-out test (perps/BTC, entry set below the real live price so the short was genuinely underwater, confirming both the stop trigger AND the return-sign math for the new short code path).',
@@ -264,15 +267,13 @@ const perpAdapter = {
 
 // ======================================================================== fx
 // Score + direction identical to fx_scout.mjs (trend-alignment). Discovery
-// bar 40 = fx_grader's real flagged ("40+ strong") band. Universe is a fixed
-// 24-pair list (same one fx_scout.mjs uses — see EXTERNAL_REPO_ADOPTION_
-// CHECKLIST.md for the pending fix to derive this live like crypto/stocks/mm
-// do), cheap enough to fully rescan for discover(); priceOf() does a
+// bar 40 = fx_grader's real flagged ("40+ strong") band. Universe is the
+// SAME shared, live-derived, ISO-4217-filtered pair list fx_scout.mjs uses
+// (scripts/lib/fx_universe.mjs) — imported, not duplicated, specifically so
+// this adapter and the scout can never silently drift onto different
+// universes. Cheap enough to fully rescan for discover(); priceOf() does a
 // TARGETED per-pair lookup for open positions only, consistent with every
 // other adapter's discover-wide/price-targeted split.
-const FX_PAIRS = ['EURUSD', 'USDJPY', 'GBPUSD', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',
-  'EURGBP', 'EURJPY', 'GBPJPY', 'AUDJPY', 'EURAUD', 'EURCHF', 'CADJPY', 'NZDJPY', 'EURCAD', 'GBPAUD',
-  'USDMXN', 'USDZAR', 'USDTRY', 'USDSEK', 'USDNOK', 'USDPLN', 'USDSGD'];
 function fxScore(r5, r20, r60) {
   const aligned = Math.sign(r5) === Math.sign(r20) && r20 !== 0;
   let s = 0;
@@ -288,8 +289,9 @@ async function fxChart(sym, range) {
   return Array.isArray(q) ? q.filter((x) => x != null) : null;
 }
 async function fxUniverse() {
+  const pairs = await fxUniverseSymbols();
   const out = [];
-  for (const sym of FX_PAIRS) {
+  for (const sym of pairs) {
     const c = await fxChart(sym, '4mo');
     await sleep(600);
     if (!c || c.length < 65) continue;
@@ -330,7 +332,7 @@ export async function spinUp(laneName) {
     if (state.positions[c.symbol]) continue;               // already holding, don't pyramid
     const direction = c.direction === 'short' ? 'short' : 'long';   // defaults to 'long' — preserves prior long-only adapters' exact behavior
     const stopPx = direction === 'long' ? c.price * (1 - STOP_PCT) : c.price * (1 + STOP_PCT);
-    state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score };
+    state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score, extremePx: c.price };
     opened++;
   }
   saveLedgerState(laneName, state);
@@ -349,6 +351,18 @@ export async function tick() {
       const pos = state.positions[sym];
       const px = priceOf.get(sym);
       if (px == null) continue;                              // no price this tick (delisted/rugged/API miss) — leave open, retry next tick
+      // trail the stop using the best price observed ACROSS TICKS since entry
+      // (coarser than practice_book.mjs's intrabar-OHLC version — this only
+      // ever sees one price per tick, not a high/low — but the same ratchet
+      // guarantee holds: extremePx and stopPx are both monotonic).
+      if (pos.extremePx == null) pos.extremePx = pos.entry;   // positions opened before this field existed — backfill once, doesn't reset progress
+      if (pos.direction === 'short') {
+        pos.extremePx = Math.min(pos.extremePx, px);
+        pos.stopPx = nextShortStop(pos.entry, pos.extremePx, pos.stopPx);
+      } else {
+        pos.extremePx = Math.max(pos.extremePx, px);
+        pos.stopPx = nextLongStop(pos.entry, pos.extremePx, pos.stopPx);
+      }
       const dirSign = pos.direction === 'short' ? -1 : 1;
       const stopHit = pos.direction === 'short' ? px >= pos.stopPx : px <= pos.stopPx;
       const ageH = (Date.now() - pos.openedAt) / 3600000;
@@ -358,7 +372,9 @@ export async function tick() {
       if (closeReason) {
         const rawRetPct = dirSign * (px / pos.entry - 1) * 100;   // sign-flipped for shorts: profit when price falls
         const netRetPct = rawRetPct - COST_RT * 100;
-        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), heldHours: +ageH.toFixed(1), closedAt: Date.now() });
+        const origStop = pos.direction === 'short' ? pos.entry * (1 + STOP_PCT) : pos.entry * (1 - STOP_PCT);
+        const trailed = closeReason === 'stop' && (pos.direction === 'short' ? pos.stopPx < origStop - 1e-9 : pos.stopPx > origStop + 1e-9);
+        state.closed.push({ symbol: sym, reason: closeReason, direction: pos.direction, entry: pos.entry, exit: px, rawRetPct: +rawRetPct.toFixed(2), retPct: +netRetPct.toFixed(2), heldHours: +ageH.toFixed(1), trailed, closedAt: Date.now() });
         delete state.positions[sym];
       }
     }

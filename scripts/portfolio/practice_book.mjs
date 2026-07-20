@@ -17,6 +17,7 @@ import path from 'node:path';
 import { computeFeatures, positionPath } from '../lib/strategy_core.mjs';
 import { allCryptoEngines } from '../engines/crypto_core.mjs';
 import { createLedger } from './ledger.mjs';
+import { nextLongStop } from '../lib/trailing_stop.mjs';
 
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -66,10 +67,16 @@ for (const t of timeline) {
   for (const [sym, pos] of [...open]) {
     const i = inst[sym].idxByT.get(t); if (i == null) continue;
     const bar = inst[sym].bars[i];
+    pos.peakPx = Math.max(pos.peakPx, bar.h);                                    // track the best price seen since entry, using the bar high (not close) — same intrabar-conservative convention as the stop-hit check below
+    pos.stopPx = nextLongStop(pos.entryPx, pos.peakPx, pos.stopPx);              // ratchets up only; never below the original hard stop
     let reason = null, exitPx = bar.c;
     if (bar.l <= pos.stopPx) { reason = 'stop'; exitPx = pos.stopPx; }           // stop checked on the low (conservative)
     else if (barNo - pos.entryBar >= MAX_HOLD) { reason = 'time'; exitPx = bar.c; }
-    if (reason) { closed.push({ instrument: sym, reason, retPct: (exitPx / pos.entryPx - 1) * 100, barsHeld: barNo - pos.entryBar }); open.delete(sym); }
+    if (reason) {
+      const trailed = reason === 'stop' && pos.stopPx > pos.entryPx * (1 - STOP_PCT) + 1e-9;   // did the trail actually ratchet above the original hard stop before this exit?
+      closed.push({ instrument: sym, reason, retPct: (exitPx / pos.entryPx - 1) * 100, barsHeld: barNo - pos.entryBar, trailed });
+      open.delete(sym);
+    }
   }
 
   // 2) daily max-DD kill switch: flatten everything, no new entries this day
@@ -84,7 +91,7 @@ for (const t of timeline) {
     const cand = syms.filter((s) => prices[s] > 0 && !open.has(s)).map((s) => ({ s, conv: inst[s].conviction[inst[s].idxByT.get(t)] || 0 })).filter((x) => x.conv > 0).sort((a, b) => b.conv - a.conv);
     for (const { s } of cand.slice(0, SLOTS - open.size)) {
       const px = prices[s]; const notional = (PER_TRADE_RISK / STOP_PCT) * eqNow;
-      open.set(s, { entryPx: px, entryBar: barNo, stopPx: px * (1 - STOP_PCT), qty: notional / px });
+      open.set(s, { entryPx: px, entryBar: barNo, stopPx: px * (1 - STOP_PCT), peakPx: px, qty: notional / px });
     }
   }
 
@@ -99,11 +106,14 @@ const byReason = {}; for (const c of closed) byReason[c.reason] = (byReason[c.re
 const losers = closed.filter((c) => c.retPct < 0);
 const cutSmall = losers.filter((c) => c.retPct >= -(STOP_PCT * 100 + 1)).length;   // loss within ~stop distance = clean cut
 let peak = -Infinity, mdd = 0; for (const p of ledger.curve) { peak = Math.max(peak, p.equity); mdd = Math.max(mdd, 1 - p.equity / peak); }
-console.log(`\n=== PRACTICE BOOK — always-on paper, Risk OS (stop ${STOP_PCT * 100}% / time ${MAX_HOLD}h / dd-kill ${DAILY_DD_KILL * 100}% / risk ${PER_TRADE_RISK * 100}%/trade) ===`);
+const stopExits = closed.filter((c) => c.reason === 'stop');
+const trailedExits = stopExits.filter((c) => c.trailed);
+console.log(`\n=== PRACTICE BOOK — always-on paper, Risk OS (stop ${STOP_PCT * 100}% trailing / time ${MAX_HOLD}h / dd-kill ${DAILY_DD_KILL * 100}% / risk ${PER_TRADE_RISK * 100}%/trade) ===`);
 console.log(`  ${syms.length} instruments, ${SLOTS} slots | ${closed.length} paper trades closed`);
 console.log(`\n  EXIT DISCIPLINE (the point):`);
 console.log(`    exits by reason: ${Object.entries(byReason).map(([k, v]) => `${k}=${v}`).join('  ') || 'none'}`);
-console.log(`    every position had a hard stop: YES (enforced at entry)`);
+console.log(`    every position had a hard stop: YES (enforced at entry, trails per scripts/lib/trailing_stop.mjs's step profile)`);
+console.log(`    stop exits where the trail had ratcheted above the original hard stop: ${trailedExits.length}/${stopExits.length} (${stopExits.length ? (100 * trailedExits.length / stopExits.length).toFixed(0) : 0}%) — a real gain protected before reversal, not just a stop-out at entry-distance`);
 console.log(`    losers cut within stop distance: ${cutSmall}/${losers.length} (${losers.length ? (100 * cutSmall / losers.length).toFixed(0) : 0}%)`);
 console.log(`    daily DD-kill fired: ${byReason.dd_kill || 0} time(s)`);
 console.log(`\n  PnL (secondary — baseline entries, not edge):`);

@@ -3,8 +3,23 @@
 // argued for. Its job is NOT to find edge; it is to EXERCISE and validate the risk
 // machinery we deferred: hard stop, time-stop, daily max-DD kill, risk-based sizing.
 // Scored on EXIT DISCIPLINE (did every position have a stop? did losers get cut
-// small? did the kill switch fire on time?) — PnL is secondary and expected to be
-// break-even-ish minus costs, because the entries are a simple baseline, not edge.
+// small? did the kill switch fire on time?) — PnL is secondary.
+//
+// MEASURED, not assumed (a direct investigation after a Cluster-1a A/B test
+// surfaced this file running -73% to -80% equity, far outside an earlier
+// "break-even-ish" assumption): all 6 signal families, tested independently,
+// land in a uniform 43-45.5% win rate on the FULL backfilled universe (then
+// ~616 instruments) — not one bad family, a structural characteristic of
+// generic technical signals against a wide, largely illiquid/volatile
+// universe. The SAME families on a real, liquid large-cap universe (~24
+// coins) tested +16.4% GROSS of cost, ~46.7% win rate — nearly identical win
+// rate, but a much better win/loss payoff skew. Real trading costs still ate
+// that down to -34.9% net, a separate, trade-frequency-driven problem (3710
+// trades across 24 instruments). Both findings pointed the same direction:
+// universe breadth was hurting more than helping THIS ensemble. Restricted
+// the tradeable universe below to real, liquidity-derived large-caps —
+// same "derive live, don't hand-pick" discipline as mm_scout.mjs's pair list
+// — rather than a hardcoded list of tickers.
 //
 // Split the bar (per the canvas): the STRICT survivor/grader bar governs promotion
 // to LIVE. This practice book runs freely in PAPER so the agent learns exits.
@@ -12,6 +27,7 @@
 //
 // Runs on the parity ledger. Buy-and-hold each slot from entry until a RISK RULE
 // closes it. Usage: node scripts/portfolio/practice_book.mjs [--slots 5] [--stop 0.06]
+// [--universe-n 30] [--universe all] (all = the old full-backfill behavior, for comparison)
 import fs from 'node:fs';
 import path from 'node:path';
 import { computeFeatures, positionPath } from '../lib/strategy_core.mjs';
@@ -27,10 +43,38 @@ const MAX_HOLD = Number(flag('max-hold', '48'));      // time-stop in bars (hour
 const PER_TRADE_RISK = Number(flag('risk', '0.005')); // 0.5% of equity risked per trade -> size = risk/stop
 const DAILY_DD_KILL = Number(flag('dd-kill', '0.03')); // flatten + pause for the day if book down 3%
 const START = Number(flag('start', '100000'));
+const UNIVERSE_N = Number(flag('universe-n', '30'));   // how many top-liquidity coins to trade; --universe all restores the old full-backfill universe
 const DIR = path.join(process.cwd(), 'data', 'market');
 
+// Real 24h USDT-quote volume from Binance (already the codebase's established
+// liquidity source — refresh_universe.mjs derives eligibility from the same
+// endpoint), ranked descending, filtered to symbols we've actually backfilled
+// locally, top UNIVERSE_N. Falls back to the full local backfill set if
+// Binance is unreachable (rather than crash) — this file is sometimes run
+// from the VM where Binance is geo-blocked, per prior operational history.
+async function liquidUniverse(n, localSyms) {
+  try {
+    const r = await fetch('https://api.binance.com/api/v3/ticker/24hr', { headers: { 'User-Agent': 'MetaEdge/1.0' } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const rows = await r.json();
+    const local = new Set(localSyms);
+    const ranked = rows
+      .filter((x) => x.symbol.endsWith('USDT'))
+      .map((x) => ({ sym: x.symbol.slice(0, -4), quoteVolume: Number(x.quoteVolume) }))
+      .filter((x) => local.has(x.sym) && Number.isFinite(x.quoteVolume))
+      .sort((a, b) => b.quoteVolume - a.quoteVolume)
+      .slice(0, n);
+    if (!ranked.length) throw new Error('no overlap between Binance USDT pairs and local backfill');
+    return ranked.map((x) => x.sym);
+  } catch (e) {
+    console.error(`[practice-book] liquidUniverse() failed (${e.message}) — falling back to the full local backfill set (${localSyms.length} instruments).`);
+    return localSyms;
+  }
+}
+
 // universe + per-instrument engine exposure (entry signal) — features once
-const universe = fs.readdirSync(DIR).filter((f) => /^backfill-.*-1h\.jsonl$/.test(f)).map((f) => f.slice('backfill-'.length, -'-1h.jsonl'.length)).sort();
+const allLocalSyms = fs.readdirSync(DIR).filter((f) => /^backfill-.*-1h\.jsonl$/.test(f)).map((f) => f.slice('backfill-'.length, -'-1h.jsonl'.length)).sort();
+const universe = flag('universe', '') === 'all' ? allLocalSyms : await liquidUniverse(UNIVERSE_N, allLocalSyms);
 const engines = allCryptoEngines();
 const inst = {};
 for (const sym of universe) {
@@ -163,7 +207,7 @@ let peak = -Infinity, mdd = 0; for (const p of ledger.curve) { peak = Math.max(p
 const stopExits = closed.filter((c) => c.reason === 'stop_hard' || c.reason === 'stop_trailed');
 const trailedExits = closed.filter((c) => c.reason === 'stop_trailed');
 console.log(`\n=== PRACTICE BOOK — always-on paper, Risk OS (stop ${STOP_PCT * 100}% trailing / time ${MAX_HOLD}h / dd-kill ${DAILY_DD_KILL * 100}% / risk ${PER_TRADE_RISK * 100}%/trade) ===`);
-console.log(`  ${syms.length} instruments, ${SLOTS} slots | ${closed.length} paper trades closed`);
+console.log(`  universe: ${flag('universe', '') === 'all' ? `ALL ${allLocalSyms.length} backfilled instruments` : `top ${UNIVERSE_N} by real Binance 24h volume`} | ${syms.length} instruments tradeable, ${SLOTS} slots | ${closed.length} paper trades closed`);
 console.log(`\n  EXIT DISCIPLINE (the point):`);
 console.log(`    exits by reason: ${Object.entries(byReason).map(([k, v]) => `${k}=${v}`).join('  ') || 'none'}`);
 console.log(`    every position had a hard stop: YES (enforced at entry, trails per scripts/lib/trailing_stop.mjs's step profile)`);

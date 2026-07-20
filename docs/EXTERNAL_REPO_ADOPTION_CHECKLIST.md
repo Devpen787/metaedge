@@ -310,9 +310,23 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   evidence their *engine* is unsound.
 - [x] **LOW PRIORITY — OctoBot's TradingView connector, grid/DCA/basket
   strategy templates, 15+ exchange integrations, mobile app/Telegram/Web UI;
-  Vibe-Trading's cross-session memory, Pine Script/MetaTrader5/TDX export.**
-  Operational/product conveniences, not research-stage priorities. Revisit at
-  live execution scale.
+  Vibe-Trading's cross-session memory, Pine Script/MetaTrader5/TDX export;
+  Vibe-Trading's 11 broker connectors (IBKR, Robinhood, Alpaca, Binance,
+  Tiger, etc., ✅ CODE — confirmed real connector modules, not stubs) via its
+  `mcp_server.py`.** Broker specifics don't fit our crypto-wallet-native
+  stack (Hyperliquid). Operational/product conveniences, not research-stage
+  priorities. Revisit at live execution scale.
+  **One pattern worth extracting even though the brokers aren't:** their
+  `mcp_server.py` docstring states plainly — *"Every exposed tool is
+  read-only or research-only; no order-placing or order-cancelling tool is
+  ever surfaced via MCP."* That's a stronger safety property than a runtime
+  flag: the money-moving path is structurally absent from the agent-facing
+  surface, not just gated by a boolean that could be flipped. Independent
+  confirmation of the same instinct behind our own
+  `LIVE_EXECUTION_ENABLED`/`LIVE_ALLOWLIST` discipline — worth remembering
+  as we build any future LLM-agent-facing tool surface: no execution
+  capability should even be *reachable* from that surface, not just denied
+  by default.
 - [x] **NOT AN ADOPTION ITEM — confirmed Freqtrade has NO first-class
   walk-forward / out-of-sample validation gate.** Searched directly; absent.
   Confirms our own walk-forward + chance-baseline + timeframe-robustness
@@ -337,10 +351,37 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   abandoned it. Worth recording as evidence the idea itself (or at least
   their implementation of it) didn't hold up in production use, not just an
   item we happened to skip.
-- [ ] **UNVERIFIED — Vibe-Trading's claimed "Monte Carlo, Bootstrap,
-  Walk-Forward, run cards" validation layer.** README claims this; only found
-  skill-markdown *references*, not a dedicated validation module at the depth
-  claimed. Needs a real code-reading pass before crediting or dismissing.
+- [x] **RESOLVED (was UNVERIFIED) — Vibe-Trading's "Monte Carlo, Bootstrap,
+  Walk-Forward, run cards" validation layer IS real** (`agent/backtest/
+  validation.py`, 461 lines, `agent/backtest/run_card.py`, 249 lines — ✅
+  CODE, read the actual functions, not just README/skill-markdown this time).
+  Reverses the earlier flag. Three genuinely new, useful, separable tools:
+  1. **`monte_carlo_test`** — shuffles a strategy's own realized trade-PnL
+     order N times (default 1000), computes a p-value for whether the
+     observed Sharpe/max-drawdown beats random reorderings of the SAME
+     trades. **This is new to us and worth adopting** — it's a different
+     question than our chance-baseline (which asks "would this many
+     survivors appear across many DIFFERENT trials by chance"); this asks
+     "is THIS specific trade sequence's path better than random luck in
+     trade ORDERING." Complementary, not redundant.
+  2. **`bootstrap_sharpe_ci`** — resamples returns (default 1000x) to produce
+     a confidence interval + `prob_positive` on Sharpe. Also new to us —
+     quantifies uncertainty in the risk-adjusted return metric itself, not
+     just a point estimate.
+  3. **`run_card.py`** — writes a JSON+Markdown reproducibility card per
+     backtest run: config hash, strategy-source-file hash, data sources,
+     metrics, validation results. A real "prove this exact run is
+     reproducible" audit artifact.
+  **Important honest caveat, found on the same read:** their
+  `walk_forward_analysis` is **NOT** equivalent to true walk-forward — it
+  splits ONE backtest's equity curve into N sequential windows and checks
+  consistency (in-sample sub-period stability), with **no train/embargo/test
+  fold structure and no out-of-sample refit**. Our own walk-forward
+  discipline (train/embargo/test folds, survivor bar computed OOS-only)
+  remains materially more rigorous on that specific axis — do not adopt
+  their `walk_forward_analysis` function itself; keep ours as-is. Adopt
+  items 1-3 above as ADDITIONS alongside our existing walk-forward, not
+  replacements for it.
 
 ---
 

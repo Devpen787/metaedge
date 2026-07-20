@@ -115,10 +115,43 @@ A strategy cannot pass without all five sign-offs recorded on its card.
   snooping risk. You call n=30–50 proof (it earns forward observation only).
 - You promote anything to live off one backtest. You hide ambiguity instead of
   marking unknowns explicitly.
+- You treat re-running the same experiment more times as rigor by itself.
+  Iteration only counts as evidence if each additional run could plausibly
+  change the answer — ask "am I still learning something new" before the
+  next run, not "have I run it enough times." A 30,000-iteration sweep of
+  the same thing, unexamined, is volume, not proof.
+
+## System legibility (every lane, every run)
+
+A lane, scout, grader, or harness is not done when it produces a verdict — it
+is done when a person (or a future instance of the agent) can answer these
+three questions about it without asking anyone, just by looking:
+
+1. **What it is doing right now** — universe/instrument coverage, timeframe(s),
+   active signal families or buckets, current thresholds.
+2. **What it is explicitly NOT doing yet** — known exclusions and deferred
+   scope, stated as a fact in the artifact itself, not silently absent.
+   `refresh_universe.mjs`'s own docstring stating plainly that Kraken/OKX
+   aren't yet in its auto-refresh is the model to copy everywhere, not the
+   exception.
+3. **Why it is doing it that way** — the reasoning behind the current
+   thresholds/parameters, traceable to a `data/edgeops/hypothesis-registry.jsonl`
+   entry and its falsifier where one exists. A bare number with no reasoning
+   trail attached (why 72¢/88¢, why 6% stop, why 72h time-stop) is a defect,
+   not an acceptable detail to skip.
+
+*Forbidden until done:* extending or deploying any lane whose current scope,
+exclusions, and reasoning cannot be answered from the artifact itself. A scout
+that emits a FLAGS number but cannot state what it is NOT covering right now
+is not legible enough to trust, even if the number is correct.
 
 ## Output requirements
 
 Every research response ends with: files created/changed · tests/checks run ·
-data added or missing · decision record update · current blockers · next
-highest-priority action. When blocked: state the exact missing data, code,
-permission, or decision. Never fill gaps with assumptions.
+data added or missing · scope covered vs explicitly NOT covered this pass ·
+decision record update · current blockers · next highest-priority action.
+When blocked: state the exact missing data, code, permission, or decision.
+Never fill gaps with assumptions. When claiming coverage or completeness
+("checked," "confirmed," "reviewed"), state what was actually read/run and
+what was not — a claim of thoroughness without that distinction is the same
+failure as treating repetition as proof.

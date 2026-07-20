@@ -25,6 +25,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Records Hyperliquid perp funding/OI/premium/volume for every coin above $2M day-volume / $1M open-interest, every ~30min, scored by |funding| extremity for a contrarian fade.',
+  notYet: [
+    'Hyperliquid only — no Binance/Bybit/OKX perp funding coverage; a coin with extreme funding on another venue but not listed (or illiquid) on Hyperliquid is invisible here.',
+    'Does not predict direction from price action — the entire signal is structural (funding extremity), a deliberately different angle from the momentum/stock scouts, not a gap in those other scouts\' coverage.',
+    'This is a RADAR, not a buy-signal — perp_grader.mjs is the only place a forward, net-of-cost verdict exists.',
+  ],
+  why: [
+    'VOL_FLOOR=$2M / OI_FLOOR=$1M: extreme funding on a $0.3M-volume coin is untradeable noise, not a real crowding signal — the floor targets liquid mid-tier perps specifically.',
+    'Signal direction FADES the funding (long when funding is very negative/crowded-short, short when very positive/crowded-long) because extreme funding reads as crowded positioning that tends to unwind, not as informed directional forecasting.',
+    'This is a deliberately DIFFERENT bet from funding-carry (delta-neutral collection, already measured as marginal) — this is directional mean-reversion of crowded funding, tested completely separately so a null result on one does not get conflated with the other.',
+  ],
+};
+
 const DIR = path.join(process.cwd(), 'data', 'market', 'perps');
 const VOL_FLOOR = Number(process.env.PERP_VOL_FLOOR || 2e6);    // $2M day volume: tradeable mid-tier
 const OI_FLOOR = Number(process.env.PERP_OI_FLOOR || 1e6);      // $1M open interest
@@ -62,4 +77,6 @@ async function run() {
   console.log(`[perps] ${new Date().toISOString()} universe=${rows.length} liquid perps`);
   console.log(`  top by funding-extreme: ${top.map((r) => `${r.coin}(${r.score}|${r.fundingApr}%APR ${r.direction})`).join('  ')}`);
 }
-run().catch((e) => console.error('[perps] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[perps] scout failed:', e.message));
+}

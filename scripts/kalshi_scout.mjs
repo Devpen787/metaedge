@@ -29,6 +29,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Records every open + newly-settled Kalshi market tagged category=="Crypto" (quotes + resolutions), once a minute, from the VM only.',
+  notYet: [
+    'Crypto category only — no coverage of Kalshi\'s non-crypto markets (elections, econ, weather, etc.), a deliberate scope narrowing, not an oversight.',
+    'Kalshi only — no Polymarket or other prediction-market venue; ccxt does not cover prediction markets (verified live, see EXTERNAL_REPO_ADOPTION_CHECKLIST.md), so this stays bespoke.',
+    'Recording only — no trading path exists in this file by construction (see kalshi_paper_harness.mjs for the paper-only forward test, gated on kalshi_calibration.mjs finding a flagged bucket first).',
+  ],
+  why: [
+    'US-network-only requirement (must run on the VM, not Devin\'s Swiss ISP) is a real, tested constraint, not a preference — documented after DNS hijacking broke it from Switzerland.',
+    'barrier vs terminal market classification is read from the market\'s own rules_primary/early_close_condition text, never inferred from ticker name alone (a MAX/MIN-looking ticker can still be misclassified by regex alone; six parse bugs were found and fixed this way).',
+    'Records blind (no strategy logic here) so calibration/forward-test evidence derived from this data can never be accused of look-ahead into its own collection.',
+  ],
+};
+
 const B = 'https://api.elections.kalshi.com/trade-api/v2';
 const DIR = path.join(process.cwd(), 'data', 'market', 'kalshi');
 const D = (v) => { const n = Number(v); return Number.isFinite(n) ? n : NaN; };
@@ -113,4 +128,6 @@ async function run() {
   console.log(`[kalshi] ${new Date().toISOString()} series=${crypto.length} quotes=${quotes.length} newly-settled=${settled.length}`);
 }
 
-run().catch((e) => console.error('[kalshi] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[kalshi] scout failed:', e.message));
+}

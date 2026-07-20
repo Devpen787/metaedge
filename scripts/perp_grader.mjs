@@ -21,6 +21,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Grades perp_scout\'s extreme-funding candidates (score>=SCORE_BAR, default 25) as directional (fade-the-funding) paper entries, net of cost, at 1/3d.',
+  notYet: [
+    'Ignores the funding tailwind itself (the fade side actually collects funding while positioned) — deliberately conservative, so a real edge here is understated, not flattered.',
+    'Only two horizons (1d, 3d) — funding-crowding unwinds fast, so longer horizons were not built out; not tested at 7d+.',
+    'No verdict below n=20 in the 40+ (extreme) band — small samples are shown but never set FLAGS.',
+  ],
+  why: [
+    'Entry priced ~1h after signal (not at signal) — same never-first-to-a-signal discipline as the momentum grader.',
+    'Cost-per-side scales 0.06%-0.4% by day-volume tier, applied round-trip — thin perps get charged a realistic wider cost, not the same rate as BTC/ETH-tier liquidity.',
+    'The prior is explicitly guarded in the console output: extreme funding MAY reflect real information, not just crowding — this grader treats "no edge" as the expected honest outcome, not a bug to chase away.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'perps');
@@ -64,7 +79,7 @@ function loadGraded() {
 const priceAt = (s, tMs) => { let px = null; for (const [t, p] of s) { if (t <= tMs) px = p; else break; } return px; };
 const priceAfter = (s, tMs) => { for (const [t, p] of s) if (t >= tMs) return p; return null; };
 
-(async () => {
+async function main() {
   if (!fs.existsSync(DIR)) { console.log('no perp scans yet'); return; }
   const done = loadGraded();
   const now = Date.now();
@@ -112,4 +127,5 @@ const priceAfter = (s, tMs) => { for (const [t, p] of s) if (t >= tMs) return p;
   console.log(`\n  dirExp@${H}d = mean return in the FADE-THE-FUNDING direction, minus round-trip cost. (Funding tailwind ignored = conservative.)`);
   console.log(`  Edge = a 40+ (extreme) band with n>=20 and positive net. Prior guarded: extreme funding may reflect real info, not just crowding.`);
   console.log(`  PERP GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[perp-grader] failed:', e.message));

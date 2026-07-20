@@ -22,6 +22,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Grades every stock (from either stock_scout.mjs or stock_scout_wide.mjs) that cleared SCORE_BAR (default 45) as a pessimistic paper entry, net-of-cost forward return at 1/3/7 trading days.',
+  notYet: [
+    'Grades a stock\'s FIRST qualifying signal only per rotation cycle — no re-grading on a later, different-score re-trigger.',
+    'Yahoo chart history only — no cross-check against real broker fill data (this system has no live equities execution path at all).',
+    'No verdict until n is large enough in a high band with a complete 7d window — early runs show 0 gradeable, expected accrual.',
+  ],
+  why: [
+    'Entry priced at the next daily close AFTER signal (never at signal) — same never-first discipline as every other directional grader in this codebase.',
+    'Cost-per-side scales 0.05%-0.6%+near-zero commission by daily dollar-volume tier — small-caps get a realistically wider cost than large-caps, not one blended average.',
+    'Forward marks come from each stock\'s own actual Yahoo history, not from whether it stayed in later scans — a reversing stock can drop off the movers screeners; the reversal must stay in the graded data, not silently vanish (same survivorship fix as the crypto/memecoin graders).',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'stocks');
@@ -75,7 +90,7 @@ function loadGraded() {
 const priceAt = (series, tMs) => { let px = null; for (const [t, p] of series) { if (t <= tMs) px = p; else break; } return px; };
 const priceAfter = (series, tMs) => { for (const [t, p] of series) if (t >= tMs) return p; return null; };
 
-(async () => {
+async function main() {
   if (!fs.existsSync(DIR)) { console.log('no stock scans yet'); return; }
   const done = loadGraded();
   const now = Date.now();
@@ -125,4 +140,5 @@ const priceAfter = (series, tMs) => { for (const [t, p] of series) if (t >= tMs)
   console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered next close, cost-per-side by liquidity).`);
   console.log(`  Edge = a high-score band (60+) with n>=30 and positive net. Prior: stocks efficient, expect sub-cost.`);
   console.log(`  STOCK GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[stock-grader] failed:', e.message));

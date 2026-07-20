@@ -31,6 +31,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md. This
+// file's own header comment already states the adapter interface, scope, and
+// honest gaps in prose; this const is the machine-readable mirror.
+export const LEGIBILITY = {
+  doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
+  notYet: [
+    'Only 3 of 5 directional-kind lanes have a built adapter: crypto momentum, memecoin pops, stocks momentum. Perps and FX do NOT have adapters yet — spinUp() reports this plainly rather than silently no-op-ing.',
+    'No trailing stop, no scaled/laddered entries or exits — single fixed hard-stop (STOP_PCT=0.06) and time-stop (TIME_STOP_HOURS=72) only. See EXTERNAL_REPO_ADOPTION_CHECKLIST.md PAPER-EXECUTE items for the planned upgrade.',
+    'Only 2 close reasons recorded (\'stop\', \'time\') — no richer exit-reason taxonomy yet, so "why did most positions close this way" cannot currently be answered from this data alone.',
+  ],
+  why: [
+    'discover()/priceOf() are deliberately split (not one function) because discovery scans a wide universe (stocks ~9,900 tickers, memecoin hundreds of pools) too slow to re-run every tick just to price a few open positions — an earlier single-function design made a position permanently untrackable once its score naturally fell below the discovery bar, caught via synthetic injection testing.',
+    'COST_RT=0.003 (0.3% round-trip) is applied explicitly on close because an earlier version imported portfolio/ledger.mjs but never called it, meaning zero-cost fills — caught before deploy, not after.',
+    'Uses a lightweight JSON position tracker instead of the full portfolio/ledger.mjs Map-based ledger because this only ever holds one position per symbol per lane and needs to be trivially serializable across separate cron invocations — the ledger\'s multi-engine attribution machinery is unnecessary overhead here.',
+  ],
+};
+
 const DIR = path.join(process.cwd(), 'data', 'edgeops', 'directional_harness');
 const STOP_PCT = 0.06, TIME_STOP_HOURS = 72, COST_RT = 0.003; // 0.3% RT, liquid crypto/stocks — matches confluence_search.mjs's assumption
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

@@ -32,6 +32,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Records quote (bid/ask) and trade-tape series for the top MAX_PAIRS=40 Coinbase USD pairs by real 24h volume (>=$1M floor), 4 polls at ~14s spacing, once a minute.',
+  notYet: [
+    'Coinbase only — no Kraken/OKX/Binance/Hyperliquid market-making measurement; single-venue by design (this lane tests whether quoting logic itself works, not cross-venue routing).',
+    'MAX_PAIRS=40 is a call-volume ceiling (2 calls x 4 polls x 40 pairs must fit inside a 1-min cron window), NOT a universe-size limit — the underlying liquid-pair query (/products/volume-summary) already covers all 402 real Coinbase USD listings and re-derives the top 40 by volume every run.',
+    'REST polling only, ~14s resolution — no websocket order-book stream, so a mid-price move faster than 14s is invisible between samples (see mm_grader.mjs\'s own hard self-check, which refuses a verdict when this actually matters).',
+  ],
+  why: [
+    'Universe is liquidity-DERIVED (real 24h volume from one API call), not a hand-picked list — this was hardcoded to 6 pairs originally; the fix reads real volume for all 402 pairs and takes everything above the same $1M/day floor used elsewhere in the codebase.',
+    'CONCURRENCY=8 bounded-parallel fetch exists because sequential fetching of 40 pairs measured 2:03 for one poll cycle — too slow for the 1-min cron; this is a latency fix, not a pair-count reduction.',
+    'Quote + trade tape (not just quotes) recorded because adverse selection can only be measured from actual executions against the quote series, not from the book alone.',
+  ],
+};
+
 const B = 'https://api.exchange.coinbase.com';
 const DIR = path.join(process.cwd(), 'data', 'market', 'mm');
 // Was hardcoded to 6 pairs vs Coinbase's 402 real USD listings. Universe is now
@@ -115,4 +130,6 @@ async function run() {
   console.log(`[mm] ${new Date().toISOString()} quotes=${quotes.length} trades=${trades.length} | avg spread ${spreadSummary}`);
 }
 
-run().catch((e) => console.error('[mm] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[mm] scout failed:', e.message));
+}

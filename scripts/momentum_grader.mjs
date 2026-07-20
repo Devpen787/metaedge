@@ -23,6 +23,22 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see momentum_scout.mjs for discovery-side scope; this is
+// the validation side (what "edge" is allowed to mean here, and why).
+export const LEGIBILITY = {
+  doing: 'Grades every momentum_scout candidate whose score cleared SCORE_BAR (default 60) as a pessimistic paper entry, measures net-of-cost forward return at 1/3/7d, buckets by score.',
+  notYet: [
+    'Grades a coin\'s FIRST qualifying signal only — does not re-grade if it re-triggers later at a different score.',
+    'Only crypto/USD-denominated CoinGecko price history; no cross-check against actual exchange fill data.',
+    'No FLAGS until n>=30 in the 75+ band with a full 7d window — early runs will show 0 candidates gradeable, which is expected accrual, not a bug.',
+  ],
+  why: [
+    'Entry priced ~1h AFTER signal time (`s.t + 3600000`), not at signal — we are never first to a signal, so grading as if we were would flatter the result.',
+    'Cost-per-side scales 0.2%-3%+fee by market-cap tier (`costPerSide`) because small-cap slippage is real and a mid-price backtest is the small-cap lie this grader exists to catch.',
+    'FLAGS only fires on the 75+ band with n>=30 and positive net expectancy — the 60-75 band is tracked but never counted as a verdict on its own (insufficient bar to trust).',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'momentum');
@@ -75,7 +91,7 @@ function loadGraded() {
 }
 const priceAt = (series, tMs) => { let px = null; for (const [t, p] of series) { if (t <= tMs) px = p; else break; } return px; };
 
-(async () => {
+async function main() {
   const done = loadGraded();
   const now = Date.now();
   const cands = signals()
@@ -125,4 +141,5 @@ const priceAt = (series, tMs) => { let px = null; for (const [t, p] of series) {
   console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered ~1h late, cost-per-side by mcap tier).`);
   console.log(`  Edge = a high-score band (75+) with n>=30 and positive net. Small-cap tail is the untested bet.`);
   console.log(`  MOMENTUM GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[momentum-grader] failed:', e.message));

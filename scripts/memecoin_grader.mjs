@@ -26,6 +26,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Turns each pool\'s first qualifying snapshot into a pessimistic paper entry (LAG_SEC=90s late fill, liquidity-banded slippage, 2% round-trip fee), grades net return at 5/15/30/60min.',
+  notYet: [
+    'MAX_CANDIDATES=60 per run is a rate-limit budget, not a coverage cap — candidates beyond that wait for the next cron cycle, they are not dropped.',
+    'FEE_RT=2% folds sell-side slippage into one constant "for v1 simplicity" (stated in-code) — a real per-side slippage split on the exit leg is a known simplification, not modeled separately yet.',
+    'Grades only pools old enough for a full forward window — early runs will show 0 gradeable candidates, which is expected accrual.',
+  ],
+  why: [
+    'Forward marks come from each pool\'s own per-pool minute OHLCV, never from whether the pool stayed in later scout snapshots — the scout only records top-20 new + top-20 trending, so a pool that pops-and-dies (measured: 53% seen once in 18min) would otherwise silently vanish from a survivorship-biased sample.',
+    'LAG_SEC=90 models that we are never first to a signal — an instant-fill backtest on a 45min-old-max pop would flatter the result relative to any real execution path.',
+    'FLAGS only fires on the 60+ score band with n>=30 and positive expectancy under this deliberately unfair fill model.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'memecoin');
@@ -121,7 +136,7 @@ function loadGraded() {
   return done;
 }
 
-(async () => {
+async function main() {
   const MATURE_MIN = Number(flag('mature-min', '60'));   // only grade a full forward window (0 = test mode)
   let days = flag('days', '');
   days = days ? days.split(',') : fs.readdirSync(DIR).filter((f) => f.startsWith('pools-')).map((f) => f.slice(6, -6)).sort();
@@ -196,4 +211,5 @@ function loadGraded() {
   console.log(`\n  Reading: exp@${H}m = mean net return after ${FEE_RT * 100}% fee + liq-band slippage, entered ${LAG_SEC}s LATE.`);
   console.log(`  A real edge = a high-score band (60+) with n>=30 and positive expectancy under this unfair fill.`);
   console.log(`  MEMECOIN GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[memecoin-grader] failed:', e.message));

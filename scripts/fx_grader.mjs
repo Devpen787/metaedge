@@ -15,6 +15,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Grades fx_scout\'s trend-aligned pairs (score>=SCORE_BAR, default 25) as directional paper entries, net of cost, at 3/7d.',
+  notYet: [
+    'Survivorship correction is present but noted as low-relevance here (FX majors/crosses/exotics don\'t delist the way coins do) — kept anyway, for consistency with the other graders, not because it was found to matter.',
+    'Only 2 horizons (3d, 7d) — FX trends are assumed multi-day; not tested at shorter or longer windows.',
+    'No verdict below n=20 in the 40+ band.',
+  ],
+  why: [
+    'Cost-per-side is binary: ~3bps for majors/crosses, ~12bps for exotics/EM (EXOTIC currency set) — reflects the real, large liquidity gap between the two tiers rather than one blended average that would misprice both.',
+    'Entry priced at the next daily close AFTER signal — same never-first discipline as every other grader.',
+    'The console output states the prior plainly: FX rarely clears costs at these horizons — a FLAGS=0 result here is the expected, honest outcome given the entry prior, not a sign the test is broken.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'fx');
@@ -58,7 +73,7 @@ function loadGraded() { const fp = path.join(DIR, 'paper-trades.jsonl'); const d
 const priceAt = (s, tMs) => { let px = null; for (const [t, p] of s) { if (t <= tMs) px = p; else break; } return px; };
 const priceAfter = (s, tMs) => { for (const [t, p] of s) if (t >= tMs) return p; return null; };
 
-(async () => {
+async function main() {
   if (!fs.existsSync(DIR)) { console.log('no fx scans yet'); return; }
   const done = loadGraded();
   const now = Date.now();
@@ -90,4 +105,5 @@ const priceAfter = (s, tMs) => { for (const [t, p] of s) if (t >= tMs) return p;
   }
   console.log(`\n  dirExp@${H}d = mean return in the TREND direction, minus round-trip cost. Prior: FX moves rarely clear costs at these horizons.`);
   console.log(`  FX GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[fx-grader] failed:', e.message));

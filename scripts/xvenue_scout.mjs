@@ -22,6 +22,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Records top-of-book bid/ask on Coinbase and Kraken simultaneously for 5 hardcoded pairs (BTC/ETH/SOL/LINK/AVAX), computes the best capturable gross gap between them, on cron.',
+  notYet: [
+    'Only 5 pairs, only 2 venues (Coinbase, Kraken) — no OKX/Binance/Hyperliquid cross-check and no coins beyond this hand-picked list; unlike the crypto/mm/stock lanes, this universe was never widened to a liquidity-derived query.',
+    'No verdict/grader file exists for this lane — verdict_board.mjs lists it with `log: null`, meaning it currently has NO net-of-cost pessimistic gate; a recorded gap here is raw and unfiltered by fees/latency yet.',
+    'Top-of-book only, no depth — a gap seen here is an upper bound on a real capturable one (stated plainly in the file\'s own header), not a claim of a tradeable size.',
+  ],
+  why: [
+    'The expected honest answer is stated up front: cross-CEX arb is HFT/MEV-dominated, so "gaps sit inside costs" is the anticipated result — this measures rather than assumes that, but does not start from a neutral prior.',
+    'Gross gap = max(krBid-cbAsk, cbBid-krAsk) — the actual buy-low/sell-high capturable direction, not a naive price-difference that could be wrong-signed.',
+    'Exists to answer "does an arb even exist" BEFORE anyone builds the cross-venue execution it would require (two funded accounts, transfer/settlement latency, inventory on both sides) — existence-first, precision later.',
+  ],
+};
+
 // Coinbase product -> Kraken ticker key
 const PAIRS = { 'BTC-USD': 'XXBTZUSD', 'ETH-USD': 'XETHZUSD', 'SOL-USD': 'SOLUSD', 'LINK-USD': 'LINKUSD', 'AVAX-USD': 'AVAXUSD' };
 const DIR = path.join(process.cwd(), 'data', 'market', 'xvenue');
@@ -60,4 +75,6 @@ async function run() {
   const summ = rows.map((r) => `${r.pair.split('-')[0]}:${r.grossGapBps}bp`).join(' ');
   console.log(`[xvenue] ${new Date().toISOString()} pairs=${rows.length} | gross gap ${summ}`);
 }
-run().catch((e) => console.error('[xvenue] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[xvenue] scout failed:', e.message));
+}

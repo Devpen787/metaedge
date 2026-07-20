@@ -36,6 +36,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Opens real paper BUY_YES positions on currently-open Kalshi crypto markets whose live quote lands in a bucket kalshi_calibration.mjs has already flagged (72c, 88c), tracks each to real resolution.',
+  notYet: [
+    'Only the two buckets kalshi_calibration.mjs has actually flagged (70-75c, 85-90c) — NOT auto-derived from live calibration output each run, deliberately: a new bucket only trades after a human has seen it cross the bar, same discipline as MAX_PAGES being a verified constant rather than a live guess.',
+    'Terminal markets only — barrier-shaped markets are refused outright (marketKind() check), because the calibration finding this harness is testing was itself measured on terminal markets only.',
+    'One paper position per market, ever — no pyramiding, no re-entry on a market already touched, open or closed.',
+  ],
+  why: [
+    'Entry priced at the real ASK plus Kalshi\'s real per-contract fee (not mid) — this is what a real BUY_YES actually costs, not an idealized fill.',
+    'Bucket list is kept in sync MANUALLY with kalshi_calibration\'s own flagged output specifically because it is a measured finding, not a formula — automating it would let an unreviewed bucket start trading real (paper) capital.',
+    'Settles ONLY from the scout\'s own recorded resolution file — never assumes or infers an outcome ahead of the real settlement being recorded.',
+  ],
+};
+
 const B = 'https://api.elections.kalshi.com/trade-api/v2';
 const DIR = path.join(process.cwd(), 'data', 'market', 'kalshi');
 const LEDGER = path.join(DIR, 'paper-harness-positions.jsonl');
@@ -149,4 +164,6 @@ async function run() {
   if (totalN >= 30) console.log(`  KALSHI HARNESS VERDICT n=${totalN} netPnl=${totalPnl.toFixed(2)} ${totalPnl > 0 ? 'POSITIVE — forward-confirming the calibration finding' : 'NEGATIVE — the in-sample finding did not survive forward'}`);
   else console.log(`  n=${totalN} still below 30 — no verdict yet, accruing.`);
 }
-run().catch((e) => console.error('[kalshi-harness] failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[kalshi-harness] failed:', e.message));
+}

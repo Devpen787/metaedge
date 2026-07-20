@@ -36,6 +36,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Records new + trending pools on solana/base/eth/bsc via GeckoTerminal, up to MAX_PAGES=10 (~200 pools) per (chain,source) per cycle, every ~3min.',
+  notYet: [
+    'Only 4 chains (solana, base, eth, bsc) — GeckoTerminal supports more networks than this covers; the 4 were chosen for memecoin activity concentration, not because they are the only ones reachable.',
+    'Only "new" and "trending" pool feeds — a pool that never enters either feed (e.g., stays flat, low-volume) is structurally invisible to this scout, by GeckoTerminal\'s own API design, not a filter we chose.',
+    'Records and scores nothing — this file captures blind; memecoin_grader.mjs is the only place a candidate becomes a pessimistic paper trade.',
+  ],
+  why: [
+    'MAX_PAGES=10 is a verified live measurement (pages 1/5/10 return pools, page 15 errors) — the real depth ceiling of the free tier, not a "seems wide enough" guess.',
+    'Recording is deliberately blind (no strategy watching) so the forward outcome is untouched by our own scoring — an edge that survives degraded free-tier data + a pessimistic fill is real, not a latency mirage.',
+    'CHAINS defaults are env-overridable (MEME_CHAINS) specifically so widening chain coverage never requires a code change, only a config one.',
+  ],
+};
+
 const CHAINS = (process.env.MEME_CHAINS || 'solana,base,eth,bsc').split(',');
 const BASE = 'https://api.geckoterminal.com/api/v2';
 const DIR = path.join(process.cwd(), 'data', 'market', 'memecoin');
@@ -112,4 +127,6 @@ async function run() {
   console.log(`[meme] ${new Date().toISOString()} recorded=${rows.length} ${Object.entries(byChain).map(([k, v]) => k + '=' + v).join(' ')}`);
 }
 
-run().catch((e) => console.error('[meme] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[meme] scout failed:', e.message));
+}

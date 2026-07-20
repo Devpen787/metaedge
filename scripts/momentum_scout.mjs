@@ -24,6 +24,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY (per docs/trading_research_operating_model.md): what this
+// lane is doing, what it explicitly is NOT doing yet, and why its thresholds
+// are what they are — read by verdict_board.mjs, not just a comment for humans.
+export const LEGIBILITY = {
+  doing: 'Scans CoinGecko\'s top ~2500 coins by market cap (10 pages x 250) every ~30min for early-momentum acceleration, above a $1M mcap / $100k 24h-volume floor.',
+  notYet: [
+    'CoinGecko-listed only — a coin CoinGecko has not indexed is invisible here (separate from the deep-backtest universe in refresh_universe.mjs, which is Binance+Coinbase-derived).',
+    'Below the $1M mcap / $100k volume floor is out of scope by design (untradeable micro-cap territory, not a coverage gap).',
+    'This scout only SURFACES candidates by score — it does not claim edge. momentum_grader.mjs is the only component allowed to say whether a score band nets positive after costs.',
+  ],
+  why: [
+    'PAGES=10 (~2500 coins) was sized to reach the ~$5M-mcap tier (ATLAS-class small-caps) that neither the 37-coin backtest universe nor the memecoin new-pool scout ever sees.',
+    'VOL_FLOOR=$100k / MCAP_FLOOR=$1M: below this a "mover" is a micro-rug, not a tradeable small-cap — the floor is a tradeability filter, not a discovery limit.',
+    'Score rewards acceleration + participation and explicitly PENALIZES already-extended moves (d7>120%, d30>300%, h1<-3%) because a "+X% already" reading is hindsight, not an edge signal.',
+  ],
+};
+
 const DIR = path.join(process.cwd(), 'data', 'market', 'momentum');
 const PAGES = Number(process.env.MOM_PAGES || 10);      // 250/page -> ~2500 coins; reaches the ~$5M-mcap tail (ATLAS-tier)
 const VOL_FLOOR = Number(process.env.MOM_VOL_FLOOR || 100000);   // $100k 24h vol: tradeable small-cap, not a micro-rug
@@ -90,4 +107,8 @@ async function run() {
   console.log(`[momentum] ${new Date().toISOString()} universe=${rows.length} tradeable coins`);
   console.log(`  top emerging movers by score: ${top.map((r) => `${r.sym}(${r.score}|24h ${r.h24}%|7d ${r.d7}%)`).join('  ')}`);
 }
-run().catch((e) => console.error('[momentum] scout failed:', e.message));
+// Guarded so importing LEGIBILITY (or anything else exported here) never
+// triggers a real run as a side effect — same discipline as verdict_board.mjs.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[momentum] scout failed:', e.message));
+}

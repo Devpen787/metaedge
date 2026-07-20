@@ -25,6 +25,24 @@
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md. This file's
+// own header comment already states scope/exclusions/reasoning in prose (it is
+// the cited MODEL for this pattern); this const is the machine-readable mirror
+// so verdict_board.mjs can surface it alongside every other lane.
+export const LEGIBILITY = {
+  doing: 'Recomputes the deep-backtest eligibility universe weekly from Binance + Coinbase\'s live listed-pairs, backfills only the delta (new listings), idempotent.',
+  notYet: [
+    'Kraken/OKX-only coins and DEX-only/pre-2yr-old coins are a separate, known, stated gap — CoinGecko\'s broader aggregate history exists in principle but rate-limits hard on bulk pulls at our tier.',
+    'This is the DEEP-HISTORY BACKTEST universe only — it is not the live-detection universe (momentum_scout/memecoin_scout already reach the full current market on every cycle; conflating the two was a real, previously-caught source of confusion).',
+    'Weekly cadence — a coin newly eligible mid-week is not backfilled until the next run.',
+  ],
+  why: [
+    'Binance+Coinbase specifically because these are the two exchanges with fast, reliable, FREE candle sources at our current tier — not a claim that these are the only exchanges worth having.',
+    'Idempotent, delta-only backfill because a coin\'s 730-day history barely changes week to week — re-pulling the full universe every run would be wasteful and slow for near-zero new information.',
+    'Weekly (not daily/hourly) cadence because backfill is a heavy one-time-per-coin pull, not a live scan — no tighter cadence is needed for a universe that changes by listings, not by the minute.',
+  ],
+};
+
 const DIR = 'data/market';
 const STABLE = new Set(['USDC', 'FDUSD', 'TUSD', 'DAI', 'USDP', 'EUR', 'USD1', 'USDE', 'PYUSD', 'GUSD', 'ZUSD']);
 const gj = async (u) => { const r = await fetch(u, { headers: { 'User-Agent': 'MetaEdge/1.0' } }); return r.ok ? r.json() : null; };

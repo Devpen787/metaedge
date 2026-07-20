@@ -16,6 +16,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Scores 24 hand-listed FX pairs (7 majors, 10 crosses, 7 exotics/EM) for 5d/20d trend alignment via Yahoo daily closes, every ~2h.',
+  notYet: [
+    'Fixed, hand-picked 24-pair list — unlike the crypto/stock/mm lanes (which learned to derive their universe from a live venue query), FX pairs here are NOT auto-discovered from a full available-pairs source. This is a real, stated gap, not a hidden one: a real FX broker/data API\'s full tradeable-pair list would be the honest ceiling, same lesson already applied elsewhere.',
+    'Daily-close granularity only — no intraday FX signal; trend is explicitly the ONE documented FX edge being tested (multi-day CTA-style trend), not a claim that faster signals were checked and rejected.',
+    'This is a RADAR — fx_grader.mjs is the only place a net-of-cost verdict exists.',
+  ],
+  why: [
+    'FX is treated with an explicitly LOW PRIOR going in (most efficient market there is; short-horizon moves are tiny vs costs) — the file\'s own stated expectation is "no edge," and that is the honest baseline this test is checking, not a strawman.',
+    'Exotics/EM pairs are included specifically because they move more than majors — majors alone would bias toward "no edge" for reasons unrelated to the trend hypothesis itself.',
+    'Entry requires 5d trend to CONFIRM (not just match sign loosely) the 20d trend — an unconfirmed 20d trend alone is not enough to signal, reducing false trend calls on a recent reversal.',
+  ],
+};
+
 const DIR = path.join(process.cwd(), 'data', 'market', 'fx');
 const PAIRS = (process.env.FX_PAIRS || [
   'EURUSD', 'USDJPY', 'GBPUSD', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',          // majors
@@ -64,4 +79,6 @@ async function run() {
   console.log(`[fx] ${new Date().toISOString()} pairs=${rows.length}`);
   console.log(`  top trends: ${top.map((r) => `${r.pair}(${r.score}|20d ${r.r20}% ${r.direction})`).join('  ')}`);
 }
-run().catch((e) => console.error('[fx] scout failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[fx] scout failed:', e.message));
+}

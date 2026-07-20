@@ -21,6 +21,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Decomposes effective vs realized half-spread per pair from mm_scout\'s quote+trade data, at 1/5/15min horizons, net of a configurable maker fee.',
+  notYet: [
+    'Refuses a verdict per pair, not just globally, when the mid-sync self-check fails — a pair can sit at FAIL indefinitely if REST-sampled quotes never sync tightly enough to trust, and that is treated as a correct outcome, not a bug to silence.',
+    'No queue-position or fill-probability simulation — this measures whether captured spread would have been profitable AS A TAKER-SIDE OBSERVER, not whether our own resting orders would actually have been filled at that price.',
+    'FEE_BPS defaults to 0 (no maker fee assumed) unless passed explicitly — a real venue\'s maker fee/rebate is not applied automatically.',
+  ],
+  why: [
+    'The HARD SELF-CHECK (measured effective half-spread must reproduce the quoted half-spread within 0.4x-1.6x) exists because the REST scout only samples the book every ~14s — a stale mid would swamp any adverse-selection signal, so this refuses to report a number it cannot trust rather than report a wrong one.',
+    'FLAGS requires: check passed AND quotedHalf > 3bps AND net > 0 — a tight-spread pair that "passes" the check but has an economically trivial spread is excluded from counting as an edge.',
+    'Horizons capped at 1/5/15min because these are what a REST-polling (not co-located) player can actually reach — a sub-second horizon would be measuring a game we cannot play.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'mm');
@@ -29,6 +44,12 @@ const FEE_BPS = Number(flag('fee-bps', '0'));   // maker fee (bps) subtracted fr
 const HORIZONS = [1, 5, 15];                     // minutes; horizons a slow player can actually reach
 const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
+// Guarded below (not run unconditionally at import time) — this file used to
+// execute its whole grading pass as a side effect of being imported, which
+// printLegibility() in verdict_board.mjs actually triggered while just trying
+// to read this file's LEGIBILITY export. Wrapped in main() to match the same
+// import-safe discipline as every other scout/grader in this codebase.
+function main() {
 let days = flag('days', '');
 days = days ? days.split(',') : fs.existsSync(DIR) ? fs.readdirSync(DIR).filter((f) => f.startsWith('quotes-')).map((f) => f.slice(7, -6)).sort() : [];
 
@@ -95,3 +116,5 @@ for (const pair of pairs) {
 console.log(`\n  'check' = does measured effective half-spread reproduce the quoted half-spread? FAIL => mid-sync`);
 console.log(`  too coarse (REST scout samples book ~14s); adverse-selection numbers for that pair are NOT trustworthy.`);
 console.log(`  MM GRADER VERDICT ${new Date().toISOString()} pairs=${pairs.length} FLAGS=${flags}${flags ? '' : ' (no trustworthy edge — see check column)'}\n`);
+}
+if (import.meta.url === `file://${process.argv[1]}`) main();

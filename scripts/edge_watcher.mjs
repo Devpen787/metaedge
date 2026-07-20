@@ -25,6 +25,21 @@ import path from 'node:path';
 import { LANES, countRows, lastVerdict, flagsOf } from './verdict_board.mjs';
 import { spinUp } from './directional_harness.mjs';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Watches every lane in verdict_board.mjs\'s LANES array for a 0->>0 (first-ever or newly-flagged) FLAGS transition, logs it to alerts.jsonl, and auto-spins-up a forward paper harness for \'directional\' lanes.',
+  notYet: [
+    'Only reacts to a FLAGS flip, not to any other kind of change (e.g., a lane going stale/no-longer-accruing is not detected or alerted on).',
+    'Auto-harness only exists for lane kind==\'directional\' (via directional_harness.spinUp) — \'binary\' lanes (Kalshi-style) get a log note to verify a bespoke harness exists, and lanes with kind==null get no automated action at all, by design (mm/xvenue/carry have bespoke measurement, not a sizeable directional bet).',
+    'One alerts.jsonl sink only — no external notification channel (Slack/webhook/etc.) exists yet; see the RPC typed-notification-fan-out item in EXTERNAL_REPO_ADOPTION_CHECKLIST.md for the planned upgrade.',
+  ],
+  why: [
+    'Exists specifically because Kalshi\'s FLAGS=2 sat unacted-on for days before anyone happened to check — this automates "don\'t miss the opportunity we already found," not just "record the opportunity."',
+    'Idempotent by design (state in watcher_state.json) — a lane already known-flagged does not re-trigger every run; only a genuine 0->>0 transition counts as new, so this cannot spam duplicate alerts or duplicate harness spin-ups.',
+    'Imports (not duplicates) LANES/helpers from verdict_board.mjs specifically so the two can never silently drift apart on what a lane\'s FLAGS or kind actually is.',
+  ],
+};
+
 const E = path.join(process.cwd(), 'data', 'edgeops');
 const STATE_FP = path.join(E, 'watcher_state.json');
 const ALERTS_FP = path.join(E, 'alerts.jsonl');

@@ -40,6 +40,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Joins kalshi_scout.mjs\'s last two-sided quote before close against the recorded resolution, per 5c bucket, terminal/barrier separately, to test favorite-longshot bias net of Kalshi fee + half-spread.',
+  notYet: [
+    'IN-SAMPLE only — a flagged bucket is a forward-paper-test CANDIDATE, never itself proof (kalshi_paper_harness.mjs is the actual forward test).',
+    'Two-sided, non-degenerate quotes only (bid>0, ask<1, ask>bid) — a 0/100 book is excluded as "not a probability," not counted as a data point either way.',
+    'No cross-bucket smoothing — small buckets (n<~100) are printed but never allowed to set FLAGS on their own, by design, not by omission.',
+  ],
+  why: [
+    'Terminal and barrier markets are bucketed SEPARATELY because a one-touch barrier\'s YES probability is structurally higher than a terminal\'s at the same quoted price — mixing them would manufacture a fake bias.',
+    'Streams the quotes file line-by-line rather than loading it whole (>200MB on the VM\'s 1GB box) — a whole-file read would OOM the host and take the live site down with it.',
+    'Edge is reported strictly after costs (0.07*p*(1-p) fee + half the quoted spread) — a gap that only exists at mid-price is not a real edge.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const DIR = path.join(process.cwd(), 'data', 'market', 'kalshi');
@@ -104,7 +119,7 @@ async function scanResolutions(day) {
   }
 }
 
-(async () => {
+async function main() {
   console.log(`\n=== Kalshi calibration — implied price vs realized outcome ===`);
   console.log(`  days: ${days.join(', ')}  | min-vol ${MIN_VOL} | quote >= ${MIN_MINS}m before close | kind=${KIND_FILTER}`);
   for (const d of days) await scanQuotes(d);
@@ -139,4 +154,5 @@ async function scanResolutions(day) {
   console.log(`  In-sample over the recorded window; a real edge must survive forward on the still-accruing scout data.`);
   // Machine-greppable verdict line — the forward monitor's cron watches for this.
   console.log(`CALIBRATION VERDICT ${new Date().toISOString()} days=${days.length} joined=${joined} FLAGS=${flags.length}${flags.length ? ' :: ' + flags.join(' | ') : ' (no capturable edge)'}`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[kalshi-calibration] failed:', e.message));

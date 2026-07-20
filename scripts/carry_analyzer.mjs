@@ -23,6 +23,21 @@
  * Usage: node scripts/carry_analyzer.mjs [--min-apr 20] [--window-days 14]
  *        [--hold-days 14] [--cost-rt-pct 1.2] [--floor-apr 5]
  */
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Measures REALIZED (window-averaged, not snapshot) funding APR on every Hyperliquid perp with a live Coinbase spot pair (hedgeable) currently showing |APR|>=MIN_APR (default 20%), net of amortized round-trip cost, against a 5% floor.',
+  notYet: [
+    'Hyperliquid perp + Coinbase spot only — a coin with high funding on another perp venue, or hedgeable only via a different spot exchange, is invisible to this specific pairing.',
+    'This measures a snapshot-in-time candidate set (current |APR|>=20%) — it is not itself a forward-paper harness; no position is opened or tracked here (see the master plan\'s Stage 2 for the forward-paper gate this is meant to feed).',
+    'No orders, no sizing — purely a measurement of whether the regime is real, never an execution decision.',
+  ],
+  why: [
+    'Uses REALIZED (mean-over-window) funding, never the current snapshot, because funding spikes and reverts — a position held through the full window pays during the reversions too, so averaging is the honest number, not the flattering one.',
+    'HEDGEABLE-only filter (excludes perp-only/DEX-only coins) because delta-neutral carry structurally requires a spot leg — without one this would be a directional bet mislabeled as carry.',
+    'Cost is amortized over the stated HOLD period (not charged once and ignored) because entry+exit cost is one-time but its APR drag depends entirely on how long the position is actually held — reported alongside the break-even hold length so the floor comparison is honest at the stated horizon.',
+  ],
+};
+
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
 const MIN_APR = Number(flag('min-apr', '20'));
@@ -38,7 +53,7 @@ async function hl(body) {
   return r.ok ? r.json() : null;
 }
 
-(async () => {
+async function main() {
   const meta = await hl({ type: 'metaAndAssetCtxs' });
   if (!meta) { console.log('Hyperliquid unreachable'); process.exit(1); }
   const universe = meta[0]?.universe || [], ctx = meta[1] || [];
@@ -88,4 +103,5 @@ async function hl(body) {
   console.log(`  persist = % of window funding kept its collectable sign; <65% means you'd fight reversals.`);
   console.log(`  Sensitivity: cost drag is ${(COST_RT / (HOLD / 365)).toFixed(1)}% APR at a ${HOLD}d hold — a shorter hold kills it, a longer hold needs the funding to persist.`);
   console.log(`  CARRY VERDICT ${new Date().toISOString()} candidates=${out.length} FLAGS=${flags}${flags ? '' : ' (no hedgeable coin clears the floor net of costs)'}\n`);
-})();
+}
+if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[carry-analyzer] failed:', e.message));

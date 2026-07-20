@@ -26,6 +26,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
+export const LEGIBILITY = {
+  doing: 'Rotates through the full ~10,414 SEC-registered US ticker universe in CHUNK=250 slices per run, scoring 1d-surge candidates above a $1M dollar-volume floor; a full pass completes over ~40 runs (~20h at 30min cadence).',
+  notYet: [
+    'A given ticker is only re-checked once per ~20h rotation cycle, not continuously — a mover that appears and reverses within one rotation window can be missed entirely, a real, stated latency, not a hidden one.',
+    'US SEC-registered common stock only (regex-filtered to 1-5 letter tickers) — no OTC/pink-sheet, no non-US-listed equities, no ETFs/warrants/class-share tickers (deliberately dropped by the same regex).',
+    'universe-cache.json refreshes weekly — a ticker newly SEC-registered mid-week is not seen until the next cache refresh.',
+  ],
+  why: [
+    'Rotation instead of one giant sweep exists because polling all ~10k names every run would hammer Yahoo\'s unofficial chart API and risk a block — the same trade-off any real screener makes on a huge universe (not everything refreshed every tick), not a coverage compromise unique to us.',
+    'score() is copied VERBATIM from stock_scout.mjs (not reimplemented) specifically so candidates from either source are directly comparable to, and gradeable by, the same stock_grader.mjs with zero changes.',
+    'This exists because stock_scout.mjs alone only ever saw Yahoo\'s own pre-filtered "movers" screeners (~300 names, curated by YAHOO\'S criteria) — this scanner applies OUR OWN criteria to every name, not a pre-shortlisted subset.',
+  ],
+};
+
 const DIR = path.join(process.cwd(), 'data', 'market', 'stocks');
 const CHUNK = Number(process.env.WIDE_CHUNK || 250);
 const DOLLAR_VOL_FLOOR = Number(process.env.STOCK_DVOL_FLOOR || 1e6);
@@ -108,4 +123,6 @@ async function run() {
   console.log(`[stocks-wide] ${new Date().toISOString()} chunk=${chunk.length} checked=${checked} candidates=${rows.length} universe=${uni.length} rotationIdx=${idx}->${(idx + CHUNK) % uni.length}`);
   console.log(`  top: ${top.map((r) => `${r.sym}(${r.score}|${r.chg1d}%)`).join('  ')}`);
 }
-run().catch((e) => console.error('[stocks-wide] failed:', e.message));
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run().catch((e) => console.error('[stocks-wide] failed:', e.message));
+}

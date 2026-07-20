@@ -137,6 +137,35 @@ export function signalAt(family, p, bars, F, i) {
     if (F.macdLine[i] == null || F.macdSignal[i] == null || F.macdLine[i - 1] == null || F.macdSignal[i - 1] == null) return false;
     return F.macdLine[i - 1] <= F.macdSignal[i - 1] && F.macdLine[i] > F.macdSignal[i];
   }
+  if (family === 'round_bounce') {
+    // "Human psychology" level: does price bounce off a ROUND number (the level
+    // retail limit orders and mental stop-losses cluster at)? Round step scales
+    // with the coin's own price magnitude (BTC ~$60k -> nearest $5,000; ETH ~$1.8k
+    // -> nearest $100; a $2 coin -> nearest $0.10), recomputed every bar so it
+    // tracks price over 2 years, not a fixed level. Fires when the bar's LOW
+    // approaches a round level from above (a test of round-number support) and
+    // the bar closes back above it as a green candle (the bounce confirmation) —
+    // same "wait for confirmation" discipline as meanrev_stab/volume_climax.
+    const px = bars[i].c;
+    const step = px >= 10000 ? 5000 : px >= 1000 ? 100 : px >= 100 ? 10 : px >= 10 ? 1 : px >= 1 ? 0.1 : px >= 0.1 ? 0.01 : 0.001;
+    const level = Math.round(px / step) * step;
+    if (!(level > 0)) return false;
+    const dist = Math.abs(bars[i].l - level) / px;
+    return dist <= p.bandPct && bars[i].c > level && bars[i].c > bars[i].o;
+  }
+  if (family === 'offgrid_bounce') {
+    // CONTROL for round_bounce: identical bounce-confirmation logic, but the
+    // reference level is offset to the MIDPOINT between round numbers — same grid
+    // density, deliberately NOT round. If round_bounce beats this control, the
+    // effect is really about roundness/psychology. If they perform the same, it's
+    // just generic support-bounce (already tested elsewhere) wearing a new label.
+    const px = bars[i].c;
+    const step = px >= 10000 ? 5000 : px >= 1000 ? 100 : px >= 100 ? 10 : px >= 10 ? 1 : px >= 1 ? 0.1 : px >= 0.1 ? 0.01 : 0.001;
+    const level = Math.round(px / step) * step - step / 2;
+    if (!(level > 0)) return false;
+    const dist = Math.abs(bars[i].l - level) / px;
+    return dist <= p.bandPct && bars[i].c > level && bars[i].c > bars[i].o;
+  }
   if (family === 'volume_climax') {
     // Capitulation-reversal: a volume SPIKE (vs the trailing 20-bar normal) on a
     // fresh local low, with the bar itself closing back above its open — the

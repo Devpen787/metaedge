@@ -42,7 +42,7 @@ const MARKET = flag(args, 'market', 'crypto');          // label for the report 
 // "survivor" is a real edge or an artifact of hindsight parameter selection.
 const FROZEN = flag(args, 'frozen', '') ? JSON.parse(flag(args, 'frozen', '')) : null;
 const ALL_FAMILIES = ['momentum_breakout', 'rsi_meanrev', 'trend_atr', 'meanrev_stab', 'vol_squeeze', 'volume_surge',
-  'golden_cross', 'rsi_divergence', 'macd_cross', 'volume_climax'];
+  'golden_cross', 'rsi_divergence', 'macd_cross', 'volume_climax', 'round_bounce', 'offgrid_bounce'];
 const ONLY_FAMILY = flag(args, 'family', '');
 // --family accepts a comma list (rsi_meanrev,meanrev_stab). Splitting matters:
 // treating the whole string as one family name silently matches NOTHING and
@@ -77,6 +77,10 @@ for (const stop of [0.03, 0.05]) for (const maxHold of [48, 96])
   GRID.push({ family: 'macd_cross', p: { stop, maxHold } });                 // MACD line crosses above signal
 for (const zThresh of [2.0, 2.5, 3.0]) for (const stop of [0.03, 0.05])
   GRID.push({ family: 'volume_climax', p: { zThresh, stop, maxHold: 72 } }); // capitulation volume + reversal candle
+for (const bandPct of [0.003, 0.006, 0.01]) for (const stop of [0.02, 0.04])
+  GRID.push({ family: 'round_bounce', p: { bandPct, stop, maxHold: 48 } });  // psychological round-number support bounce
+for (const bandPct of [0.003, 0.006, 0.01]) for (const stop of [0.02, 0.04])
+  GRID.push({ family: 'offgrid_bounce', p: { bandPct, stop, maxHold: 48 } }); // CONTROL: same logic, non-round level
 
 // ---------- walk-forward per symbol ----------
 fs.mkdirSync('data/edgeops', { recursive: true });

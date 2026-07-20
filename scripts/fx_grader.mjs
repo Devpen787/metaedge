@@ -3,7 +3,7 @@
  * FX TREND GRADER — the edge test for the forex lane. Each trending pair the scout
  * flagged becomes a DIRECTIONAL paper entry (long the up-trend / short the down),
  * graded on the forward return IN THE TRADE'S DIRECTION, net of costs, at 3/7 days
- * (FX trends run multi-day). Edge = a high-score band, n>=20, positive net.
+ * (FX trends run multi-day). Edge = a high-score band, n>=30, positive net.
  *
  * Survivorship isn't really a factor for FX majors/crosses (they don't delist), but
  * forward marks still come from actual Yahoo history (not our scan) for correctness.
@@ -22,13 +22,13 @@ export const LEGIBILITY = {
   notYet: [
     'Survivorship correction is present but noted as low-relevance here (FX majors/crosses/exotics don\'t delist the way coins do) — kept anyway, for consistency with the other graders, not because it was found to matter.',
     'Only 2 horizons (3d, 7d) — FX trends are assumed multi-day; not tested at shorter or longer windows.',
-    'No verdict below n=20 in the 40+ band AND t>=2. n=20 (vs 30 for momentum/memecoin) is a real, deliberate inconsistency flagged for review, not a considered statistical choice.',
+    'No verdict below n=30 in the 40+ band AND t>=2 — raised from n=20 (a real, unjustified inconsistency vs momentum/memecoin/stock\'s n>=30) during a cross-lane review; a rarer-firing signal deserves at least as high a bar as a common one, not a lower one.',
   ],
   why: [
     'Cost-per-side is binary: ~3bps for majors/crosses, ~12bps for exotics/EM (EXOTIC currency set) — reflects the real, large liquidity gap between the two tiers rather than one blended average that would misprice both.',
     'Entry priced at the next daily close AFTER signal — same never-first discipline as every other grader.',
     'The console output states the prior plainly: FX rarely clears costs at these horizons — a FLAGS=0 result here is the expected, honest outcome given the entry prior, not a sign the test is broken.',
-    'FLAGS requires the 40+ band, n>=20, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
+    'FLAGS requires the 40+ band, n>=30, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
 
@@ -102,7 +102,7 @@ async function main() {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`d${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(14)} ${'0'.padStart(4)}       —`); continue; }
     const rets = g.map((x) => x.marks[`d${H}`]); const { mean: exp, t } = tStat(rets); const win = 100 * rets.filter((r) => r > 0).length / rets.length;
-    const isFlag = lo >= 40 && g.length >= 20 && exp > 0 && t >= T_BAR; if (isFlag) flags++;
+    const isFlag = lo >= 40 && g.length >= 30 && exp > 0 && t >= T_BAR; if (isFlag) flags++;
     console.log(`  ${label.padEnd(14)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(2) + '%'} ${win.toFixed(0).padStart(5)}% ${t.toFixed(1).padStart(5)}${isFlag ? '  <== net positive, t>=2' : ''}`);
   }
   console.log(`\n  dirExp@${H}d = mean return in the TREND direction, minus round-trip cost. t = one-sample t-stat vs 0. Prior: FX moves rarely clear costs at these horizons.`);

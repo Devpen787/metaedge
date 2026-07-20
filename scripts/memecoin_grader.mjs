@@ -29,15 +29,16 @@ import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
-  doing: 'Turns each pool\'s first qualifying snapshot into a pessimistic paper entry (LAG_SEC=90s late fill, liquidity-banded slippage, 2% round-trip fee), grades net return at 5/15/30/60min.',
+  doing: 'Turns each pool\'s first qualifying snapshot into a pessimistic paper entry (LAG_SEC=90s late fill, liquidity-banded slippage on BOTH entry and exit, 1% flat round-trip DEX/priority fee), grades net return at 5/15/30/60min.',
   notYet: [
     'MAX_CANDIDATES=60 per run is a rate-limit budget, not a coverage cap — candidates beyond that wait for the next cron cycle, they are not dropped.',
-    'FEE_RT=2% folds sell-side slippage into one constant "for v1 simplicity" (stated in-code) — a real per-side slippage split on the exit leg is a known simplification, not modeled separately yet. Flagged as a priority fix: this is the crudest exit-cost model of any grader, on the highest-exit-risk asset class.',
+    'FEE_FLAT_RT=1% (swap fee + priority-fee equivalent) is an estimate, not sourced from real DEX fee schedules per chain/aggregator — worth refining with real numbers once this lane has enough accrual to matter.',
     'Grades only pools old enough for a full forward window — early runs will show 0 gradeable candidates, which is expected accrual.',
   ],
   why: [
     'Forward marks come from each pool\'s own per-pool minute OHLCV, never from whether the pool stayed in later scout snapshots — the scout only records top-20 new + top-20 trending, so a pool that pops-and-dies (measured: 53% seen once in 18min) would otherwise silently vanish from a survivorship-biased sample.',
     'LAG_SEC=90 models that we are never first to a signal — an instant-fill backtest on a 45min-old-max pop would flatter the result relative to any real execution path.',
+    'Exit pays the SAME liquidity-tiered slippage() as entry, not a flat rate — a real gap flagged during a cross-lane legibility review: this was previously the crudest exit-cost model of any grader (flat 2% regardless of pool liquidity) on the highest-exit-risk asset class (a memecoin pool\'s exit liquidity can be worse than its entry liquidity if it\'s rugging). Fixed to match the discipline momentum_grader.mjs already had on both sides.',
     'FLAGS requires the 60+ score band, n>=30, positive expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
@@ -52,10 +53,21 @@ const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 // ---- deliberately conservative model constants (sensitivity-test these) ----
 const LAG_SEC = 90;                 // we fill LATE: skip ~1.5 min after signal (latency honesty)
 const HORIZONS = [5, 15, 30, 60];   // minutes to grade forward return at
-const FEE_RT = 0.02;                // round-trip DEX + priority-fee equivalent (2%)
+// FEE_FLAT_RT is the part of round-trip cost that does NOT scale with
+// liquidity (DEX swap fee + priority-fee equivalent, ~2 swaps). Previously
+// this constant (as FEE_RT=0.02) ALSO absorbed exit-side slippage "for v1
+// simplicity" — meaning exit slippage was flat regardless of pool liquidity,
+// while entry slippage was properly liquidity-tiered. That was backwards: a
+// memecoin pool's exit liquidity can evaporate faster than its entry
+// liquidity (a rug dumps AFTER you're in), so the riskier side of the trade
+// had the cruder model. Fixed: exit now pays the SAME liquidity-tiered
+// slippage() as entry, and FEE_FLAT_RT drops to just the swap-fee component.
+const FEE_FLAT_RT = 0.01;           // round-trip DEX swap fee + priority-fee equivalent only
 const PAPER_USD = Number(flag('paper-usd', '500'));
 const MAX_CANDIDATES = Number(flag('max', '60'));   // rate-limit budget per run
-// buy-slippage as a function of liquidity band (small notional eats more on thin books)
+// slippage as a function of liquidity band (small notional eats more on thin
+// books) — applied on BOTH entry and exit as of this fix, same function
+// (a pool doesn't get MORE liquid just because you're now trying to leave).
 function slippage(liqUsd) {
   if (!(liqUsd > 0)) return 0.25;
   if (liqUsd < 10000) return 0.08;
@@ -148,7 +160,7 @@ async function main() {
     .filter((s) => now - s.t >= MATURE_MIN * 60000);                 // window complete
   cands.sort((a, b) => score(b) - score(a));
   const take = cands.slice(0, MAX_CANDIDATES);
-  console.log(`\n=== Memecoin pop-grader — pessimistic fill (lag ${LAG_SEC}s, fee ${FEE_RT * 100}% RT, slip by liq band) ===`);
+  console.log(`\n=== Memecoin pop-grader — pessimistic fill (lag ${LAG_SEC}s, fee ${FEE_FLAT_RT * 100}% RT, slip by liq band on ENTRY AND EXIT) ===`);
   console.log(`  days: ${days.join(', ')} | candidates: ${cands.length} | grading top ${take.length} by score | paper $${PAPER_USD}\n`);
 
   const graded = [];
@@ -168,8 +180,11 @@ async function main() {
     for (const h of HORIZONS) {
       const px = priceAt(candles, s.t + h * 60000);
       if (px != null && candles.some((c) => c.t >= s.t + h * 60000 - 60000)) {
-        // net return after round-trip fee (sell also pays slippage, folded into FEE_RT for v1 simplicity)
-        marks[`m${h}`] = +(((px / entry) - 1 - FEE_RT) * 100).toFixed(1);
+        // exit pays the SAME liquidity-tiered slippage as entry (not a flat
+        // rate) — the pool's liquidity at exit time is what determines exit
+        // cost, and it can be worse than at entry if the pool is dying.
+        const exitPx = px * (1 - slippage(s.liqUsd));
+        marks[`m${h}`] = +(((exitPx / entry) - 1 - FEE_FLAT_RT) * 100).toFixed(1);
       }
     }
     // peak / max-adverse across the graded window; death = price collapse to <15% of entry
@@ -209,7 +224,7 @@ async function main() {
     if (isFlag) flags++;
     console.log(`  ${label.padEnd(12)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${died.toFixed(0).padStart(5)}% ${(avgPeak > 0 ? '+' : '') + avgPeak.toFixed(0) + '%'} ${t.toFixed(1).padStart(5)}${isFlag ? '  <== positive EV, t>=2' : ''}`);
   }
-  console.log(`\n  Reading: exp@${H}m = mean net return after ${FEE_RT * 100}% fee + liq-band slippage, entered ${LAG_SEC}s LATE. t = one-sample t-stat vs 0.`);
+  console.log(`\n  Reading: exp@${H}m = mean net return after ${FEE_FLAT_RT * 100}% fee + liq-band slippage on BOTH sides, entered ${LAG_SEC}s LATE. t = one-sample t-stat vs 0.`);
   console.log(`  A real edge = a high-score band (60+) with n>=30, positive expectancy, AND t>=2 under this unfair fill.`);
   console.log(`  MEMECOIN GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }

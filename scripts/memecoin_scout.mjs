@@ -83,17 +83,26 @@ async function run() {
   const rows = [];
   const seen = new Set(); // one row per pool per cycle even if it's both new AND trending
 
+  // MAX_PAGES=10 is not a guess: verified live (pages 1/5/10 return 20 pools each,
+  // page 15 errors) — this is the real depth ceiling of the free tier, not a
+  // "wide enough" number picked out of habit. 10x more coverage per (chain,source)
+  // than the old page=1-only version (20 -> up to 200 pools).
+  const MAX_PAGES = 10;
   for (const chain of CHAINS) {
     for (const [source, ep] of [['new', 'new_pools'], ['trending', 'trending_pools']]) {
-      const j = await get(`${BASE}/networks/${chain}/${ep}?page=1`);
-      if (j.__err) { console.error(`[meme] ${chain}/${ep} HTTP ${j.__err}`); await sleep(300); continue; }
-      for (const p of j.data || []) {
-        const key = `${chain}:${p.attributes?.address}`;
-        if (seen.has(key)) continue; seen.add(key);
-        const s = snap(t, chain, source, p);
-        if (s.pool && s.priceUsd != null) rows.push(s);
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const j = await get(`${BASE}/networks/${chain}/${ep}?page=${page}`);
+        if (j.__err) { if (page === 1) console.error(`[meme] ${chain}/${ep} HTTP ${j.__err}`); break; } // hit the real ceiling or a transient error — stop, don't fake more pages
+        const got = j.data || [];
+        if (!got.length) break;                              // ran dry before MAX_PAGES — natural end
+        for (const p of got) {
+          const key = `${chain}:${p.attributes?.address}`;
+          if (seen.has(key)) continue; seen.add(key);
+          const s = snap(t, chain, source, p);
+          if (s.pool && s.priceUsd != null) rows.push(s);
+        }
+        await sleep(1500);  // paced for the higher call volume; free tier trips on bursts well under 30/min
       }
-      await sleep(2500);  // space calls out: free tier trips on bursts well under 30/min
     }
   }
 

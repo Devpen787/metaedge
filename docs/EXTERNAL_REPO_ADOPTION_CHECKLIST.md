@@ -1,10 +1,15 @@
 # External repo adoption checklist — Freqtrade / OctoBot / Vibe-Trading
 
-Date opened: 2026-07-20, revised same day twice (first pass was
-headline-only; second pass went deeper across the whole pipeline; this THIRD
-pass dug into OctoBot's trading-mode layer, Freqtrade's edge module fate, and
-Vibe-Trading's correlation-regime skill, per explicit "no skimming" repeat
-instruction). Status: LIVING —
+Date opened: 2026-07-20, revised same day four times (pass 1 was
+headline-only; pass 2 went deeper across the whole pipeline; pass 3 dug into
+OctoBot's trading-mode layer, Freqtrade's edge module fate, and Vibe-Trading's
+correlation-regime skill; pass 4 was a direct self-audit — asked "what did I
+skip" and found real ones: Vibe-Trading's `agent/backtest/engines/` and
+`optimizers/` had only been listed, never opened, meaning the "neither
+framework models slippage" claim was checked against 2 of 3 repos, not all 3
+— see the corrected entry below. Also opened OctoBot's actual
+`market_making_trading_mode` source instead of citing it from a directory
+listing. Per explicit "no skimming" repeat instruction). Status: LIVING —
 work through in priority order, check off as implemented, do not silently
 drop an item (reject explicitly with a reason instead). Companion to
 [[2026-07-16-external-framework-evaluation]] (that record's "do not migrate to
@@ -332,16 +337,75 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   Confirms our own walk-forward + chance-baseline + timeframe-robustness
   discipline stays genuinely ours and load-bearing, not automatically
   inherited by adopting any of these three repos.
-- [x] **NOTED, not a gap — NEITHER Freqtrade's NOR OctoBot's core backtest
-  engine models slippage** (fees/order-tolerance only). Checked OctoBot's
-  `packages/backtesting/octobot_backtesting/backtesting.py` directly this
-  pass — no slippage handling in the core engine; the only "slippage" hits
-  repo-wide are in order-TYPE scripting (e.g., limit-order tolerance), not a
-  systematic backtest cost model. Freqtrade finding stands unchanged (fees
-  only, conservative worst-tier default). Every grader we've built
-  (memecoin/momentum/stocks) scales slippage by liquidity tier. Now confirmed
-  across TWO mature, widely-used frameworks — this is genuinely uncommon
-  rigor on our side, not something to feel behind on.
+- [x] **CORRECTED — "neither mature framework models slippage" was true for
+  2 of 3, not all 3.** Freqtrade and OctoBot's core engines confirmed no
+  slippage model (fees/order-tolerance only) — that finding stands. But this
+  was written *before* Vibe-Trading's `agent/backtest/engines/` had actually
+  been opened; I'd only seen the directory listing. Reading it this pass
+  found real, asset-class-specific cost modeling, ✅ CODE:
+  `engines/crypto.py` — fixed-rate slippage (`config["slippage"]`, default
+  0.0005) applied unfavorably by direction, **maker/taker fee separation**,
+  and **funding-fee settlement every 8 hours** actually walked into the
+  per-bar PnL (not just projected as an APR), plus liquidation-price checks
+  with slippage applied on forced closes. `engines/global_futures.py` — a
+  real per-product commission table (`_COMMISSION_PER_CONTRACT`, $1-3/side
+  typical, $2.50 default) plus a separate slippage rate. `engines/forex.py`
+  — spread-as-cost (half-spread + `slippage_pips`) instead of a flat
+  commission, symbol-aware.
+  **Why this correction matters beyond the specific fact:** we scale
+  slippage by liquidity tier in every grader we've built, which remains
+  genuinely more granular than Freqtrade/OctoBot's flat/absent models — that
+  part of the original claim holds. But we do NOT currently walk real 8-hour
+  funding-fee settlement into `carry_trial.ts`'s per-bar PnL the way this
+  engine does — that's a specific, concrete, adoptable pattern for the
+  funding-carry lane, not just "we're ahead, nothing to take." Filed as its
+  own item below.
+- [ ] **8-hour funding-fee settlement walked into per-bar PnL** (Vibe-Trading
+  `engines/crypto.py`, ✅ CODE — `calc_crypto_funding_fee` called on a
+  00:00/08:00/16:00 UTC per-bar hook, deducted directly from capital) —
+  TIER 1, NEW this pass
+  **Why it matters:** our funding-carry lane (per
+  [[2026-07-16-external-framework-evaluation]] and the master plan) projects
+  APR from funding rate series but the mechanism for actually walking
+  funding settlement bar-by-bar through a real equity curve — same
+  discipline as trade-level PnL — isn't confirmed to exist yet. This is a
+  small, concrete, directly-relevant pattern: settle funding on the same
+  schedule the exchange actually does (Hyperliquid is hourly, not 8h — the
+  SCHEDULE differs, but the walk-it-into-equity-per-bar MECHANISM is the
+  portable part), rather than only computing an aggregate projected APR.
+- [ ] **Portfolio-weight optimizers** (Vibe-Trading `agent/backtest/
+  optimizers/` — equal-volatility, max-diversification, mean-variance,
+  risk-parity, turnover-aware, ✅ CODE — read `base.py`'s causal rolling-window
+  covariance handling and `risk_parity.py`'s equal-risk-contribution solve)
+  — TIER 2, NEW this pass
+  **Why it matters:** every lane we've built sizes and opens positions
+  independently — there is no layer that, given N simultaneously-open
+  candidates across lanes, allocates capital by risk-parity or
+  diversification rather than a flat per-position sizing rule. Not urgent at
+  today's single-position-per-lane scale, but becomes real the moment
+  multiple lanes hold positions simultaneously (which the directional
+  harness already allows). `base.py`'s causal (no-lookahead) rolling
+  covariance window is itself worth copying independent of which optimizer
+  sits on top of it.
+- [ ] **Laddered market-making order-book distribution, volume-scaled to
+  real daily volume** (OctoBot `market_making_trading_mode/
+  order_book_distribution.py`, 804 lines, ✅ CODE — read `compute_distribution`,
+  `get_ideal_total_volume`, `get_shape_distance_from`,
+  `is_spread_according_to_config`) — TIER 1, NEW this pass
+  A genuinely more sophisticated design than a directory name suggested:
+  quote SIZE is derived from real `daily_base_volume`/`daily_quote_volume`
+  (a configured fraction of actual market turnover), not a flat size — this
+  avoids being a disproportionate, easily-picked-off share of the book.
+  Orders are laddered across a configurable min/max spread band (multiple
+  bids/asks, not one quote per side), and rebalancing is gated by a "shape
+  distance from ideal" metric rather than firing on every tick — an explicit
+  mechanism to avoid unnecessary cancel/replace churn (a real cost).
+  **Why it matters:** directly relevant to `mm_scout.mjs`, our one live
+  market-making lane. Worth a dedicated feature-diff pass: does our current
+  quote logic size relative to real market volume, ladder across a spread
+  band, and gate re-quoting by a distance-from-ideal check — or does it
+  quote flat-size, single-level, and re-quote every cycle regardless of
+  whether anything moved?
 - [x] **REJECTED — Freqtrade's "edge" module (risk-of-ruin position sizing).**
   Found the docs page for this earlier, but `freqtrade/edge/
   edge_positioning.py` does not exist in current source — confirmed via

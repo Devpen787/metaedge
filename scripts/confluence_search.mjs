@@ -18,7 +18,10 @@
  *
  * Angles (all non-price, all free): Fear&Greed (2018+), stablecoin 30d supply
  * growth (2017+), Deribit DVOL (~1y — combos using it mostly fail the train bar
- * honestly, noted), FRED 10Y (deep). Prices: local 2y backfill, 12 liquid majors.
+ * honestly, noted), FRED 10Y (deep). Prices: local 2y backfill, WHOLE universe
+ * (auto-discovered, not a hand-picked list — was hardcoded to 12 majors, which
+ * silently excluded the mid/small-cap tail this project keeps hypothesizing edge
+ * lives in; now scales automatically with however many coins are backfilled).
  *
  * Output: ranked survivor board + full results saved to
  * data/edgeops/confluence-search-<date>.json (the knowledge base).
@@ -29,7 +32,7 @@ import path from 'node:path';
 const gj = async (u, o = {}) => { const r = await fetch(u, { headers: { 'User-Agent': 'MetaEdge/1.0', Accept: 'application/json', ...(o.headers || {}) }, ...o }); return r.ok ? r.json() : null; };
 const dstr = (ms) => new Date(ms).toISOString().slice(0, 10);
 const DIR = path.join(process.cwd(), 'data', 'market');
-const COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'DOT', 'LTC', 'BCH'];
+const COINS = fs.readdirSync(DIR).filter((f) => /^backfill-.*-1h\.jsonl$/.test(f)).map((f) => f.slice('backfill-'.length, -'-1h.jsonl'.length)).sort();
 const HOLD = 3;                 // days held per trade
 const COST_RT = 0.3;            // % round trip, liquid crypto
 const SPLIT = 0.6;              // train fraction (by time)

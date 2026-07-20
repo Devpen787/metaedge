@@ -32,12 +32,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PAIRS = (process.env.MM_PAIRS || 'BTC-USD,ETH-USD,SOL-USD,LINK-USD,AVAX-USD,DOGE-USD').split(',');
 const B = 'https://api.exchange.coinbase.com';
 const DIR = path.join(process.cwd(), 'data', 'market', 'mm');
-const POLLS = 4, POLL_GAP_MS = 14000;    // ~42s of polling, safely under a 1-min cron
+// Was hardcoded to 6 pairs vs Coinbase's 402 real USD listings. Universe is now
+// LIQUIDITY-DERIVED, not a guessed list: /products/volume-summary gives real 24h
+// spot volume for every pair in ONE call, and we take everything above a stated
+// floor (same $1M/day floor used elsewhere in the codebase for consistency), not
+// an arbitrary top-N count. MM_VOL_FLOOR / MM_MAX_PAIRS override for tuning.
+const VOL_FLOOR = Number(process.env.MM_VOL_FLOOR || 1e6);
+const MAX_PAIRS = Number(process.env.MM_MAX_PAIRS || 40); // real constraint: each pair costs 2 calls x POLLS rounds within a 1-min cron window — this bounds call volume to fit the cadence, not universe size
+const POLLS = 4, POLL_GAP_MS = 12000;    // ~36s of polling, leaves headroom for a wider pair set under a 1-min cron
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const D = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+
+async function liquidPairs() {
+  const explicit = process.env.MM_PAIRS;
+  if (explicit) return explicit.split(',');
+  const r = await fetch(`${B}/products/volume-summary`, { headers: { 'User-Agent': 'MetaEdge/1.0', Accept: 'application/json' } });
+  if (!r.ok) return ['BTC-USD', 'ETH-USD', 'SOL-USD']; // degrade to a tiny safe set rather than crash
+  const rows = await r.json();
+  return rows.filter((x) => x.quote_currency === 'USD' && Number(x.spot_volume_24hour) >= VOL_FLOOR)
+    .sort((a, b) => Number(b.spot_volume_24hour) - Number(a.spot_volume_24hour))
+    .slice(0, MAX_PAIRS).map((x) => x.id);
+}
 
 async function get(url) {
   try {
@@ -50,35 +67,43 @@ async function get(url) {
 async function run() {
   fs.mkdirSync(DIR, { recursive: true });
   const day = new Date().toISOString().slice(0, 10);
+  const PAIRS = await liquidPairs();
   const quotes = [];
   const trades = [];
   const lastId = new Map();   // per-pair max trade_id seen THIS run (across-run dedup is the grader's job)
 
+  // Fetching pairs sequentially was latency-bound, not rate-limit-bound (40 pairs
+  // measured 2:03 for one 4-poll cycle — too slow for a 1-min cron). Bounded
+  // concurrency fixes the real bottleneck instead of shrinking the pair count
+  // back down to another guessed-small number.
+  const CONCURRENCY = 8;
+  async function fetchPair(pair, t) {
+    const tk = await get(`${B}/products/${pair}/ticker`);
+    if (tk) {
+      const bid = D(tk.bid), ask = D(tk.ask);
+      if (bid > 0 && ask > 0 && ask > bid) {
+        const mid = (bid + ask) / 2;
+        quotes.push({ t, pair, bid, ask, mid, spreadBps: +(((ask - bid) / mid) * 10000).toFixed(2), vol24: D(tk.volume) });
+      }
+    }
+    const tp = await get(`${B}/products/${pair}/trades?limit=100`);
+    if (Array.isArray(tp)) {
+      const prevMax = lastId.get(pair) || 0;
+      let mx = prevMax;
+      for (const x of tp) {
+        const id = D(x.trade_id);
+        if (id == null || id <= prevMax) continue;             // only trades new since this run started
+        mx = Math.max(mx, id);
+        trades.push({ t: Date.parse(x.time), pair, tradeId: id, price: D(x.price), size: D(x.size), side: x.side });
+      }
+      lastId.set(pair, mx);
+    }
+  }
+
   for (let poll = 0; poll < POLLS; poll++) {
     const t = Date.now();
-    for (const pair of PAIRS) {
-      const tk = await get(`${B}/products/${pair}/ticker`);
-      if (tk) {
-        const bid = D(tk.bid), ask = D(tk.ask);
-        if (bid > 0 && ask > 0 && ask > bid) {
-          const mid = (bid + ask) / 2;
-          quotes.push({ t, pair, bid, ask, mid, spreadBps: +(((ask - bid) / mid) * 10000).toFixed(2), vol24: D(tk.volume) });
-        }
-      }
-      await sleep(120);
-      const tp = await get(`${B}/products/${pair}/trades?limit=100`);
-      if (Array.isArray(tp)) {
-        const prevMax = lastId.get(pair) || 0;
-        let mx = prevMax;
-        for (const x of tp) {
-          const id = D(x.trade_id);
-          if (id == null || id <= prevMax) continue;             // only trades new since this run started
-          mx = Math.max(mx, id);
-          trades.push({ t: Date.parse(x.time), pair, tradeId: id, price: D(x.price), size: D(x.size), side: x.side });
-        }
-        lastId.set(pair, mx);
-      }
-      await sleep(120);
+    for (let i = 0; i < PAIRS.length; i += CONCURRENCY) {
+      await Promise.all(PAIRS.slice(i, i + CONCURRENCY).map((pair) => fetchPair(pair, t)));
     }
     if (poll < POLLS - 1) await sleep(POLL_GAP_MS);
   }

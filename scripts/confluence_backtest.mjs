@@ -19,7 +19,10 @@ import path from 'node:path';
 const gj = async (u, o = {}) => { const r = await fetch(u, { headers: { 'User-Agent': 'MetaEdge/1.0', Accept: 'application/json', ...(o.headers || {}) }, ...o }); return r.ok ? r.json() : null; };
 const dstr = (ms) => new Date(ms).toISOString().slice(0, 10);
 const DIR = path.join(process.cwd(), 'data', 'market');
-const COINS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP', 'DOGE', 'ADA', 'AVAX', 'LINK', 'DOT', 'LTC', 'BCH'];
+// auto-discovered from the local backfill, not a hand-picked 12-coin list —
+// scales with whatever universe is backfilled (see confluence_search.mjs, the
+// walk-forward successor to this script, for the full rationale).
+const COINS = fs.readdirSync(DIR).filter((f) => /^backfill-.*-1h\.jsonl$/.test(f)).map((f) => f.slice('backfill-'.length, -'-1h.jsonl'.length)).sort();
 
 // local 2y backfill -> daily closes {dateStr: close}
 function dailyCloses(coin) {

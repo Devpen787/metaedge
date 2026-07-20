@@ -47,11 +47,12 @@ import { nextLongStop, nextShortStop } from './lib/trailing_stop.mjs';
 // file's own header comment already states the adapter interface, scope, and
 // honest gaps in prose; this const is the machine-readable mirror.
 export const LEGIBILITY = {
-  doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
+  doing: 'Shared forward-paper engine (entry + hard-stop/time-stop/hold, long or short, cooldown-gated re-entry) for directional-mechanic lanes, called on a NEW FLAGS flip (edge_watcher.mjs) and on a regular tick() that marks every open position.',
   notYet: [
     'Scaled exits are tick-granularity, not intrabar — a level crossed and reversed between two ticks is missed, an honest limitation of periodic snapshots vs practice_book.mjs\'s OHLC bars.',
     'No emergency/liquidation/custom-exit reasons beyond stop_hard/stop_trailed/time — this taxonomy grew from 2 to 3 close reasons plus a separate scale-out event log, matched to what this harness actually needs (Freqtrade\'s full ExitType enum has categories like LIQUIDATION that don\'t apply here — no leverage, no liquidation risk in these lanes yet).',
-    'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing, so these adapters exist and are tested but have not yet actually opened a real spun-up position.',
+    'Perp/FX adapters were added for the FLAGS>0 auto-harness gap specifically — the underlying perp/fx graders themselves still don\'t clear their own FLAGS bar as of this writing (this is a real, standing gap between "the adapter can open positions" and "the grader has actually validated an edge to open positions FOR"), but the Perps adapter has now opened real forward-paper positions (a live spinUp() call while verifying Cluster 1d\'s cooldown guard found 2 real candidates — ACE long, XMR short — and opened both) — the adapter code path is proven live, not just synthetically.',
+    'Cooldown/low-profit guard is portfolio-wide-Risk-OS-adjacent but per-symbol PER LANE — a symbol blocked in one lane (e.g. BTC blocked in Crypto momentum) is not blocked in another (e.g. BTC in Perps) — each lane\'s state.closed history is independent, by design (the mechanics and cost models differ per lane, a bad crypto-momentum trade on BTC says nothing about a perp-funding-fade trade on BTC).',
   ],
   why: [
     'discover()/priceOf() are deliberately split (not one function) because discovery scans a wide universe (stocks ~9,900 tickers, memecoin hundreds of pools) too slow to re-run every tick just to price a few open positions — an earlier single-function design made a position permanently untrackable once its score naturally fell below the discovery bar, caught via synthetic injection testing.',
@@ -60,6 +61,7 @@ export const LEGIBILITY = {
     'Uses a lightweight JSON position tracker instead of the full portfolio/ledger.mjs Map-based ledger because this only ever holds one position per symbol per lane and needs to be trivially serializable across separate cron invocations — the ledger\'s multi-engine attribution machinery is unnecessary overhead here.',
     'direction defaults to \'long\' when a candidate omits it, specifically so the pre-existing momentum/memecoin/stocks adapters needed zero behavioral change when short support was added for perps/FX — confirmed with a synthetic injection test on a long position (stocks/AAPL, entry far below a trivially-crossed stop) alongside a new synthetic short-stop-out test (perps/BTC, entry set below the real live price so the short was genuinely underwater, confirming both the stop trigger AND the return-sign math for the new short code path).',
     'Scaled exits (SCALE_LEVELS: +4%->sell 33%, +8%->sell 33%, remainder rides the trail) fill at the TRIGGER price, not the (better) observed price, and each tranche pays its own COST_RT share — a real scaled exit is genuinely more transactions, not a free lunch. The reported retPct on a closed position is the BLENDED weighted-average return across every tranche, not just the last remaining slice — verified against a hand-calculated case (two tranches at +4%/+8%, final tranche at -5%) before trusting the live output.',
+    'Cooldown (6h since ANY close) + low-profit guard (last 2 closes both losers -> blocked until performance improves) reuses state.closed directly rather than a new tracked structure — every close ever recorded for a symbol is already sitting right there, so no separate history log needed. Per EXTERNAL_REPO_ADOPTION_CHECKLIST.md: the Risk OS was portfolio-wide only (hard stop + time-stop per position), with a symbol that just stopped us out twice getting no cooldown and no deprioritization, free to re-enter on the very next spinUp().',
   ],
 };
 
@@ -332,21 +334,45 @@ const ADAPTERS = {
   'FX trend': fxAdapter,
 };
 
+// Per-symbol cooldown / performance-based deprioritization (Cluster 1d, per
+// EXTERNAL_REPO_ADOPTION_CHECKLIST.md — Freqtrade's StoplossGuard/
+// CooldownPeriod/LowProfitPairs protections). Risk OS here was portfolio-wide
+// only (hard stop + time-stop per position) with NO per-symbol memory — a
+// coin that just stopped us out twice got no cooldown, no deprioritization,
+// and could re-enter on the very next spinUp(). Reuses state.closed (already
+// persisted, per lane) rather than a new data structure — every close ever
+// recorded for a symbol is already sitting right there.
+const COOLDOWN_HOURS = 6;          // don't re-enter a symbol this soon after ANY close, regardless of reason
+const LOW_PROFIT_LOOKBACK = 2;     // if the last N closes were all losers, skip re-entry until performance improves
+
+function cooldownBlock(state, symbol) {
+  const hist = (state.closed || []).filter((c) => c.symbol === symbol).sort((a, b) => b.closedAt - a.closedAt);
+  if (!hist.length) return null;
+  const hoursSince = (Date.now() - hist[0].closedAt) / 3600000;
+  if (hoursSince < COOLDOWN_HOURS) return `cooldown: closed ${hoursSince.toFixed(1)}h ago (< ${COOLDOWN_HOURS}h)`;
+  const recent = hist.slice(0, LOW_PROFIT_LOOKBACK);
+  if (recent.length === LOW_PROFIT_LOOKBACK && recent.every((c) => c.retPct < 0)) return `low-profit guard: last ${LOW_PROFIT_LOOKBACK} closes all losers`;
+  return null;
+}
+
 export async function spinUp(laneName) {
   const adapter = ADAPTERS[laneName];
   if (!adapter) return { opened: 0, note: `no live adapter built yet for "${laneName}" — needs one written + tested before auto-harness can act` };
   const state = loadLedgerState(laneName);
   const cands = await adapter.discover();
   let opened = 0;
+  const blocked = [];
   for (const c of cands) {
     if (state.positions[c.symbol]) continue;               // already holding, don't pyramid
+    const block = cooldownBlock(state, c.symbol);
+    if (block) { blocked.push({ symbol: c.symbol, reason: block }); continue; }
     const direction = c.direction === 'short' ? 'short' : 'long';   // defaults to 'long' — preserves prior long-only adapters' exact behavior
     const stopPx = direction === 'long' ? c.price * (1 - STOP_PCT) : c.price * (1 + STOP_PCT);
     state.positions[c.symbol] = { entry: c.price, stopPx, direction, openedAt: Date.now(), score: c.score, extremePx: c.price, scaledFired: SCALE_LEVELS.map(() => false), weightedRetSum: 0, soldFraction: 0 };
     opened++;
   }
   saveLedgerState(laneName, state);
-  return { opened, candidatesSeen: cands.length };
+  return { opened, candidatesSeen: cands.length, blocked };
 }
 
 // Marks every open position across every lane with a built adapter: hard stop,

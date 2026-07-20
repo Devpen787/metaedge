@@ -78,6 +78,7 @@ async function run() {
       try {
         const res = await spinUp(lane.name);
         console.log(`  harness: ${res.opened} position(s) opened, tracking on the portfolio ledger + Risk OS.`);
+        if (res.blocked?.length) console.log(`  cooldown/low-profit guard skipped ${res.blocked.length} candidate(s): ${res.blocked.map((b) => `${b.symbol} (${b.reason})`).join(', ')}`);
       } catch (e) {
         console.error(`  harness FAILED to spin up: ${e.message} — flag stays logged in alerts.jsonl for manual follow-up.`);
       }

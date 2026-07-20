@@ -20,6 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
@@ -31,7 +32,7 @@ export const LEGIBILITY = {
   ],
   why: [
     'The HARD SELF-CHECK (measured effective half-spread must reproduce the quoted half-spread within 0.4x-1.6x) exists because the REST scout only samples the book every ~14s — a stale mid would swamp any adverse-selection signal, so this refuses to report a number it cannot trust rather than report a wrong one.',
-    'FLAGS requires: check passed AND quotedHalf > 3bps AND net > 0 — a tight-spread pair that "passes" the check but has an economically trivial spread is excluded from counting as an edge.',
+    'FLAGS requires: check passed AND quotedHalf > 3bps AND net > 0 AND a one-sample t-test t>=2 on the per-trade realized half-spread array (scripts/lib/stats.mjs) — a tight-spread pair that "passes" the check but has an economically trivial or statistically noisy spread is excluded from counting as an edge.',
     'Horizons capped at 1/5/15min because these are what a REST-polling (not co-located) player can actually reach — a sub-second horizon would be measuring a game we cannot play.',
   ],
 };
@@ -76,7 +77,7 @@ console.log(`\n=== Market-making grader — realized-spread decomposition (tol $
 console.log(`  days: ${days.join(', ')} | quotes: ${Object.values(quotes).reduce((s, a) => s + a.length, 0)} | trades: ${uniqTrades.length}\n`);
 
 const pairs = [...new Set(uniqTrades.map((x) => x.pair))].sort();
-console.log(`  ${'pair'.padEnd(9)} ${'n'.padStart(5)} ${'quotedHf'.padStart(9)} ${'measEffHf'.padStart(10)} ${'check'.padStart(6)}  | ${'realHf@5m'.padStart(10)} ${'advSel'.padStart(8)} ${'net'.padStart(8)}`);
+console.log(`  ${'pair'.padEnd(9)} ${'n'.padStart(5)} ${'quotedHf'.padStart(9)} ${'measEffHf'.padStart(10)} ${'check'.padStart(6)}  | ${'realHf@5m'.padStart(10)} ${'advSel'.padStart(8)} ${'net'.padStart(8)} ${'t'.padStart(5)}`);
 let flags = 0;
 for (const pair of pairs) {
   const tr = uniqTrades.filter((x) => x.pair === pair);
@@ -106,15 +107,17 @@ for (const pair of pairs) {
   const measEff = avg(eff);
   // HARD SELF-CHECK: measured effective half-spread must reproduce the quoted half
   const ok = n >= 30 && measEff > 0 && measEff >= 0.4 * quotedHalf && measEff <= 1.6 * quotedHalf;
-  const realHf5 = realized[5].length >= 30 ? avg(realized[5]) : null;
+  const real5Stat = realized[5].length >= 30 ? tStat(realized[5]) : null;
+  const realHf5 = real5Stat ? real5Stat.mean : null;
+  const t5 = real5Stat ? real5Stat.t : 0;
   const adv = realHf5 != null ? measEff - realHf5 : null;
   const net = realHf5 != null ? realHf5 - FEE_BPS : null;
-  const isFlag = ok && net != null && net > 0 && quotedHalf > 3;   // real edge: check passed, wide pair, positive net
+  const isFlag = ok && net != null && net > 0 && quotedHalf > 3 && t5 >= T_BAR;   // real edge: check passed, wide pair, positive net, statistically real
   if (isFlag) flags++;
-  console.log(`  ${pair.padEnd(9)} ${String(n).padStart(5)} ${quotedHalf.toFixed(2).padStart(9)} ${measEff.toFixed(2).padStart(10)} ${(ok ? 'OK' : 'FAIL').padStart(6)}  | ${realHf5 != null ? realHf5.toFixed(2).padStart(10) : '—'.padStart(10)} ${adv != null ? adv.toFixed(2).padStart(8) : '—'.padStart(8)} ${net != null ? net.toFixed(2).padStart(8) : '—'.padStart(8)}${isFlag ? '  <== edge' : ''}`);
+  console.log(`  ${pair.padEnd(9)} ${String(n).padStart(5)} ${quotedHalf.toFixed(2).padStart(9)} ${measEff.toFixed(2).padStart(10)} ${(ok ? 'OK' : 'FAIL').padStart(6)}  | ${realHf5 != null ? realHf5.toFixed(2).padStart(10) : '—'.padStart(10)} ${adv != null ? adv.toFixed(2).padStart(8) : '—'.padStart(8)} ${net != null ? net.toFixed(2).padStart(8) : '—'.padStart(8)} ${real5Stat ? t5.toFixed(1).padStart(5) : '—'.padStart(5)}${isFlag ? '  <== edge, t>=2' : ''}`);
 }
 console.log(`\n  'check' = does measured effective half-spread reproduce the quoted half-spread? FAIL => mid-sync`);
-console.log(`  too coarse (REST scout samples book ~14s); adverse-selection numbers for that pair are NOT trustworthy.`);
+console.log(`  too coarse (REST scout samples book ~14s); adverse-selection numbers for that pair are NOT trustworthy. t = one-sample t-stat vs 0 on realized half-spread@5m.`);
 console.log(`  MM GRADER VERDICT ${new Date().toISOString()} pairs=${pairs.length} FLAGS=${flags}${flags ? '' : ' (no trustworthy edge — see check column)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main();

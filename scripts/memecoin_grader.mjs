@@ -25,19 +25,20 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
   doing: 'Turns each pool\'s first qualifying snapshot into a pessimistic paper entry (LAG_SEC=90s late fill, liquidity-banded slippage, 2% round-trip fee), grades net return at 5/15/30/60min.',
   notYet: [
     'MAX_CANDIDATES=60 per run is a rate-limit budget, not a coverage cap — candidates beyond that wait for the next cron cycle, they are not dropped.',
-    'FEE_RT=2% folds sell-side slippage into one constant "for v1 simplicity" (stated in-code) — a real per-side slippage split on the exit leg is a known simplification, not modeled separately yet.',
+    'FEE_RT=2% folds sell-side slippage into one constant "for v1 simplicity" (stated in-code) — a real per-side slippage split on the exit leg is a known simplification, not modeled separately yet. Flagged as a priority fix: this is the crudest exit-cost model of any grader, on the highest-exit-risk asset class.',
     'Grades only pools old enough for a full forward window — early runs will show 0 gradeable candidates, which is expected accrual.',
   ],
   why: [
     'Forward marks come from each pool\'s own per-pool minute OHLCV, never from whether the pool stayed in later scout snapshots — the scout only records top-20 new + top-20 trending, so a pool that pops-and-dies (measured: 53% seen once in 18min) would otherwise silently vanish from a survivorship-biased sample.',
     'LAG_SEC=90 models that we are never first to a signal — an instant-fill backtest on a 45min-old-max pop would flatter the result relative to any real execution path.',
-    'FLAGS only fires on the 60+ score band with n>=30 and positive expectancy under this deliberately unfair fill model.',
+    'FLAGS requires the 60+ score band, n>=30, positive expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
 
@@ -193,23 +194,23 @@ async function main() {
   // bucket by score band and report EV under the pessimistic model
   const bands = [[0, 45, 'reject <45'], [45, 60, '45-60'], [60, 75, '60-75'], [75, 101, '75+']];
   const H = 15; // headline horizon for the verdict
-  console.log(`  ${'score band'.padEnd(12)} ${'n'.padStart(4)} ${`exp@${H}m`.padStart(9)} ${'win%'.padStart(6)} ${'died%'.padStart(6)} ${'avgPeak'.padStart(8)}`);
+  console.log(`  ${'score band'.padEnd(12)} ${'n'.padStart(4)} ${`exp@${H}m`.padStart(9)} ${'win%'.padStart(6)} ${'died%'.padStart(6)} ${'avgPeak'.padStart(8)} ${'t'.padStart(5)}`);
   let flags = 0;
   for (const [lo, hi, label] of bands) {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`m${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(12)} ${'0'.padStart(4)}       —`); continue; }
     const rets = g.map((x) => x.marks[`m${H}`]);
-    const exp = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const { mean: exp, t } = tStat(rets);
     const win = 100 * rets.filter((r) => r > 0).length / rets.length;
     const died = 100 * g.filter((x) => x.died).length / g.length;
     const peak = g.map((x) => x.peak).filter((v) => v != null);
     const avgPeak = peak.length ? peak.reduce((a, b) => a + b, 0) / peak.length : 0;
-    const isFlag = lo >= 60 && g.length >= 30 && exp > 0;   // real bar: high-score, n>=30, positive after costs
+    const isFlag = lo >= 60 && g.length >= 30 && exp > 0 && t >= T_BAR;   // real bar: high-score, n>=30, positive after costs, t>=2
     if (isFlag) flags++;
-    console.log(`  ${label.padEnd(12)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${died.toFixed(0).padStart(5)}% ${(avgPeak > 0 ? '+' : '') + avgPeak.toFixed(0) + '%'}${isFlag ? '  <== positive EV' : ''}`);
+    console.log(`  ${label.padEnd(12)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${died.toFixed(0).padStart(5)}% ${(avgPeak > 0 ? '+' : '') + avgPeak.toFixed(0) + '%'} ${t.toFixed(1).padStart(5)}${isFlag ? '  <== positive EV, t>=2' : ''}`);
   }
-  console.log(`\n  Reading: exp@${H}m = mean net return after ${FEE_RT * 100}% fee + liq-band slippage, entered ${LAG_SEC}s LATE.`);
-  console.log(`  A real edge = a high-score band (60+) with n>=30 and positive expectancy under this unfair fill.`);
+  console.log(`\n  Reading: exp@${H}m = mean net return after ${FEE_RT * 100}% fee + liq-band slippage, entered ${LAG_SEC}s LATE. t = one-sample t-stat vs 0.`);
+  console.log(`  A real edge = a high-score band (60+) with n>=30, positive expectancy, AND t>=2 under this unfair fill.`);
   console.log(`  MEMECOIN GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[memecoin-grader] failed:', e.message));

@@ -14,6 +14,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
@@ -21,12 +22,13 @@ export const LEGIBILITY = {
   notYet: [
     'Survivorship correction is present but noted as low-relevance here (FX majors/crosses/exotics don\'t delist the way coins do) — kept anyway, for consistency with the other graders, not because it was found to matter.',
     'Only 2 horizons (3d, 7d) — FX trends are assumed multi-day; not tested at shorter or longer windows.',
-    'No verdict below n=20 in the 40+ band.',
+    'No verdict below n=20 in the 40+ band AND t>=2. n=20 (vs 30 for momentum/memecoin) is a real, deliberate inconsistency flagged for review, not a considered statistical choice.',
   ],
   why: [
     'Cost-per-side is binary: ~3bps for majors/crosses, ~12bps for exotics/EM (EXOTIC currency set) — reflects the real, large liquidity gap between the two tiers rather than one blended average that would misprice both.',
     'Entry priced at the next daily close AFTER signal — same never-first discipline as every other grader.',
     'The console output states the prior plainly: FX rarely clears costs at these horizons — a FLAGS=0 result here is the expected, honest outcome given the entry prior, not a sign the test is broken.',
+    'FLAGS requires the 40+ band, n>=20, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
 
@@ -94,16 +96,16 @@ async function main() {
   fs.appendFileSync(path.join(DIR, 'paper-trades.jsonl'), graded.map((g) => JSON.stringify({ t: Date.now(), ...g })).join('\n') + '\n');
   const bands = [[SCORE_BAR, 40, `${SCORE_BAR}-40`], [40, 999, '40+ (strong)']];
   const H = 3;
-  console.log(`  ${'band'.padEnd(14)} ${'n'.padStart(4)} ${`dirExp@${H}d`.padStart(10)} ${'win%'.padStart(6)}`);
+  console.log(`  ${'band'.padEnd(14)} ${'n'.padStart(4)} ${`dirExp@${H}d`.padStart(10)} ${'win%'.padStart(6)} ${'t'.padStart(5)}`);
   let flags = 0;
   for (const [lo, hi, label] of bands) {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`d${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(14)} ${'0'.padStart(4)}       —`); continue; }
-    const rets = g.map((x) => x.marks[`d${H}`]); const exp = rets.reduce((a, b) => a + b, 0) / rets.length; const win = 100 * rets.filter((r) => r > 0).length / rets.length;
-    const isFlag = lo >= 40 && g.length >= 20 && exp > 0; if (isFlag) flags++;
-    console.log(`  ${label.padEnd(14)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(2) + '%'} ${win.toFixed(0).padStart(5)}%${isFlag ? '  <== net positive' : ''}`);
+    const rets = g.map((x) => x.marks[`d${H}`]); const { mean: exp, t } = tStat(rets); const win = 100 * rets.filter((r) => r > 0).length / rets.length;
+    const isFlag = lo >= 40 && g.length >= 20 && exp > 0 && t >= T_BAR; if (isFlag) flags++;
+    console.log(`  ${label.padEnd(14)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(2) + '%'} ${win.toFixed(0).padStart(5)}% ${t.toFixed(1).padStart(5)}${isFlag ? '  <== net positive, t>=2' : ''}`);
   }
-  console.log(`\n  dirExp@${H}d = mean return in the TREND direction, minus round-trip cost. Prior: FX moves rarely clear costs at these horizons.`);
+  console.log(`\n  dirExp@${H}d = mean return in the TREND direction, minus round-trip cost. t = one-sample t-stat vs 0. Prior: FX moves rarely clear costs at these horizons.`);
   console.log(`  FX GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[fx-grader] failed:', e.message));

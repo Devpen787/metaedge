@@ -20,6 +20,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
@@ -27,12 +28,13 @@ export const LEGIBILITY = {
   notYet: [
     'Ignores the funding tailwind itself (the fade side actually collects funding while positioned) — deliberately conservative, so a real edge here is understated, not flattered.',
     'Only two horizons (1d, 3d) — funding-crowding unwinds fast, so longer horizons were not built out; not tested at 7d+.',
-    'No verdict below n=20 in the 40+ (extreme) band — small samples are shown but never set FLAGS.',
+    'No verdict below n=20 in the 40+ (extreme) band AND t>=2 — small samples are shown but never set FLAGS. n=20 (vs 30 for momentum/memecoin) is a real, deliberate inconsistency flagged for review, not a considered statistical choice — extreme-funding events are rarer, and a rarer signal arguably deserves a HIGHER bar, not a lower one.',
   ],
   why: [
     'Entry priced ~1h after signal (not at signal) — same never-first-to-a-signal discipline as the momentum grader.',
     'Cost-per-side scales 0.06%-0.4% by day-volume tier, applied round-trip — thin perps get charged a realistic wider cost, not the same rate as BTC/ETH-tier liquidity.',
     'The prior is explicitly guarded in the console output: extreme funding MAY reflect real information, not just crowding — this grader treats "no edge" as the expected honest outcome, not a bug to chase away.',
+    'FLAGS requires the 40+ band, n>=20, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
 
@@ -112,20 +114,20 @@ async function main() {
 
   const bands = [[SCORE_BAR, 40, `${SCORE_BAR}-40`], [40, 999, '40+ (extreme)']];
   const H = 1;
-  console.log(`  ${'band'.padEnd(14)} ${'n'.padStart(4)} ${`dirExp@${H}d`.padStart(10)} ${'win%'.padStart(6)}`);
+  console.log(`  ${'band'.padEnd(14)} ${'n'.padStart(4)} ${`dirExp@${H}d`.padStart(10)} ${'win%'.padStart(6)} ${'t'.padStart(5)}`);
   let flags = 0;
   for (const [lo, hi, label] of bands) {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`d${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(14)} ${'0'.padStart(4)}       —`); continue; }
     const rets = g.map((x) => x.marks[`d${H}`]);
-    const exp = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const { mean: exp, t } = tStat(rets);
     const win = 100 * rets.filter((r) => r > 0).length / rets.length;
-    const isFlag = lo >= 40 && g.length >= 20 && exp > 0;
+    const isFlag = lo >= 40 && g.length >= 20 && exp > 0 && t >= T_BAR;
     if (isFlag) flags++;
-    console.log(`  ${label.padEnd(14)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(2) + '%'} ${win.toFixed(0).padStart(5)}%${isFlag ? '  <== net positive' : ''}`);
+    console.log(`  ${label.padEnd(14)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(2) + '%'} ${win.toFixed(0).padStart(5)}% ${t.toFixed(1).padStart(5)}${isFlag ? '  <== net positive, t>=2' : ''}`);
   }
-  console.log(`\n  dirExp@${H}d = mean return in the FADE-THE-FUNDING direction, minus round-trip cost. (Funding tailwind ignored = conservative.)`);
-  console.log(`  Edge = a 40+ (extreme) band with n>=20 and positive net. Prior guarded: extreme funding may reflect real info, not just crowding.`);
+  console.log(`\n  dirExp@${H}d = mean return in the FADE-THE-FUNDING direction, minus round-trip cost. (Funding tailwind ignored = conservative.) t = one-sample t-stat vs 0.`);
+  console.log(`  Edge = a 40+ (extreme) band with n>=20, positive net, AND t>=2. Prior guarded: extreme funding may reflect real info, not just crowding.`);
   console.log(`  PERP GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[perp-grader] failed:', e.message));

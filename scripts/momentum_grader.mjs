@@ -22,6 +22,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see momentum_scout.mjs for discovery-side scope; this is
 // the validation side (what "edge" is allowed to mean here, and why).
@@ -30,12 +31,12 @@ export const LEGIBILITY = {
   notYet: [
     'Grades a coin\'s FIRST qualifying signal only — does not re-grade if it re-triggers later at a different score.',
     'Only crypto/USD-denominated CoinGecko price history; no cross-check against actual exchange fill data.',
-    'No FLAGS until n>=30 in the 75+ band with a full 7d window — early runs will show 0 candidates gradeable, which is expected accrual, not a bug.',
+    'No FLAGS until n>=30 in the 75+ band with a full 7d window AND t>=2, which needs more accrual than n alone — early runs will show 0 candidates gradeable, which is expected, not a bug.',
   ],
   why: [
     'Entry priced ~1h AFTER signal time (`s.t + 3600000`), not at signal — we are never first to a signal, so grading as if we were would flatter the result.',
     'Cost-per-side scales 0.2%-3%+fee by market-cap tier (`costPerSide`) because small-cap slippage is real and a mid-price backtest is the small-cap lie this grader exists to catch.',
-    'FLAGS only fires on the 75+ band with n>=30 and positive net expectancy — the 60-75 band is tracked but never counted as a verdict on its own (insufficient bar to trust).',
+    'FLAGS requires the 75+ band, n>=30, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane legibility review found every grader was flagging on sample-size + sign of the mean alone, with nothing checking whether that mean was distinguishable from noise. t>=2 matches the same OOS bar trading_research_operating_model.md already sets for walk-forward survivors.',
   ],
 };
 
@@ -125,21 +126,21 @@ async function main() {
 
   const bands = [[SCORE_BAR, 75, `${SCORE_BAR}-75`], [75, 200, '75+']];
   const H = 3;
-  console.log(`  ${'band'.padEnd(8)} ${'n'.padStart(4)} ${`exp@${H}d`.padStart(9)} ${'win%'.padStart(6)} ${'avgCost'.padStart(8)}`);
+  console.log(`  ${'band'.padEnd(8)} ${'n'.padStart(4)} ${`exp@${H}d`.padStart(9)} ${'win%'.padStart(6)} ${'avgCost'.padStart(8)} ${'t'.padStart(5)}`);
   let flags = 0;
   for (const [lo, hi, label] of bands) {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`d${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(8)} ${'0'.padStart(4)}       —`); continue; }
     const rets = g.map((x) => x.marks[`d${H}`]);
-    const exp = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const { mean: exp, t } = tStat(rets);
     const win = 100 * rets.filter((r) => r > 0).length / rets.length;
     const cost = g.reduce((a, x) => a + x.cps, 0) / g.length;
-    const isFlag = lo >= 75 && g.length >= 30 && exp > 0;
+    const isFlag = lo >= 75 && g.length >= 30 && exp > 0 && t >= T_BAR;
     if (isFlag) flags++;
-    console.log(`  ${label.padEnd(8)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${cost.toFixed(1).padStart(7)}%${isFlag ? '  <== net positive' : ''}`);
+    console.log(`  ${label.padEnd(8)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${cost.toFixed(1).padStart(7)}% ${t.toFixed(1).padStart(5)}${isFlag ? '  <== net positive, t>=2' : ''}`);
   }
-  console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered ~1h late, cost-per-side by mcap tier).`);
-  console.log(`  Edge = a high-score band (75+) with n>=30 and positive net. Small-cap tail is the untested bet.`);
+  console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered ~1h late, cost-per-side by mcap tier). t = one-sample t-stat vs 0.`);
+  console.log(`  Edge = a high-score band (75+) with n>=30, positive net, AND t>=2 (mean is distinguishable from noise). Small-cap tail is the untested bet.`);
   console.log(`  MOMENTUM GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[momentum-grader] failed:', e.message));

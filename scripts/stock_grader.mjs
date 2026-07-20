@@ -21,6 +21,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { tStat, T_BAR } from './lib/stats.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
@@ -28,12 +29,13 @@ export const LEGIBILITY = {
   notYet: [
     'Grades a stock\'s FIRST qualifying signal only per rotation cycle — no re-grading on a later, different-score re-trigger.',
     'Yahoo chart history only — no cross-check against real broker fill data (this system has no live equities execution path at all).',
-    'No verdict until n is large enough in a high band with a complete 7d window — early runs show 0 gradeable, expected accrual.',
+    'No verdict until n>=30 in a high band with a complete 7d window AND t>=2 — early runs show 0 gradeable, expected accrual.',
   ],
   why: [
     'Entry priced at the next daily close AFTER signal (never at signal) — same never-first discipline as every other directional grader in this codebase.',
     'Cost-per-side scales 0.05%-0.6%+near-zero commission by daily dollar-volume tier — small-caps get a realistically wider cost than large-caps, not one blended average.',
     'Forward marks come from each stock\'s own actual Yahoo history, not from whether it stayed in later scans — a reversing stock can drop off the movers screeners; the reversal must stay in the graded data, not silently vanish (same survivorship fix as the crypto/memecoin graders).',
+    'FLAGS requires the 60+ band, n>=30, positive net expectancy, AND a one-sample t-test t>=2 (scripts/lib/stats.mjs) — added after a cross-lane review found no grader checked whether its mean return was distinguishable from noise, only its sign.',
   ],
 };
 
@@ -124,21 +126,21 @@ async function main() {
 
   const bands = [[SCORE_BAR, 60, `${SCORE_BAR}-60`], [60, 999, '60+']];
   const H = 3;
-  console.log(`  ${'band'.padEnd(8)} ${'n'.padStart(4)} ${`exp@${H}d`.padStart(9)} ${'win%'.padStart(6)} ${'avgCost'.padStart(8)}`);
+  console.log(`  ${'band'.padEnd(8)} ${'n'.padStart(4)} ${`exp@${H}d`.padStart(9)} ${'win%'.padStart(6)} ${'avgCost'.padStart(8)} ${'t'.padStart(5)}`);
   let flags = 0;
   for (const [lo, hi, label] of bands) {
     const g = graded.filter((x) => x.score >= lo && x.score < hi && x.marks[`d${H}`] != null);
     if (!g.length) { console.log(`  ${label.padEnd(8)} ${'0'.padStart(4)}       —`); continue; }
     const rets = g.map((x) => x.marks[`d${H}`]);
-    const exp = rets.reduce((a, b) => a + b, 0) / rets.length;
+    const { mean: exp, t } = tStat(rets);
     const win = 100 * rets.filter((r) => r > 0).length / rets.length;
     const cost = g.reduce((a, x) => a + x.cps, 0) / g.length;
-    const isFlag = lo >= 60 && g.length >= 30 && exp > 0;
+    const isFlag = lo >= 60 && g.length >= 30 && exp > 0 && t >= T_BAR;
     if (isFlag) flags++;
-    console.log(`  ${label.padEnd(8)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${cost.toFixed(2).padStart(7)}%${isFlag ? '  <== net positive' : ''}`);
+    console.log(`  ${label.padEnd(8)} ${String(g.length).padStart(4)} ${(exp > 0 ? '+' : '') + exp.toFixed(1) + '%'} ${win.toFixed(0).padStart(5)}% ${cost.toFixed(2).padStart(7)}% ${t.toFixed(1).padStart(5)}${isFlag ? '  <== net positive, t>=2' : ''}`);
   }
-  console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered next close, cost-per-side by liquidity).`);
-  console.log(`  Edge = a high-score band (60+) with n>=30 and positive net. Prior: stocks efficient, expect sub-cost.`);
+  console.log(`\n  exp@${H}d = mean net return after pessimistic fill (entered next close, cost-per-side by liquidity). t = one-sample t-stat vs 0.`);
+  console.log(`  Edge = a high-score band (60+) with n>=30, positive net, AND t>=2. Prior: stocks efficient, expect sub-cost.`);
   console.log(`  STOCK GRADER VERDICT ${new Date().toISOString()} graded=${graded.length} FLAGS=${flags}${flags ? '' : ' (no edge yet / insufficient sample)'}\n`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => console.error('[stock-grader] failed:', e.message));

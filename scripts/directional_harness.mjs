@@ -91,8 +91,22 @@ const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 // ============================================================== crypto momentum
 // Score identical to momentum_scout.mjs (copied, not reimplemented differently).
 // Discovery bar 75 = momentum_grader's real flagged band, not the looser 60
-// screening bar. Small universe (~250 coins, one call) so discover() itself
-// doubles as a fine priceOf() source — no separate targeted fetch needed.
+// screening bar.
+//
+// BUG (pre-existing, found live 2026-07-21 while checking a separate but
+// identical bug in perpAdapter — see its comment for the full story):
+// priceOf() used to reuse the SAME volume/mcap-filtered momentumUniverse()
+// as discover(). A coin that crashes below the $100k-volume/$1M-mcap floor
+// after entry would silently vanish from priceOf() too, making the open
+// position permanently untrackable — never marked, never stopped out. Fixed
+// the same way as perpAdapter: priceOf() now uses momentumRawRows() (no
+// liquidity filter); discover() applies the floor separately. One residual,
+// honestly-stated limitation this does NOT fix: this only ever fetches ONE
+// page of ~250 coins by market-cap rank — a coin that crashes far enough to
+// fall OUT of the top 250 by market cap would still disappear from both
+// functions, since neither call ever looks further than page 1. That's a
+// real, different limitation (ranking-window size, not the liquidity floor)
+// worth a real fix later if it ever bites in practice.
 function momentumScore(c) {
   const h24 = N(c.price_change_percentage_24h_in_currency) || 0;
   const d7 = N(c.price_change_percentage_7d_in_currency) || 0;
@@ -108,16 +122,19 @@ function momentumScore(c) {
   if (d30 > 300) s -= 15;
   return Math.round(Math.max(0, s));
 }
-async function momentumUniverse() {
+async function momentumRawRows() {
   const r = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&price_change_percentage=1h,24h,7d,30d', { headers: { 'User-Agent': 'MetaEdge/1.0' } });
   if (!r.ok) return [];
   const rows = await r.json();
-  return rows.filter((c) => c.total_volume >= 100000 && c.market_cap >= 1e6)
-    .map((c) => ({ symbol: c.id, price: c.current_price, score: momentumScore(c) }));
+  return rows.map((c) => ({ symbol: c.id, price: c.current_price, total_volume: c.total_volume, market_cap: c.market_cap, score: momentumScore(c) }));
+}
+async function momentumUniverse() {
+  const all = await momentumRawRows();
+  return all.filter((c) => c.total_volume >= 100000 && c.market_cap >= 1e6);   // DISCOVERY only, never pricing
 }
 const cryptoMomentumAdapter = {
   async discover() { const all = await momentumUniverse(); return all.filter((c) => c.score >= 75); },
-  async priceOf() { const all = await momentumUniverse(); return new Map(all.map((c) => [c.symbol, c.price])); },
+  async priceOf() { const all = await momentumRawRows(); return new Map(all.map((c) => [c.symbol, c.price])); },   // UNFILTERED — see the bug note above momentumScore()
 };
 
 // =================================================================== memecoin
@@ -247,15 +264,27 @@ const stocksAdapter = {
 // Score + direction identical to perp_scout.mjs (contrarian-funding fade).
 // Discovery bar 40 = perp_grader's real flagged ("40+ extreme") band, not the
 // scout's looser screening threshold — same pattern as every other adapter
-// here. Small universe (one Hyperliquid call, like crypto momentum), so
-// discover() doubles as its own priceOf() source.
+// here.
+//
+// BUG FOUND live in production (2026-07-21): priceOf() originally reused the
+// SAME liquidity-filtered perpUniverse() as discover(). A real open position
+// (ACE) lost enough open interest to drop below the OI floor after entry —
+// price then fell ~20%, well past its stop — but priceOf() silently excluded
+// it from every subsequent tick(), so it never got marked or closed. This is
+// the EXACT bug class the file's own history already fixed for memecoin/
+// stocks/fx (discover()/priceOf() split specifically so a position can't go
+// permanently untrackable once its score/liquidity falls below the discovery
+// bar) — cryptoMomentumAdapter has this same flaw and predates this session;
+// perpAdapter replicated it instead of following the correct pattern already
+// sitting in the same file. Fixed: priceOf() now uses perpRawCtx() (no
+// liquidity filter) while discover() applies the floor via perpUniverse().
 const ANN = 24 * 365 * 100;
 function perpScore(fundingApr, dayVol) {
   let s = Math.min(45, Math.abs(fundingApr) / 3);
   s += Math.min(15, Math.log10(Math.max(1, dayVol / 1e6)) * 8);
   return Math.round(s);
 }
-async function perpUniverse() {
+async function perpRawCtx() {
   const r = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
   if (!r.ok) return [];
   const j = await r.json();
@@ -266,15 +295,18 @@ async function perpUniverse() {
     const price = N(c.markPx), funding = N(c.funding), oi = N(c.openInterest), dayVol = N(c.dayNtlVlm);
     if (!(price > 0) || funding == null) continue;
     const oiUsd = oi != null ? oi * price : null;
-    if (!(dayVol >= 2e6) || !(oiUsd >= 1e6)) continue;         // same VOL_FLOOR/OI_FLOOR as perp_scout.mjs
     const fundingApr = funding * ANN;
-    out.push({ symbol: meta[i].name, price, score: perpScore(fundingApr, dayVol), direction: funding < 0 ? 'long' : 'short' }); // fade the funding
+    out.push({ symbol: meta[i].name, price, dayVol, oiUsd, score: perpScore(fundingApr, dayVol), direction: funding < 0 ? 'long' : 'short' }); // fade the funding
   }
   return out;
 }
+async function perpUniverse() {
+  const all = await perpRawCtx();
+  return all.filter((c) => (c.dayVol >= 2e6) && (c.oiUsd != null && c.oiUsd >= 1e6));   // same VOL_FLOOR/OI_FLOOR as perp_scout.mjs — DISCOVERY only, never pricing
+}
 const perpAdapter = {
   async discover() { const all = await perpUniverse(); return all.filter((c) => c.score >= 40); },
-  async priceOf() { const all = await perpUniverse(); return new Map(all.map((c) => [c.symbol, c.price])); },
+  async priceOf() { const all = await perpRawCtx(); return new Map(all.map((c) => [c.symbol, c.price])); },   // UNFILTERED — a position that fell below the liquidity floor must still be priceable to close
 };
 
 // ======================================================================== fx

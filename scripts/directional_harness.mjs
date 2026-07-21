@@ -292,11 +292,12 @@ async function perpRawCtx() {
   const out = [];
   for (let i = 0; i < meta.length; i++) {
     const c = ctx[i]; if (!c) continue;
-    const price = N(c.markPx), funding = N(c.funding), oi = N(c.openInterest), dayVol = N(c.dayNtlVlm);
+    const price = N(c.markPx), funding = N(c.funding), oi = N(c.openInterest), dayVol = N(c.dayNtlVlm), prevDay = N(c.prevDayPx);
     if (!(price > 0) || funding == null) continue;
     const oiUsd = oi != null ? oi * price : null;
     const fundingApr = funding * ANN;
-    out.push({ symbol: meta[i].name, price, dayVol, oiUsd, score: perpScore(fundingApr, dayVol), direction: funding < 0 ? 'long' : 'short' }); // fade the funding
+    const chg24h = prevDay > 0 ? (price / prevDay - 1) * 100 : null;   // 24h return, for the momentum adapter
+    out.push({ symbol: meta[i].name, price, dayVol, oiUsd, chg24h, score: perpScore(fundingApr, dayVol), direction: funding < 0 ? 'long' : 'short' }); // fade the funding
   }
   return out;
 }
@@ -307,6 +308,23 @@ async function perpUniverse() {
 const perpAdapter = {
   async discover() { const all = await perpUniverse(); return all.filter((c) => c.score >= 40); },
   async priceOf() { const all = await perpRawCtx(); return new Map(all.map((c) => [c.symbol, c.price])); },   // UNFILTERED — a position that fell below the liquidity floor must still be priceable to close
+};
+
+// =============================================================== perps momentum
+// A SECOND, genuinely different perp mechanism (added so we actually trade a
+// spread of perps, not just the ~2 with extreme funding). Trend continuation:
+// long the liquid perps moving up hardest over 24h, short the ones falling
+// hardest. Honest caveat: this is a SIMPLE 24h-return momentum proxy (one
+// number from the single metaAndAssetCtxs call, no candle history) — a
+// starting signal for paper forward-testing, NOT a validated edge. Same
+// liquidity floor + unfiltered priceOf() as the funding adapter.
+const PERP_MOM_MIN_CHG = 5;   // only trade perps that have actually moved >=5% in 24h (a real trend, not noise)
+const perpMomentumAdapter = {
+  async discover() {
+    const all = (await perpUniverse()).filter((c) => c.chg24h != null && Math.abs(c.chg24h) >= PERP_MOM_MIN_CHG);
+    return all.map((c) => ({ symbol: c.symbol, price: c.price, score: Math.round(Math.min(100, Math.abs(c.chg24h))), direction: c.chg24h >= 0 ? 'long' : 'short' }));
+  },
+  async priceOf() { const all = await perpRawCtx(); return new Map(all.map((c) => [c.symbol, c.price])); },   // UNFILTERED, same reason as the funding adapter
 };
 
 // ======================================================================== fx
@@ -363,8 +381,15 @@ const ADAPTERS = {
   'Memecoin pops': memecoinAdapter,
   'Stocks momentum': stocksAdapter,
   'Perps (funding)': perpAdapter,
+  'Perps (momentum)': perpMomentumAdapter,
   'FX trend': fxAdapter,
 };
+
+// A single spinUp must not flood the book from one loose-bar lane — FX opened
+// 120 positions at once from its 588-pair universe, drowning the perp lane we
+// actually care about. Cap NEW positions opened per spinUp per lane to the
+// top-N by score, so the book stays balanced and readable.
+const MAX_NEW_PER_LANE = Number(process.env.MAX_NEW_PER_LANE || 10);
 
 // Per-symbol cooldown / performance-based deprioritization (Cluster 1d, per
 // EXTERNAL_REPO_ADOPTION_CHECKLIST.md — Freqtrade's StoplossGuard/
@@ -391,10 +416,11 @@ export async function spinUp(laneName) {
   const adapter = ADAPTERS[laneName];
   if (!adapter) return { opened: 0, note: `no live adapter built yet for "${laneName}" — needs one written + tested before auto-harness can act` };
   const state = loadLedgerState(laneName);
-  const cands = await adapter.discover();
+  const cands = (await adapter.discover()).slice().sort((a, b) => (b.score || 0) - (a.score || 0));   // best signals first, so the cap keeps the strongest
   let opened = 0;
   const blocked = [];
   for (const c of cands) {
+    if (opened >= MAX_NEW_PER_LANE) break;                  // cap NEW positions per spinUp so one loose-bar lane can't flood the book
     if (state.positions[c.symbol]) continue;               // already holding, don't pyramid
     const block = cooldownBlock(state, c.symbol);
     if (block) { blocked.push({ symbol: c.symbol, reason: block }); continue; }

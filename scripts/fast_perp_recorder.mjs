@@ -67,13 +67,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const N = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
 
 async function snapshot() {
-  const r = await fetch(HL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
-  if (!r.ok) return { __err: r.status };
-  const j = await r.json();
-  const meta = j[0]?.universe || [], ctx = j[1] || [];
-  const byName = new Map();
-  for (let i = 0; i < meta.length; i++) byName.set(meta[i].name, ctx[i]);
-  return { byName };
+  // A THROWN fetch error (undici "terminated" on an aborted socket, DNS blip,
+  // etc.) must NOT kill the whole capture — an earlier version let it bubble
+  // to the top-level catch and one transient network error ended a 1-hour run
+  // after 90 seconds. Caught here and returned as an __err so the loop records
+  // a gap marker and keeps going: a collector that dies on one blip is not a
+  // collector (ChatGPT's Gate 2 "survive transient failures / gap detection").
+  try {
+    const r = await fetch(HL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'metaAndAssetCtxs' }) });
+    if (!r.ok) return { __err: `http_${r.status}` };
+    const j = await r.json();
+    const meta = j[0]?.universe || [], ctx = j[1] || [];
+    const byName = new Map();
+    for (let i = 0; i < meta.length; i++) byName.set(meta[i].name, ctx[i]);
+    return { byName };
+  } catch (e) {
+    return { __err: `throw_${String(e && e.message || e).slice(0, 40)}` };
+  }
 }
 
 async function run() {
@@ -92,7 +102,7 @@ async function run() {
     const gapFlag = gapMs != null && gapMs > POLL_MS * 1.8;
     const snap = await snapshot();
     if (snap.__err) {
-      fs.appendFileSync(fp, JSON.stringify({ t, kind: 'gap', reason: `http_${snap.__err}`, sincePrevMs: gapMs }) + '\n');
+      fs.appendFileSync(fp, JSON.stringify({ t, kind: 'gap', reason: snap.__err, sincePrevMs: gapMs }) + '\n');
       errs++; prevPollAt = t; await sleep(POLL_MS); continue;
     }
     const batch = [];

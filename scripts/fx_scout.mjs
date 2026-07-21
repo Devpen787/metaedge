@@ -11,32 +11,31 @@
  * grader (forward directional return net of costs) is the arbiter.
  *
  * Source: Yahoo Finance FX (SYMBOL=X), free, no key. Read-only, no order path.
+ * Universe: live-derived via scripts/lib/fx_universe.mjs (Yahoo lookup API,
+ * ISO-4217-filtered, weekly cache) — no more hand-picked list, same fix
+ * already applied to crypto/stocks/mm's universe derivation.
  * Records data/market/fx/scan-<date>.jsonl. VM cron ~ every 2h (FX moves slowly).
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { fxUniverseSymbols } from './lib/fx_universe.mjs';
 
 // SYSTEM LEGIBILITY — see docs/trading_research_operating_model.md.
 export const LEGIBILITY = {
-  doing: 'Scores 24 hand-listed FX pairs (7 majors, 10 crosses, 7 exotics/EM) for 5d/20d trend alignment via Yahoo daily closes, every ~2h.',
+  doing: 'Scores the live-derived FX pair universe (scripts/lib/fx_universe.mjs — ~588 ISO-4217-valid pairs as of this writing, weekly-cached) for 5d/20d trend alignment via Yahoo daily closes, every ~2h.',
   notYet: [
-    'Fixed, hand-picked 24-pair list — unlike the crypto/stock/mm lanes (which learned to derive their universe from a live venue query), FX pairs here are NOT auto-discovered from a full available-pairs source. This is a real, stated gap, not a hidden one: a real FX broker/data API\'s full tradeable-pair list would be the honest ceiling, same lesson already applied elsewhere.',
     'Daily-close granularity only — no intraday FX signal; trend is explicitly the ONE documented FX edge being tested (multi-day CTA-style trend), not a claim that faster signals were checked and rejected.',
     'This is a RADAR — fx_grader.mjs is the only place a net-of-cost verdict exists.',
+    'Universe is Yahoo-reachable currency pairs only — still bounded by what Yahoo\'s lookup API surfaces, not a claim of literally every FX pair traded anywhere; a real broker/ECN\'s full tradeable list would be a further, not-yet-reached ceiling.',
   ],
   why: [
     'FX is treated with an explicitly LOW PRIOR going in (most efficient market there is; short-horizon moves are tiny vs costs) — the file\'s own stated expectation is "no edge," and that is the honest baseline this test is checking, not a strawman.',
-    'Exotics/EM pairs are included specifically because they move more than majors — majors alone would bias toward "no edge" for reasons unrelated to the trend hypothesis itself.',
+    'Universe used to be a hand-picked 24-pair list — a real, flagged inconsistency (crypto/stocks/mm all learned to derive their universe live from a real venue query this session; FX never got that fix until now). Now derived live from Yahoo\'s currency lookup API, filtered against a real ISO 4217 code allowlist to drop commodity/SDR tickers Yahoo mislabels as currencies (XCU=copper, XDR=SDR) and a handful of non-standard ticker artifacts (CAX, BRX, etc.) — 24x more pairs, live-derived rather than hand-curated.',
     'Entry requires 5d trend to CONFIRM (not just match sign loosely) the 20d trend — an unconfirmed 20d trend alone is not enough to signal, reducing false trend calls on a recent reversal.',
   ],
 };
 
 const DIR = path.join(process.cwd(), 'data', 'market', 'fx');
-const PAIRS = (process.env.FX_PAIRS || [
-  'EURUSD', 'USDJPY', 'GBPUSD', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD',          // majors
-  'EURGBP', 'EURJPY', 'GBPJPY', 'AUDJPY', 'EURAUD', 'EURCHF', 'CADJPY', 'NZDJPY', 'EURCAD', 'GBPAUD', // crosses
-  'USDMXN', 'USDZAR', 'USDTRY', 'USDSEK', 'USDNOK', 'USDPLN', 'USDSGD',          // exotics / EM (more trend)
-].join(',')).split(',');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function chart(sym) {
@@ -64,6 +63,7 @@ async function run() {
   fs.mkdirSync(DIR, { recursive: true });
   const t = Date.now();
   const day = new Date().toISOString().slice(0, 10);
+  const PAIRS = process.env.FX_PAIRS ? process.env.FX_PAIRS.split(',') : await fxUniverseSymbols();
   const rows = [];
   for (const sym of PAIRS) {
     const c = await chart(sym);
@@ -76,7 +76,7 @@ async function run() {
   }
   if (rows.length) fs.appendFileSync(path.join(DIR, `scan-${day}.jsonl`), rows.map((x) => JSON.stringify(x)).join('\n') + '\n');
   const top = rows.slice().sort((a, b) => b.score - a.score).slice(0, 8);
-  console.log(`[fx] ${new Date().toISOString()} pairs=${rows.length}`);
+  console.log(`[fx] ${new Date().toISOString()} universe=${PAIRS.length} pairs=${rows.length}`);
   console.log(`  top trends: ${top.map((r) => `${r.pair}(${r.score}|20d ${r.r20}% ${r.direction})`).join('  ')}`);
 }
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -30,33 +30,40 @@ export function checkStopsOnce(): { checked: number; flattened: string[]; traili
   db.trailingState = db.trailingState || {};
   const breaches: Array<{ ownerId: string; agentId: string; agentName: string; symbol: string; size: number; price: number; leverage: number; trigger: 'hard_stop' | 'trailing_stop'; level: number; extra: Record<string, unknown> }> = [];
   const staleKeys: string[] = [];
+  const trailedKeys = new Set<string>();
   let checked = 0, trailing = 0, dirty = false;
 
+  // Loop A — TRAILING positions, driven by db.trailingState (one agent can hold many symbols,
+  // e.g. the golden-cross book). Each entry is `${agentId}:${symbol}`.
+  for (const [key, trail] of Object.entries(db.trailingState)) {
+    const i = key.indexOf(':');
+    const agentId = key.slice(0, i), symbol = key.slice(i + 1);
+    const agent = db.agents[agentId];
+    if (!agent || agent.status !== 'active') { staleKeys.push(key); dirty = true; continue; }
+    const pos = agentPosition(agent.ownerId, agentId, symbol);
+    if (!(pos.size > 1e-6)) { staleKeys.push(key); dirty = true; continue; }   // flat → drop stale peak
+    const price = getSpotPrice(symbol);
+    if (!(price != null && price > 0)) continue;
+    checked++; trailing++; trailedKeys.add(key);
+    if (price > trail.highWaterMark) { trail.highWaterMark = price; trail.updatedAt = Date.now(); dirty = true; }
+    const level = trail.highWaterMark * (1 - trail.trailPct / 100);
+    if (price <= level) breaches.push({ ownerId: agent.ownerId, agentId, agentName: agent.name || agentId, symbol, size: Number(pos.size.toFixed(6)), price, leverage: agent.tradeType === 'perp' ? (agent.leverage || 1) : 1, trigger: 'trailing_stop', level, extra: { trailPct: trail.trailPct, highWaterMark: trail.highWaterMark } });
+  }
+
+  // Loop B — HARD STOP for single-symbol strategies (rsi_meanrev, ...); skip anything trailing.
   for (const agent of Object.values(db.agents)) {
     if (!agent.autopilot || agent.status !== 'active') continue;
     const symbol = arenaSymbol(agent.assetSymbol);
-    const key = `${agent.id}:${symbol}`;
-    const trail = db.trailingState[key];
+    if (trailedKeys.has(`${agent.id}:${symbol}`)) continue;
+    const stopPct = Number(AGENT_STRATEGY_PLUGIN[agent.strategyType]?.parameters?.stopLossPct);
+    if (!(stopPct > 0)) continue;                       // no static stop defined → nothing to enforce
     const pos = agentPosition(agent.ownerId, agent.id, symbol);
-    if (!(pos.size > 1e-6) || !(pos.avgEntry > 0)) { if (trail) { staleKeys.push(key); dirty = true; } continue; } // flat → drop stale peak
+    if (!(pos.size > 1e-6) || !(pos.avgEntry > 0)) continue;
     const price = getSpotPrice(symbol);
     if (!(price != null && price > 0)) continue;
     checked++;
-    const lev = agent.tradeType === 'perp' ? (agent.leverage || 1) : 1;
-
-    if (trail && trail.trailPct > 0) {
-      // TRAILING: ratchet the peak (persisted), flatten on a trailPct give-back from it
-      trailing++;
-      if (price > trail.highWaterMark) { trail.highWaterMark = price; trail.updatedAt = Date.now(); dirty = true; }
-      const level = trail.highWaterMark * (1 - trail.trailPct / 100);
-      if (price <= level) breaches.push({ ownerId: agent.ownerId, agentId: agent.id, agentName: agent.name || agent.id, symbol, size: Number(pos.size.toFixed(6)), price, leverage: lev, trigger: 'trailing_stop', level, extra: { trailPct: trail.trailPct, highWaterMark: trail.highWaterMark } });
-      continue;
-    }
-
-    const stopPct = Number(AGENT_STRATEGY_PLUGIN[agent.strategyType]?.parameters?.stopLossPct);
-    if (!(stopPct > 0)) continue;                       // no static stop defined → nothing to enforce
     const level = pos.avgEntry * (1 - stopPct / 100);
-    if (price <= level) breaches.push({ ownerId: agent.ownerId, agentId: agent.id, agentName: agent.name || agent.id, symbol, size: pos.size, price, leverage: lev, trigger: 'hard_stop', level, extra: { stopPct, avgEntry: pos.avgEntry } });
+    if (price <= level) breaches.push({ ownerId: agent.ownerId, agentId: agent.id, agentName: agent.name || agent.id, symbol, size: pos.size, price, leverage: agent.tradeType === 'perp' ? (agent.leverage || 1) : 1, trigger: 'hard_stop', level, extra: { stopPct, avgEntry: pos.avgEntry } });
   }
 
   for (const k of staleKeys) delete db.trailingState[k];

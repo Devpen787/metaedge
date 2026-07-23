@@ -54,6 +54,8 @@ export function getBroadPrice(base: string): number | null {
   const t = getBroadTick(base);
   return t ? t.price : null;
 }
+// All base assets the feed currently knows (for the golden-cross scanner to iterate).
+export function listBroadSymbols(): string[] { return [...feed.keys()]; }
 export function broadFeedState() {
   return { symbols: feed.size, lastRefreshAt, ageSec: lastRefreshAt ? Math.round((Date.now() - lastRefreshAt) / 1000) : null, stale: !lastRefreshAt || Date.now() - lastRefreshAt > BROAD_FEED_MS * 3 };
 }

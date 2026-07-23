@@ -72,7 +72,7 @@ export interface TradingAgent {
   // Strategy labels map to deterministic plugins in server/decision/plugins.ts.
   // A label alone never authorizes execution; the frozen plugin hash must pass
   // validation and every layered runtime gate.
-  strategyType: 'momentum' | 'grid' | 'mean_reversion' | 'custom_ai' | 'rsi_meanrev';
+  strategyType: 'momentum' | 'grid' | 'mean_reversion' | 'custom_ai' | 'rsi_meanrev' | 'golden_cross';
   leverage: number; // For perps (1x to 20x)
   status: AgentStatus;
   createdAt: number;

@@ -32,6 +32,7 @@ import { startKillGuard } from './server/killguard.js';
 import { startDecisionRuntime } from './server/decision/runtime.js';
 import { startRiskLoop } from './server/decision/risk_loop.js';
 import { startBroadFeed } from './server/broad_feed.js';
+import { startDailyRoll } from './server/decision/daily_features.js';
 import { discoveryRouter } from './server/discovery/router.js';
 import { startOpportunityFactory } from './server/discovery/runtime.js';
 import { startFastPerpRecorder } from './server/discovery/fast_perp_recorder.js';
@@ -216,6 +217,7 @@ async function startServer() {
     startRecorder();
     startPredictionScout();
     startBroadFeed();  // live price + 24h volume for the long-tail universe (feeds getSpotPrice + the gates)
+    startDailyRoll();  // keep the daily 50/200 series current from the broad feed (once per UTC day)
     startDecisionRuntime();
     startRiskLoop();   // event-driven hard-stop defense between the runtime's slow cycles
     startOpportunityFactory();

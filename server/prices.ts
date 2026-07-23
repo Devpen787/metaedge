@@ -34,18 +34,41 @@ const COINBASE_PRODUCTS: Record<string, string> = {
 let lastGoodFetch = 0;
 let lastSource = 'seed';
 
+// Per-symbol pending >25% outlier. The guard below rejects the FIRST sighting of a >25%
+// jump (a feed blip / bad datum), but the old code had no concept of TIME — so a GENUINE,
+// PERSISTENT >25% move (a real breakout / cascade liquidation) was rejected on every poll,
+// freezing the feed at the pre-move price forever. This tracks how long the same-direction
+// jump has persisted; once it holds for OUTLIER_CONFIRM_POLLS consecutive polls it is the
+// new reality, not a blip, and is accepted.
+const OUTLIER_CONFIRM_POLLS = Number(process.env.PRICE_OUTLIER_CONFIRM_POLLS) || 3;
+const pendingOutlier: Record<string, { dir: number; count: number }> = {};
+
 export function getPriceFeedState() {
   return { source: lastSource, observedAt: lastGoodFetch, stale: !lastGoodFetch || Date.now() - lastGoodFetch > 120_000 };
 }
 
-// Apply a price update behind an OUTLIER GUARD: after we have a real baseline,
-// reject any single update that jumps >25% from the last-known value. Real
-// prices don't move that fast in ~12s, so such a jump is a feed blip/bad datum,
-// not a real move — we hold the last good value instead of trusting it.
+// Apply a price update behind an OUTLIER GUARD: after we have a real baseline, a single
+// update that jumps >25% from the last-known value is treated as a possible feed blip and
+// held. But a jump that PERSISTS in the same direction for OUTLIER_CONFIRM_POLLS consecutive
+// polls is a real move (breakout / cascade), not a blip, and is accepted — so the feed can
+// never freeze indefinitely against reality the way the static clamp did.
 function applyPrice(sym: string, price: unknown, extras?: Partial<typeof serverPrices[string]>): boolean {
   const p = serverPrices[sym];
   if (!p || typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return false;
-  if (lastGoodFetch > 0 && Math.abs(price - p.price) / p.price > 0.25) return false; // blip → skip
+  if (lastGoodFetch > 0 && Math.abs(price - p.price) / p.price > 0.25) {
+    const dir = Math.sign(price - p.price);
+    const pend = pendingOutlier[sym];
+    if (pend && pend.dir === dir) {
+      pend.count += 1;
+      if (pend.count < OUTLIER_CONFIRM_POLLS) return false; // same-direction spike, not yet confirmed → hold
+      delete pendingOutlier[sym];                            // persisted N polls → real move, accept below
+    } else {
+      pendingOutlier[sym] = { dir, count: 1 };               // first sighting → hold and arm the counter
+      return false;
+    }
+  } else if (pendingOutlier[sym]) {
+    delete pendingOutlier[sym];                              // back within band → the spike was transient, disarm
+  }
   p.price = price;
   if (extras) {
     if (typeof extras.change24h === 'number') p.change24h = Number(extras.change24h.toFixed(2));

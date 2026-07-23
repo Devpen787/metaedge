@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getBroadPrice } from './broad_feed.js';
 
 export const pricesRouter = Router();
 
@@ -153,8 +154,10 @@ export function arenaSymbol(sym: string): string {
 // The single, consistent price universe the Agent Arena marks positions against.
 // Returns null for tokens we don't price (so they simply aren't scored).
 export function getSpotPrice(sym: string): number | null {
-  const entry = serverPrices[arenaSymbol(sym)];
-  return entry ? entry.price : null;
+  const s = arenaSymbol(sym);
+  const entry = serverPrices[s];
+  if (entry) return entry.price;
+  return getBroadPrice(s);   // long-tail fallback: live price from the broad multi-exchange feed
 }
 
 // --- PRICES ENDPOINT ---

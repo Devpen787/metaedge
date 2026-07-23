@@ -35,7 +35,7 @@ const PAPER_NOTIONAL_USD = 250;
 // custom_ai is intentionally absent: its old mapping was the composite plugin,
 // which was removed for trading a blended score. An agent with no honest
 // mechanism routes nothing rather than trading theatre.
-const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'], StrategyPlugin>> = {
+export const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'], StrategyPlugin>> = {
   rsi_meanrev: rsiMeanReversionV1,
   momentum: momentum24hV1,
   mean_reversion: meanReversion24hV1,

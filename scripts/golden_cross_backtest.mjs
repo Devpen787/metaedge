@@ -58,6 +58,8 @@ const VOLMULT = Number(flag('volmult', '0'));  // require cross-day volume >= VO
 const VOLWIN = Number(flag('volwin', '50'));   // lookback for the average-volume comparison
 const FRESH = Number(flag('fresh', '0'));      // require no prior golden cross in the last FRESH days (true regime shift, not braiding chop)
 const MINVOLUSD = Number(flag('min-vol-usd', '0'));  // absolute liquidity floor: require cross-day 24h quote volume (USDT≈USD) >= this. Kills unexecutable microcaps.
+const BTCGATE = args.includes('--btc-regime');  // only TAKE a cross when BTC's own 50/200 is bull (close>SMA200 & SMA50>SMA200) — the macro kill switch
+const CONC = Number(flag('conc', '5'));         // concurrent-position budget for the closed-trade equity curve (each trade sized 1/CONC of equity)
 const FEE = 0.002;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -214,6 +216,19 @@ function sma(prices, w) {
   const bnMap = SOURCE === 'binance' ? await binanceUsdtSet() : null;
   if (bnMap) console.log(`  Binance TRADING *USDT pairs: ${bnMap.size}`);
 
+  // BTC 50/200 macro regime map (dayNum -> bull) for the --btc-regime kill switch
+  let btcBull = null;
+  if (BTCGATE) {
+    let bs = null;
+    if (SOURCE === 'backfill') bs = backfillDaily(path.join(MARKET, 'backfill-BTC-1h.jsonl'));
+    else { try { bs = JSON.parse(fs.readFileSync(path.join(CACHE, 'BTC.json'), 'utf8')); } catch { /**/ } }
+    if (!bs || bs.length < SLOW + 1) { console.error(`--btc-regime: BTC daily series unavailable for source=${SOURCE}`); process.exit(1); }
+    const bp = bs.map((d) => d.p), bf = sma(bp, FAST), bsl = sma(bp, SLOW);
+    btcBull = new Map();
+    for (let i = 0; i < bs.length; i++) btcBull.set(Math.floor(bs[i].t / 86400000), bf[i] != null && bsl[i] != null && bp[i] > bsl[i] && bf[i] > bsl[i]);
+    console.log(`  BTC macro regime loaded: ${[...btcBull.values()].filter(Boolean).length}/${btcBull.size} days bull`);
+  }
+
   // accumulators
   const crossTTP = {};   // {thr: [days-to-pop]} for cross events that popped
   const crossN = {};      // {thr: popped count}
@@ -226,7 +241,7 @@ function sma(prices, w) {
   const RT = { trade: [], peak: [], daysToPeak: [], hold: [], giveback: [], censored: 0 };
   // MANAGED-EXIT variant: same golden-cross entry, but exit on trailing stop / TP / hard stop /
   // time stop (death cross + series-end as backstops). Tests "capture the peak, don't give it back".
-  const MG = { ret: [], hold: [], reason: {} };
+  const MG = { ret: [], hold: [], reason: {}, trades: [] };   // trades: {entryMs, exitMs, ret} for the closed-trade equity curve
 
   // score one coin's daily series: tally golden crosses, per-threshold pops + days-to-pop,
   // and the ambient baseline (every eligible day as a pseudo-entry). Mutates the accumulators above.
@@ -259,6 +274,7 @@ function sma(prices, w) {
       if (SLOPE > 0 && !(slow[i - SLOPE] != null && slow[i] > slow[i - SLOPE])) continue;         // 200-SMA must be rising
       if (VOLMULT > 0 && !(volAvg[i] > 0 && (s[i].v || 0) >= VOLMULT * volAvg[i])) continue;       // volume EXPANSION (relative to self) on the cross day
       if (MINVOLUSD > 0 && !((s[i].v || 0) >= MINVOLUSD)) continue;                                 // absolute liquidity floor — actual executable depth
+      if (BTCGATE && !btcBull.get(Math.floor(s[i].t / 86400000))) continue;                         // MACRO KILL SWITCH — only take crosses while BTC 50/200 is bull
       if (FRESH > 0 && daysSinceLast < FRESH) continue;                                            // not a fresh regime shift
 
       crosses++;
@@ -288,18 +304,19 @@ function sma(prices, w) {
       // MANAGED EXIT: walk the same trade day-by-day on OHLC. Conservative intrabar ordering —
       // stops are checked before take-profit, so a bar that could hit both is scored as the stop.
       let run = s[i].hi || entry;   // running peak (intraday highs), seeds at the entry-day high
-      let mret = null, mhold = 0, reason = 'open';
+      let mret = null, mhold = 0, reason = 'open', exitIdx = end - 1;
       for (let j = i + 1; j < end; j++) {
         const hi = s[j].hi ?? price[j], lo = s[j].lo ?? price[j], cl = price[j];
-        if (STOP > 0 && lo <= entry * (1 - STOP / 100)) { mret = -STOP; mhold = j - i; reason = 'stop'; break; }
-        if (TRAIL > 0 && lo <= run * (1 - TRAIL / 100)) { mret = (run * (1 - TRAIL / 100) / entry - 1) * 100; mhold = j - i; reason = 'trail'; break; }
-        if (TP > 0 && hi >= entry * (1 + TP / 100)) { mret = TP; mhold = j - i; reason = 'tp'; break; }
+        if (STOP > 0 && lo <= entry * (1 - STOP / 100)) { mret = -STOP; mhold = j - i; reason = 'stop'; exitIdx = j; break; }
+        if (TRAIL > 0 && lo <= run * (1 - TRAIL / 100)) { mret = (run * (1 - TRAIL / 100) / entry - 1) * 100; mhold = j - i; reason = 'trail'; exitIdx = j; break; }
+        if (TP > 0 && hi >= entry * (1 + TP / 100)) { mret = TP; mhold = j - i; reason = 'tp'; exitIdx = j; break; }
         if (hi > run) run = hi;   // ratchet the peak up only after this bar's stop/TP checks
-        if (TSTOP > 0 && j - i >= TSTOP) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'time'; break; }
-        if (fast[j - 1] > slow[j - 1] && fast[j] < slow[j]) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'death'; break; }
+        if (TSTOP > 0 && j - i >= TSTOP) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'time'; exitIdx = j; break; }
+        if (fast[j - 1] > slow[j - 1] && fast[j] < slow[j]) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'death'; exitIdx = j; break; }
       }
-      if (mret == null) { mret = (price[end - 1] / entry - 1) * 100; mhold = end - 1 - i; reason = 'open'; }
+      if (mret == null) { mret = (price[end - 1] / entry - 1) * 100; mhold = end - 1 - i; reason = 'open'; exitIdx = end - 1; }
       MG.ret.push(mret); MG.hold.push(mhold); MG.reason[reason] = (MG.reason[reason] || 0) + 1;
+      MG.trades.push({ entryMs: s[i].t, exitMs: s[exitIdx].t, ret: mret });
     }
   }
 
@@ -338,7 +355,7 @@ function sma(prices, w) {
     scoreSeries(c, s);
   }
 
-  const filterDesc = [SLOPE > 0 ? `slope>${SLOPE}d` : null, VOLMULT > 0 ? `vol>=${VOLMULT}x${VOLWIN}d` : null, MINVOLUSD > 0 ? `minVol$${(MINVOLUSD / 1e3).toFixed(0)}k` : null, FRESH > 0 ? `fresh>=${FRESH}d` : null].filter(Boolean).join(' + ') || 'none';
+  const filterDesc = [SLOPE > 0 ? `slope>${SLOPE}d` : null, VOLMULT > 0 ? `vol>=${VOLMULT}x${VOLWIN}d` : null, MINVOLUSD > 0 ? `minVol$${(MINVOLUSD / 1e3).toFixed(0)}k` : null, BTCGATE ? 'BTC-regime' : null, FRESH > 0 ? `fresh>=${FRESH}d` : null].filter(Boolean).join(' + ') || 'none';
   console.log(`  cache: ${cached} hit, ${fetched} fetched | usable coins: ${coinsUsed} | too-short (<${SLOW + 3}d): ${tooShort}${SOURCE === 'binance' ? ` | no Binance pair: ${noPair}` : ''}`);
   console.log(`  entry filters: ${filterDesc}`);
   console.log(`  golden-cross events: ${rawCrosses} raw -> ${crosses} passed filters (${rawCrosses ? (100 * crosses / rawCrosses).toFixed(0) : 0}% kept)  |  baseline pseudo-entries: ${baseDays}\n`);
@@ -408,7 +425,15 @@ function sma(prices, w) {
     const rn = Object.entries(MG.reason).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${(100 * v / MG.ret.length).toFixed(0)}%`).join('  ');
     console.log(`  exit reason mix: ${rn}`);
     console.log(`  vs DEATH-CROSS exit: median ${(rtMed >= 0 ? '+' : '') + rtMed.toFixed(1)}% -> ${(median(MG.ret) >= 0 ? '+' : '') + median(MG.ret).toFixed(1)}%   |   mean ${(rtMean >= 0 ? '+' : '') + rtMean.toFixed(1)}% -> ${(mean(MG.ret) >= 0 ? '+' : '') + mean(MG.ret).toFixed(1)}%   (raw price, no fees)`);
-    console.log(`  Does swapping the slow death-cross exit for a fast stop capture the run instead of giving it back? This is the test.\n`);
+
+    // CLOSED-TRADE EQUITY: chain the trades in EXIT order, each sized 1/CONC of equity, fee on both sides.
+    // Not a full concurrency model — a closed-trade curve — but its max-DD captures how losers CLUSTER
+    // (which is exactly what the BTC-regime gate is meant to thin out).
+    const tr = [...MG.trades].sort((a, b) => a.exitMs - b.exitMs);
+    let eq = 1, peak = 1, dd = 0;
+    for (const t of tr) { eq *= (1 + ((t.ret / 100) - 2 * FEE) / CONC); peak = Math.max(peak, eq); dd = Math.max(dd, 1 - eq / peak); }
+    console.log(`  closed-trade equity (1/${CONC} sized, ${(FEE * 200).toFixed(1)}% round-trip fee): total ${((eq - 1) * 100 >= 0 ? '+' : '') + ((eq - 1) * 100).toFixed(1)}%   max DD -${(dd * 100).toFixed(1)}%   (n=${tr.length})`);
+    console.log(`  ${BTCGATE ? 'BTC-REGIME GATE ON — compare N / median / win / maxDD to the same run without --btc-regime.' : 'Run again with --btc-regime to gate these entries by the BTC 50/200 macro kill switch.'}\n`);
   }
 
   console.log(`  rate = share of crosses that reached the threshold within ${WAIT} days. never = the rest (censored — may pop later).`);

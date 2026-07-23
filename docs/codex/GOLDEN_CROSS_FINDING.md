@@ -73,6 +73,33 @@ The naive 50/200 golden cross is **dead as a standalone crypto entry**. **Volume
 a real but modest, executable edge**: positive median (~+1% before fees, ~+0.5–0.7% net),
 53–55% win rate, fat right tail (p75 +17–23%). Best config: **vol 3× + $1M floor + trail 15%**.
 
+## Regime filter interaction — the 50/200 BTC kill switch is REDUNDANT here (2026-07-23)
+Tool: `scripts/regime_filter_backtest.mjs` (built the equity-curve backtest first) +
+`golden_cross_backtest.mjs --btc-regime` (gates entries to BTC-bull days; adds a closed-trade
+equity curve + max-DD).
+
+- **On an always-in, UN-STOPPED momentum book** the BTC 50/200 regime overlay works exactly as
+  theory says: maxDD −98.5% → −83% (global kill switch) / −72% (per-asset gate), trades −60%,
+  Sharpe/Sortino all improve. But every filtered book still loses and still loses to BTC
+  buy-and-hold (−33%) — the filter cuts drawdown, it does not manufacture edge. (The base
+  momentum signal is documented-unvalidated; this measures the FILTER's risk effect only.)
+- **On the volume-confirmed golden cross it is REDUNDANT.** Gating those entries by BTC regime
+  did NOT cut drawdown (closed-trade maxDD −16.9% → −16.9% multi; −14.3% → −11.3% backfill) and
+  it removed 28–36% of trades and hurt the median (multi +1.1% → −0.2%). Reason: the tight 15%
+  **trailing stop already caps drawdown at the trade level**, so the macro gate has nothing left
+  to cut — it just filters out volume-confirmed alt setups that decouple from BTC in chop /
+  early recovery (the right-tail winners).
+
+**Rule of thumb (match the control to the dominant risk):**
+
+| Strategy structure | Dominant risk | Best control | Macro 50/200 gate |
+|---|---|---|---|
+| Always-in / un-stopped momentum | unbounded tail / long drawdowns | **macro regime filter** | ESSENTIAL (−16 pts DD) |
+| Volume-confirmed golden cross | whipsaws / false breakouts | **tight trailing stop** | REDUNDANT (cut winners, not DD) |
+
+Do not re-test this exact stack — it's a proven dead end. The regime filter's home is over
+un-stopped, always-in books.
+
 ## Asterisks
 - Survivorship-biased optimistic (universe = today's listings; dead/delisted coins absent).
 - Volume floor uses reported exchange 24h quote volume, not order-book depth — a proxy for
@@ -80,6 +107,8 @@ a real but modest, executable edge**: positive median (~+1% before fees, ~+0.5�
 - Spot-long, raw price; ~0.4% round-trip fee assumed, no order-book slippage model.
 - MEXC/Gate long-tail data quality is uneven; median/win-rate framing is deliberately
   outlier-robust to compensate.
+- Regime test window was mostly BTC-bear (~37–40% of days bull), so the bull-only gate sits out
+  heavily; closed-trade maxDD is a proxy (no concurrency / mark-to-market).
 
 ## Reproduce
 ```
@@ -87,3 +116,9 @@ node scripts/golden_cross_backtest.mjs --source multi --fast 50 --slow 200 \
   --wait 90 --trail 15 --volmult 3 --min-vol-usd 1000000
 ```
 First run fetches + caches ~2,900 coins (~10–15 min); re-runs are instant off cache.
+Add `--btc-regime` to gate entries by the BTC 50/200 macro kill switch (proven redundant here).
+
+Regime overlay on a momentum book:
+```
+node scripts/regime_filter_backtest.mjs --source backfill --k 10 --hold 7 --min-vol-usd 500000
+```

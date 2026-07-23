@@ -72,6 +72,7 @@ export function readDatabase(): DatabaseState {
         arenaMembers: [],
         arenaBadges: [],
         arenaRankSnapshots: {},
+        trailingState: {},
         decisionRuntime: {
           strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
         }
@@ -110,6 +111,7 @@ export function readDatabase(): DatabaseState {
     if (!parsed.arenaRankSnapshots) {
       parsed.arenaRankSnapshots = {};
     }
+    if (!parsed.trailingState) parsed.trailingState = {};
     if (!parsed.decisionRuntime) {
       parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
     }

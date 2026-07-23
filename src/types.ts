@@ -282,6 +282,9 @@ export interface DatabaseState {
   arenaMembers?: ArenaMember[];
   arenaBadges?: ArenaBadge[];
   arenaRankSnapshots?: { [boardId: string]: ArenaRankSnapshot };
+  // Persisted trailing-stop high-water marks, keyed by `${agentId}:${symbol}`. Survives
+  // process restarts so the Risk-OS's trailing peak is never reset to the current price.
+  trailingState?: { [key: string]: { highWaterMark: number; trailPct: number; updatedAt: number } };
   decisionRuntime?: {
     strategySpecs: { [hash: string]: FrozenStrategySpec };
     validations: { [id: string]: ValidationRecord };

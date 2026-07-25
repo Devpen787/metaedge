@@ -25,6 +25,42 @@ export function evaluateGoldenCrossEntry(ind: DailyIndicators, opts: { volMult?:
   return { enter: freshCross && volSurge && liquid, freshCross, volSurge, liquid };
 }
 
+// The context captured for every candidate/trade — the "why", not just yes/no.
+export interface GcEnriched {
+  base: string; price: number;
+  sma50: number; sma200: number;
+  distAboveCrossPct: number;    // how far the 50d sits above the 200d (strength of the cross)
+  priceVsSma50Pct: number;      // price vs the fast MA — positive+large = chasing an extended move
+  volMultiple: number;          // 24h volume / 50d avg — the research-proven, dose-responsive lever
+  turnover24hUsd: number;
+  return30dPct: number | null;  // recent momentum context
+  realizedVolPctDaily: number | null;  // for judging whether a fixed 15% trail fits this token
+  days: number; score: number;
+}
+
+// Ranking is grounded ONLY in what the research proved: the volume multiple (dose-responsive
+// edge), with a gentle liquidity bonus for executability. Every other enriched field is
+// DESCRIPTIVE context, deliberately NOT weighted — baking unproven factors into the score is
+// exactly the overfitting we fought to avoid.
+export function scoreCandidate(e: Pick<GcEnriched, 'volMultiple' | 'turnover24hUsd'>): number {
+  const volScore = Math.min(10, e.volMultiple);                                          // capped so one freak print can't dominate
+  const liqScore = Math.min(2, Math.log10(Math.max(1, e.turnover24hUsd / 1_000_000)));   // 0..2 gentle depth bonus
+  return Number((volScore + liqScore).toFixed(3));
+}
+
+export function enrichCandidate(base: string, price: number, ind: DailyIndicators): GcEnriched {
+  const volMultiple = ind.vol50dAvg > 0 && ind.vol24hUsd != null ? ind.vol24hUsd / ind.vol50dAvg : 0;
+  const turnover24hUsd = ind.vol24hUsd ?? 0;
+  return {
+    base, price, sma50: ind.sma50, sma200: ind.sma200,
+    distAboveCrossPct: ind.sma200 > 0 ? (ind.sma50 / ind.sma200 - 1) * 100 : 0,
+    priceVsSma50Pct: ind.sma50 > 0 ? (price / ind.sma50 - 1) * 100 : 0,
+    volMultiple, turnover24hUsd,
+    return30dPct: ind.return30dPct, realizedVolPctDaily: ind.realizedVolPctDaily,
+    days: ind.days, score: scoreCandidate({ volMultiple, turnover24hUsd }),
+  };
+}
+
 // Ensure the paper "book" (a system user + one multi-symbol golden-cross agent) exists.
 export function ensureGoldenCrossBook(): { ownerId: string; agentId: string } {
   const db = readDatabase();
@@ -36,14 +72,18 @@ export function ensureGoldenCrossBook(): { ownerId: string; agentId: string } {
   return { ownerId, agentId };
 }
 
-// Open a paper long and tag it with a trailing stop. Exported for the probe.
-export function openGoldenCrossPosition(ownerId: string, agentId: string, base: string, price: number): boolean {
+// Open a paper long and tag it with a trailing stop, recording the full entry context. Exported for the probe.
+export function openGoldenCrossPosition(ownerId: string, agentId: string, base: string, price: number, ctx?: GcEnriched): boolean {
   if (!(price > 0)) return false;
   const res = placePaperTrade(
     ownerId,
     { agentId, assetSymbol: base, side: 'buy', size: Number((CLIP_USD / price).toFixed(6)), price, leverage: 1,
       nonce: `gc_${agentId.slice(0, 6)}_${base}_${Date.now()}_${generateId().slice(0, 6)}`,
-      thesis: { strategy: 'golden_cross', setup: '50/200 daily cross', trigger: 'vol>=3x50d + $1M turnover', trailingStopPct: TRAIL_PCT } },
+      thesis: {
+        strategy: 'golden_cross', setup: '50/200 daily golden cross',
+        trigger: ctx ? `vol ${ctx.volMultiple.toFixed(1)}x 50d-avg, $${(ctx.turnover24hUsd / 1e6).toFixed(1)}M turnover, 50d ${ctx.distAboveCrossPct.toFixed(1)}% above 200d` : 'vol>=3x50d + $1M turnover',
+        trailingStopPct: TRAIL_PCT, context: ctx ?? null,
+      } },
     { action: 'GC_ENTRY', detailsPrefix: 'Golden-cross entry' }
   );
   if (!res.ok) return false;
@@ -51,19 +91,19 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
   db.trailingState = db.trailingState || {};
   db.trailingState[`${agentId}:${base}`] = { highWaterMark: price, trailPct: TRAIL_PCT, updatedAt: Date.now() };
   writeDatabase(db);
-  console.log(`[golden-cross] entry ${base} @ ${price} (trail ${TRAIL_PCT}%)`);
+  console.log(`[golden-cross] entry ${base} @ ${price} — vol ${ctx ? ctx.volMultiple.toFixed(1) + 'x' : '?'}, score ${ctx?.score ?? '?'} (trail ${TRAIL_PCT}%)`);
   return true;
 }
 
-// One scan pass over the liquid universe. Returns a small summary. Exported for the probe.
-export function scanOnce(): { scanned: number; evaluated: number; entries: string[] } {
+// One scan pass over the liquid universe. Gathers ALL qualifying crosses, ranks them by quality
+// score, and opens the BEST ones up to the remaining capacity (not first-come). Exported for the probe.
+export function scanOnce(): { scanned: number; evaluated: number; qualified: number; entries: GcEnriched[] } {
   const { ownerId, agentId } = ensureGoldenCrossBook();
   const db = readDatabase();
   const held = new Set(Object.keys(db.trailingState || {}).filter((k) => k.startsWith(`${agentId}:`)).map((k) => k.slice(agentId.length + 1)));
-  let openCount = held.size, evaluated = 0;
-  const entries: string[] = [];
+  let evaluated = 0;
+  const candidates: GcEnriched[] = [];
   for (const base of listBroadSymbols()) {
-    if (openCount >= MAX_POSITIONS) break;
     if (held.has(base)) continue;
     const tick = getBroadTick(base);
     if (!tick || tick.vol24hUsd < MIN_VOL_USD) continue;   // cheap liquidity pre-filter before touching the daily cache
@@ -71,10 +111,17 @@ export function scanOnce(): { scanned: number; evaluated: number; entries: strin
     if (!ind) continue;
     evaluated++;
     if (!evaluateGoldenCrossEntry(ind).enter) continue;
-    if (openGoldenCrossPosition(ownerId, agentId, base, tick.price)) { entries.push(base); openCount++; held.add(base); }
+    candidates.push(enrichCandidate(base, tick.price, ind));
   }
-  if (entries.length) console.log(`[golden-cross] scan: ${entries.length} new entries (${entries.join(', ')})`);
-  return { scanned: listBroadSymbols().length, evaluated, entries };
+  candidates.sort((a, b) => b.score - a.score);           // best crosses first
+  const entries: GcEnriched[] = [];
+  let openCount = held.size;
+  for (const c of candidates) {
+    if (openCount >= MAX_POSITIONS) break;
+    if (openGoldenCrossPosition(ownerId, agentId, c.base, c.price, c)) { entries.push(c); openCount++; }
+  }
+  if (entries.length) console.log(`[golden-cross] scan: ${candidates.length} qualified, opened top ${entries.length} (${entries.map((e) => `${e.base}@${e.score}`).join(', ')})`);
+  return { scanned: listBroadSymbols().length, evaluated, qualified: candidates.length, entries };
 }
 
 export function startGoldenCrossScanner() {

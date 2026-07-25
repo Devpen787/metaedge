@@ -30,6 +30,8 @@ export interface DailyIndicators {
   vol24hUsd: number | null;   // live 24h volume from the broad feed
   days: number;           // settled daily bars available
   lastClose: number;      // most recent settled close
+  return30dPct: number | null;      // price vs 30 settled days ago (recent momentum context)
+  realizedVolPctDaily: number | null;   // stdev of the last 30 daily returns (%), for stop/size context
 }
 
 // Daily indicators for a base asset, evolving today's bar with the live price when supplied.
@@ -43,12 +45,23 @@ export function dailyIndicators(base: string, livePrice?: number, live24hUsd?: n
   const settled = lastDay === today ? closes.slice(0, -1) : closes;          // don't double-count a same-day cache bar
   const todayCloses = px ? [...settled, px] : closes;
   const sma = (arr: number[], n: number) => arr.length >= n ? mean(arr.slice(-n)) : mean(arr);
+  const nowPx = px ?? settled[settled.length - 1];
+  const ret30 = settled.length > 30 ? (nowPx / settled[settled.length - 30] - 1) * 100 : null;
+  // realized daily vol: stdev of the last 30 settled close-to-close returns (%)
+  let rvol: number | null = null;
+  if (settled.length > 31) {
+    const rets: number[] = [];
+    for (let k = settled.length - 30; k < settled.length; k++) if (settled[k - 1] > 0) rets.push((settled[k] / settled[k - 1] - 1) * 100);
+    const m = mean(rets);
+    rvol = Math.sqrt(rets.reduce((a, r) => a + (r - m) ** 2, 0) / (rets.length || 1));
+  }
   return {
     sma50: sma(todayCloses, 50), sma200: sma(todayCloses, 200),
     sma50Prev: sma(settled, 50), sma200Prev: sma(settled, 200),
     vol50dAvg: mean(s.slice(-50).map((d) => d.v)),
     vol24hUsd: live24hUsd ?? getBroadTick(base)?.vol24hUsd ?? null,
     days: settled.length, lastClose: settled[settled.length - 1],
+    return30dPct: ret30, realizedVolPctDaily: rvol,
   };
 }
 

@@ -66,6 +66,12 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   endpoints, Hyperliquid's `info` API). A single battle-tested library
   handling the crypto-exchange layer would have prevented most of those
   parse-bug discoveries. Highest-leverage NEW item from this pass.
+  **STILL OPEN — now more concrete (2026-07-25):** the live golden-cross flywheel
+  added yet another hand-rolled instance — `server/broad_feed.ts` bespoke-parses
+  Binance `/ticker/24hr` and Gate `/spot/tickers` for the whole-universe price+vol
+  feed. It works, but it's exactly the per-venue parsing ccxt would unify, and a
+  concrete candidate to refactor onto ccxt (which also unlocks the ban-risk-ranked
+  fallback-chain item below — more venues, one interface).
 
 - [ ] **Formalize the Evaluator pattern** (OctoBot `packages/evaluators/`, ✅ CODE) — TIER 2
   Independent, pluggable signal modules (`TA_evaluator`, `social_evaluator`,
@@ -91,6 +97,13 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   scheduled run. Architecturally distinct from widening WHAT we scan (already
   underway) — this is about WHEN we scan. Lower priority than the universe-size
   work already shipped, but a real gap for anything hourly-cadenced.
+  **PARTIAL 2026-07-25 (commit 102b8c6, decision record
+  [[2026-07-23-stop-latency-riskos]]):** the EXIT side is now event-driven — the
+  Risk-OS checks open-position stops every ~10s between the decision runtime's
+  5-min cycles, so a stop breach is acted on in seconds instead of waiting up to
+  ~5 min. Still cron-cadenced: ENTRY scanning (golden-cross scan every ~6h; other
+  scouts 1-5 min). Closing the entry side (wake the scanner on a sharp move) is
+  the remaining, larger part of this item.
 
 - [ ] **Retry/backoff decorators + declarative per-exchange quirks table**
   (Freqtrade `exchange/common.py`'s `retrier`/`retrier_async` +
@@ -374,7 +387,7 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
 
 ### PAPER-EXECUTE — running a proven signal with discipline
 
-- [ ] **Trailing stop-loss** (Freqtrade `trailing_stop_positive` /
+- [x] **Trailing stop-loss** (Freqtrade `trailing_stop_positive` /
   `trailing_stop_positive_offset`, ✅ CODE) — TIER 1, NEW this pass
   Configurable: the stop only starts trailing once price has moved favorably
   by an offset, then ratchets up (never down) by a stated distance.
@@ -392,6 +405,16 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   profile/step table from the start rather than a single fixed distance,
   now that we know a fixed-distance design is the less-capable of the two
   real implementations we've seen.
+  **SHIPPED 2026-07-25 (commit 1135aa2, decision record
+  [[2026-07-23-trailing-stop-riskos]]):** event-driven Risk-OS trailing stop —
+  restart-safe high-water mark persisted in `db.trailingState` (keyed
+  `agentId:symbol`, multi-symbol), flattens on a fixed 15% give-back from peak,
+  race-safe against the paper ledger's writes, proven by
+  `scripts/trailing_stop_probe.ts`. Powers the Volume-Confirmed Golden Cross exit.
+  STILL OPEN: OctoBot's step-based *profile* (variable trail distance by price
+  level) — ours is a single fixed distance. Also open: per-token vol-adaptive
+  trail (a fixed 15% may be too tight/loose for very high/low-vol tokens) — noted
+  but NOT built without a forward test proving it beats the flat 15%.
 
 - [ ] **Laddered / scaled exit orders** (confirmed independently in BOTH
   repos, ✅ CODE — Freqtrade's `adjust_trade_position` position-scaling hook,
@@ -451,6 +474,13 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   time-stop" means our hold horizon is miscalibrated; "almost everything hits
   hard-stop" means the stop is too tight. Directly serves the "learning" half
   of what you asked this checklist to cover, and it's nearly free to add.
+  **PARTIAL 2026-07-25:** the Risk-OS now tags each close with a `trigger`
+  (`hard_stop` / `trailing_stop`) in the trade thesis (commits 102b8c6, 1135aa2),
+  and golden-cross entries carry a rich context thesis (commit cfb7aaf). Still
+  open: the full Freqtrade enum (ROI / EXIT_SIGNAL / TIME_STOP / FORCE_EXIT / …)
+  and a rollup that reads the closed-trade ledger to report the exit-reason mix —
+  the piece that actually turns forward trades into "is our stop too tight / hold
+  too short" learning.
 
 - [ ] **Per-symbol cooldown / performance-based deprioritization** (Freqtrade
   `plugins/protections/` — StoplossGuard, LowProfitPairs, CooldownPeriod,
@@ -459,6 +489,13 @@ Repos reviewed: [freqtrade/freqtrade](https://github.com/freqtrade/freqtrade),
   position) with **no per-symbol memory** — a coin that just stopped us out
   twice gets no cooldown, no deprioritization. Port as a pluggable check
   before `directional_harness.mjs` opens a new position.
+  **QUEUED NEXT (2026-07-25):** now directly relevant to the live golden-cross
+  flywheel — `golden_cross_scanner.ts` re-buys a name the moment it re-qualifies,
+  with no memory of a recent stop-out. Plan: a `db.cooldowns` map (keyed
+  `agentId:symbol`) written on every Risk-OS flatten; the scanner skips any symbol
+  in cooldown for N days. Cheap, pluggable, and the enrichment score already gives
+  a natural place to also deprioritize (vs hard-skip) recent losers. To be built
+  probe→fix→re-proof after the current deploy lands.
 
 - [ ] **Dry-run / paper-mode parity check** (Freqtrade's order-book-aware
   paper simulation vs our `portfolio/ledger.mjs` + `practice_book.mjs`,

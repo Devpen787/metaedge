@@ -60,6 +60,7 @@ const FRESH = Number(flag('fresh', '0'));      // require no prior golden cross 
 const MINVOLUSD = Number(flag('min-vol-usd', '0'));  // absolute liquidity floor: require cross-day 24h quote volume (USDT≈USD) >= this. Kills unexecutable microcaps.
 const BTCGATE = args.includes('--btc-regime');  // only TAKE a cross when BTC's own 50/200 is bull (close>SMA200 & SMA50>SMA200) — the macro kill switch
 const CONC = Number(flag('conc', '5'));         // concurrent-position budget for the closed-trade equity curve (each trade sized 1/CONC of equity)
+const EMIT_TRADES = flag('emit-trades', '');    // if set, write the managed-exit trade log as JSONL to this path (read-only research artifact)
 const FEE = 0.002;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const median = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
@@ -304,19 +305,26 @@ function sma(prices, w) {
       // MANAGED EXIT: walk the same trade day-by-day on OHLC. Conservative intrabar ordering —
       // stops are checked before take-profit, so a bar that could hit both is scored as the stop.
       let run = s[i].hi || entry;   // running peak (intraday highs), seeds at the entry-day high
-      let mret = null, mhold = 0, reason = 'open', exitIdx = end - 1;
+      let mret = null, mhold = 0, reason = 'open', exitIdx = end - 1, mexit = price[end - 1];
       for (let j = i + 1; j < end; j++) {
         const hi = s[j].hi ?? price[j], lo = s[j].lo ?? price[j], cl = price[j];
-        if (STOP > 0 && lo <= entry * (1 - STOP / 100)) { mret = -STOP; mhold = j - i; reason = 'stop'; exitIdx = j; break; }
-        if (TRAIL > 0 && lo <= run * (1 - TRAIL / 100)) { mret = (run * (1 - TRAIL / 100) / entry - 1) * 100; mhold = j - i; reason = 'trail'; exitIdx = j; break; }
-        if (TP > 0 && hi >= entry * (1 + TP / 100)) { mret = TP; mhold = j - i; reason = 'tp'; exitIdx = j; break; }
+        if (STOP > 0 && lo <= entry * (1 - STOP / 100)) { mret = -STOP; mhold = j - i; reason = 'stop'; exitIdx = j; mexit = entry * (1 - STOP / 100); break; }
+        if (TRAIL > 0 && lo <= run * (1 - TRAIL / 100)) { mret = (run * (1 - TRAIL / 100) / entry - 1) * 100; mhold = j - i; reason = 'trail'; exitIdx = j; mexit = run * (1 - TRAIL / 100); break; }
+        if (TP > 0 && hi >= entry * (1 + TP / 100)) { mret = TP; mhold = j - i; reason = 'tp'; exitIdx = j; mexit = entry * (1 + TP / 100); break; }
         if (hi > run) run = hi;   // ratchet the peak up only after this bar's stop/TP checks
-        if (TSTOP > 0 && j - i >= TSTOP) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'time'; exitIdx = j; break; }
-        if (fast[j - 1] > slow[j - 1] && fast[j] < slow[j]) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'death'; exitIdx = j; break; }
+        if (TSTOP > 0 && j - i >= TSTOP) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'time'; exitIdx = j; mexit = cl; break; }
+        if (fast[j - 1] > slow[j - 1] && fast[j] < slow[j]) { mret = (cl / entry - 1) * 100; mhold = j - i; reason = 'death'; exitIdx = j; mexit = cl; break; }
       }
-      if (mret == null) { mret = (price[end - 1] / entry - 1) * 100; mhold = end - 1 - i; reason = 'open'; exitIdx = end - 1; }
+      if (mret == null) { mret = (price[end - 1] / entry - 1) * 100; mhold = end - 1 - i; reason = 'open'; exitIdx = end - 1; mexit = price[end - 1]; }
       MG.ret.push(mret); MG.hold.push(mhold); MG.reason[reason] = (MG.reason[reason] || 0) + 1;
-      MG.trades.push({ entryMs: s[i].t, exitMs: s[exitIdx].t, ret: mret });
+      // read-only per-trade evidence record (does NOT affect any stat/verdict above)
+      MG.trades.push({
+        symbol: c.sym || c.id, venue: c.venue || SOURCE, entryDate: new Date(s[i].t).toISOString().slice(0, 10),
+        entryMs: s[i].t, exitMs: s[exitIdx].t, entryPrice: entry, exitPrice: mexit,
+        volMultiple: (volAvg && volAvg[i] > 0) ? Number((s[i].v / volAvg[i]).toFixed(2)) : null, turnoverUsd: Math.round(s[i].v || 0),
+        exitReason: reason, holdDays: mhold, grossPct: Number(mret.toFixed(3)),
+        costPct: Number((2 * FEE * 100).toFixed(3)), netPct: Number((mret - 2 * FEE * 100).toFixed(3)), ret: mret,
+      });
     }
   }
 
@@ -444,4 +452,9 @@ function sma(prices, w) {
   console.log(`  Positive edge = the golden cross beats a coin-flip day; edge near/below 0 = the cross tells you nothing.`);
   console.log(`  CAVEAT: survivorship-biased OPTIMISTIC (today's coins). Costs (~1-3%/side by mcap) NOT subtracted — a +2% pop is inside cost.`);
   console.log(`  GOLDEN CROSS VERDICT ${new Date().toISOString()} coins=${coinsUsed} crosses=${crosses} fast=${FAST} slow=${SLOW} wait=${WAIT}\n`);
+
+  if (EMIT_TRADES) {
+    fs.writeFileSync(EMIT_TRADES, MG.trades.map((t) => JSON.stringify(t)).join('\n') + '\n');
+    console.log(`  [emit-trades] wrote ${MG.trades.length} trade records → ${EMIT_TRADES}\n`);
+  }
 })();

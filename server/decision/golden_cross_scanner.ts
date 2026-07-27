@@ -2,6 +2,7 @@ import { readDatabase, writeDatabase, generateId } from '../storage.js';
 import { placePaperTrade, agentPosition } from '../trades.js';
 import { getBroadTick, listBroadSymbols } from '../broad_feed.js';
 import { dailyIndicators, DailyIndicators } from './daily_features.js';
+import { isRealSpot } from './instrument_eligibility.js';
 
 // GOLDEN-CROSS SCANNER — the entry engine. Each scan walks the liquid universe, finds the
 // volume-confirmed daily golden crosses the research proved (+~1% median edge), and opens a
@@ -105,6 +106,7 @@ export function scanOnce(): { scanned: number; evaluated: number; qualified: num
   const candidates: GcEnriched[] = [];
   for (const base of listBroadSymbols()) {
     if (held.has(base)) continue;
+    if (!isRealSpot(base)) continue;                        // frozen hypothesis: eligible real crypto spot only (no leveraged/stable/wrapped/tokenized-equity)
     const tick = getBroadTick(base);
     if (!tick || tick.vol24hUsd < MIN_VOL_USD) continue;   // cheap liquidity pre-filter before touching the daily cache
     const ind = dailyIndicators(base, tick.price, tick.vol24hUsd);

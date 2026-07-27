@@ -76,18 +76,33 @@ export function appendDailyClose(base: string, close: number, vol: number, dayTs
   else s.push({ t: dayTs, p: close, v: vol });
 }
 
-// Once per UTC day, snapshot the broad feed into a settled daily bar for every symbol we track,
-// so the daily series never decays against the frozen bootstrap cache. Cheap: reuses the feed
-// we already poll, no extra fetching.
-export function startDailyRoll() {
-  let lastRolled = -1;
-  const roll = () => {
-    const day = Math.floor(Date.now() / DAY_MS);
-    if (day === lastRolled) return;
-    lastRolled = day;
-    let rolled = 0;
-    for (const b of series.keys()) { const t = getBroadTick(b); if (t) { appendDailyClose(b, t.price, t.vol24hUsd, Date.now()); rolled++; } }
-    if (rolled) console.log(`[daily-features] rolled ${rolled} daily bars`);
-  };
-  setInterval(roll, 3_600_000).unref();   // hourly check; acts once per new UTC day
+// Per-symbol running close for the in-progress UTC day (the last price we observed today).
+const dayState = new Map<string, { day: number; close: number; vol: number }>();
+
+// One roll step: track each symbol's running close; when the UTC day rolls over, FINALIZE the
+// PRIOR day's bar at its LAST-observed close (its actual close), dated to that day — NOT the new
+// day's opening price. tickOf is injectable so the settlement rule can be proven deterministically.
+export function dailyRollStep(nowMs: number = Date.now(), tickOf: (b: string) => { price: number; vol24hUsd: number } | null = getBroadTick): number {
+  const today = Math.floor(nowMs / DAY_MS);
+  let finalized = 0;
+  for (const b of series.keys()) {
+    const t = tickOf(b); if (!t || !(t.price > 0)) continue;
+    const st = dayState.get(b);
+    if (st && today > st.day) { appendDailyClose(b, st.close, st.vol, st.day * DAY_MS + DAY_MS - 1); finalized++; }
+    dayState.set(b, { day: today, close: t.price, vol: t.vol24hUsd });
+  }
+  return finalized;
 }
+
+// Keep the daily series current from the broad feed: track running closes, settle each day at
+// rollover. OPEN BLOCKERS (logged, not fixed): forward bars come from the live feed venue (Gate on
+// the VM) while bootstrap history may be Binance-sourced (cross-venue); and days between the cache
+// fetch and the first roll are a gap.
+export function startDailyRoll() {
+  dailyRollStep();                              // seed today's running close immediately
+  setInterval(() => { const n = dailyRollStep(); if (n) console.log(`[daily-features] settled ${n} prior-day bars`); }, 1_800_000).unref();
+}
+
+// test-only hooks (not used by production paths)
+export function __seedSeries(base: string, bars: { t: number; p: number; v: number }[]) { series.set(base.toUpperCase(), bars); }
+export function __getSeries(base: string) { return series.get(base.toUpperCase()); }

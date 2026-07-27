@@ -1,8 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { readDatabase, writeDatabase, generateId } from '../storage.js';
 import { placePaperTrade, agentPosition } from '../trades.js';
-import { getBroadTick, listBroadSymbols } from '../broad_feed.js';
+import { getBroadTick, listBroadSymbols, broadFeedState } from '../broad_feed.js';
 import { dailyIndicators, DailyIndicators } from './daily_features.js';
 import { isRealSpot } from './instrument_eligibility.js';
+
+// Append-only scan trail (scanner is the sole writer → no cross-process lost-update risk).
+const SCAN_LOG = process.env.GC_SCAN_LOG || path.join(process.cwd(), 'data', 'market', 'golden-cross', 'scans.jsonl');
 
 // GOLDEN-CROSS SCANNER — the entry engine. Each scan walks the liquid universe, finds the
 // volume-confirmed daily golden crosses the research proved (+~1% median edge), and opens a
@@ -98,7 +103,7 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
 
 // One scan pass over the liquid universe. Gathers ALL qualifying crosses, ranks them by quality
 // score, and opens the BEST ones up to the remaining capacity (not first-come). Exported for the probe.
-export function scanOnce(): { scanned: number; evaluated: number; qualified: number; entries: GcEnriched[] } {
+export function scanOnce(): { scanned: number; evaluated: number; qualified: number; entries: GcEnriched[]; record: Record<string, unknown> } {
   const { ownerId, agentId } = ensureGoldenCrossBook();
   const db = readDatabase();
   const held = new Set(Object.keys(db.trailingState || {}).filter((k) => k.startsWith(`${agentId}:`)).map((k) => k.slice(agentId.length + 1)));
@@ -122,8 +127,14 @@ export function scanOnce(): { scanned: number; evaluated: number; qualified: num
     if (openCount >= MAX_POSITIONS) break;
     if (openGoldenCrossPosition(ownerId, agentId, c.base, c.price, c)) { entries.push(c); openCount++; }
   }
-  if (entries.length) console.log(`[golden-cross] scan: ${candidates.length} qualified, opened top ${entries.length} (${entries.map((e) => `${e.base}@${e.score}`).join(', ')})`);
-  return { scanned: listBroadSymbols().length, evaluated, qualified: candidates.length, entries };
+
+  // OBSERVABILITY: emit + persist a record for EVERY scan (incl. no-entry), so scans are provable
+  // and the forward run is auditable — not silent when nothing qualifies.
+  const scanned = listBroadSymbols().length, feed = broadFeedState();
+  const record = { ts: new Date().toISOString(), scanned, evaluated, qualified: candidates.length, opened: entries.length, held: held.size, feedSymbols: feed.symbols, feedAgeSec: feed.ageSec, feedStale: feed.stale, entries: entries.map((e) => ({ base: e.base, score: e.score, volMultiple: e.volMultiple, turnoverUsd: e.turnover24hUsd })) };
+  try { fs.mkdirSync(path.dirname(SCAN_LOG), { recursive: true }); fs.appendFileSync(SCAN_LOG, JSON.stringify(record) + '\n'); } catch (e: any) { console.warn('[golden-cross] scan-log write failed:', e?.message); }
+  console.log(`[golden-cross] scan: ${scanned} symbols, ${evaluated} evaluated, ${candidates.length} qualified, ${entries.length} opened | feed ${feed.symbols} sym age ${feed.ageSec}s${feed.stale ? ' STALE' : ''}${entries.length ? ' → ' + entries.map((e) => `${e.base}@${e.score}`).join(', ') : ''}`);
+  return { scanned, evaluated, qualified: candidates.length, entries, record };
 }
 
 export function startGoldenCrossScanner() {

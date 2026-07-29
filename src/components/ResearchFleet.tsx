@@ -7,7 +7,7 @@ import { apiFetch, safeJson } from '../lib/api';
 // Everything shown as-is — wins, losses, and restraint alike.
 
 interface Family { family: string; cardId: string | null; trades: number; closed: number; wins: number; realizedPnl: number; lastTradeAt: number; lastTrigger: string; }
-interface Recent { t: number; family: string; side: string; size: number; symbol: string; price: number; pnl: number | null; trigger: string; setup: string; }
+interface Recent { t: number; family: string; variant: string | null; side: string; size: number; symbol: string; price: number; pnl: number | null; trigger: string; setup: string; }
 interface FleetData { families: Family[]; declined: Record<string, number>; recent: Recent[]; totals: { trades: number; closed: number; realizedPnl: number }; }
 interface V3Data {
   generatedAt: number;
@@ -35,6 +35,7 @@ const FAMILY_DESC: Record<string, string> = {
   manual: 'Your own Trading Desk fills with trade notes',
   copilot: 'Swarm Copilot natural-language fills',
   intent: 'Intent Solver fills',
+  golden_cross: 'Volume-confirmed 50/200 Golden Cross paper book',
 };
 
 function ago(ts: number) {
@@ -320,7 +321,7 @@ export default function ResearchFleet() {
               <div className="min-w-0">
                 <div className="text-[12px] font-mono text-slate-200">
                   <span className={r.side === 'buy' || r.side === 'long' ? 'text-emerald-400' : 'text-rose-400'}>{r.side.toUpperCase()}</span>
-                  {' '}{Number(r.size).toFixed(4)} {r.symbol} @ ${Number(r.price).toLocaleString()} <span className="text-slate-500">[{r.family}]</span>
+                  {' '}{Number(r.size).toFixed(4)} {r.symbol} @ ${Number(r.price).toLocaleString()} <span className="text-slate-500">[{r.family}{r.variant ? ` · ${r.variant}` : ''}]</span>
                 </div>
                 <div className="text-[11px] text-slate-500 truncate" title={`${r.setup} → ${r.trigger}`}>{r.trigger}</div>
               </div>

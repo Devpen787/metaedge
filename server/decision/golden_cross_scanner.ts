@@ -94,8 +94,14 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
     { agentId, assetSymbol: base, side: 'buy', size: Number((CLIP_USD / price).toFixed(6)), price, leverage: 1,
       nonce: `gc_${agentId.slice(0, 6)}_${base}_${Date.now()}_${generateId().slice(0, 6)}`,
       thesis: {
-        strategy: 'golden_cross', setup: '50/200 daily golden cross',
+        strategy: 'golden_cross', signalFamily: 'golden_cross',
+        cardId: 'volume-confirmed-golden-cross-v1',
+        setup: '50/200 daily golden cross',
         trigger: ctx ? `vol ${ctx.volMultiple.toFixed(1)}x 50d-avg, $${(ctx.turnover24hUsd / 1e6).toFixed(1)}M turnover, 50d ${ctx.distAboveCrossPct.toFixed(1)}% above 200d` : 'vol>=3x50d + $1M turnover',
+        invalidation: `${TRAIL_PCT}% trailing stop from the persisted high-water mark`,
+        holdingWindow: `until ${TRAIL_PCT}% trailing stop`,
+        regime: ctx?.strictCross ? 'strict' : 'participate',
+        benchmark: 'buy_hold',
         trailingStopPct: TRAIL_PCT, mode: MODE, strictCross: ctx?.strictCross ?? null, context: ctx ?? null,
       } },
     { action: 'GC_ENTRY', detailsPrefix: 'Golden-cross entry' }

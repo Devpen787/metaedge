@@ -69,13 +69,13 @@ Copies an accessible paper strategy into the current user's agent book.
 - The copied agent owner is derived from the cookie session and starts `paused` for review.
 - Non-members cannot copy private room strategies by guessing IDs.
 
-## MetaMask Agent Wallet v3 Endpoints
+## MetaMask Agent Wallet v5 Endpoints
 
-These endpoints follow the MetaMask Agent Wallet v3 model: browser login first, readiness checks before review, quote/preview before execution, and live execution locked unless the server explicitly enables it.
+These endpoints follow the MetaMask Agent Wallet v5 model: browser login first, readiness checks before review, quote/preview before execution, and live execution locked unless the server explicitly enables it.
 
 ### `GET /api/mm/readiness`
 Returns a product-safe MetaMask Agent Wallet readiness summary.
-- Includes `mm login browser` guidance, Agent Wallet v3 health, wallet setup, wallet address, Base balance, trading mode, policy limits, 24h outflow policy, 2FA approval requirement, and live lock status.
+- Includes `mm login browser` guidance, Agent Wallet v5 health, wallet setup, wallet address, Base balance, trading mode, policy limits, 24h outflow policy, 2FA approval requirement, and live lock status.
 - Does not return raw policy YAML, stack traces, wallet secrets, session IDs, or CLI credentials.
 - Successful calls emit `METAMASK_READINESS_CHECK` audit events and `metamask_check` graph events.
 

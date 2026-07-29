@@ -93,9 +93,10 @@ try {
   const readiness = await request('/api/mm/readiness', { cookie: session.cookie });
   assert(readiness.response.ok, 'Readiness endpoint failed.');
   assert(readiness.body.loginCommand === 'mm login browser', 'Readiness should point to browser login.');
+  assert(readiness.body.package === '@metamask/agentic-cli@5.2.1', 'Readiness should pin Agentic CLI v5.2.1.');
   assert(readiness.body.liveModeGlobalLock === true, 'Live execution should remain locked by default.');
   assert(Array.isArray(readiness.body.checks), 'Readiness checks missing.');
-  for (const id of ['cli_v3', 'wallet_connected', 'trading_mode', 'policy', 'outflow_24h', 'two_factor', 'live_lock']) {
+  for (const id of ['cli_v5', 'wallet_connected', 'trading_mode', 'policy', 'outflow_24h', 'two_factor', 'live_lock']) {
     assert(readiness.body.checks.some((check) => check.id === id), `Missing readiness check: ${id}`);
   }
   assert(!JSON.stringify(readiness.body).toLowerCase().includes('yaml:'), 'Readiness leaked raw policy internals.');

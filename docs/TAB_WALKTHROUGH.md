@@ -89,7 +89,7 @@ Every tab fetches **real** Agent Wallet data. Execute actions **simulate** in pa
 mode (the default) using real quotes, and run for real in Live mode.
 
 - 👁 Header shows a **Paper mode — actions simulate** banner (indigo); the Mode chip reads *Paper (simulate)*.
-- **Readiness** ✅ — checks list (CLI v3, browser login, wallet setup, trading mode, policy, 24h outflow, 2FA, live lock), each Ready / Needs review.
+- **Readiness** ✅ — checks list (CLI v5, browser login, wallet setup, trading mode, policy, 24h outflow, 2FA, live lock), each Ready / Needs review.
 - **Overview** ✅ `/api/mm/status` `/api/mm/address` `/api/mm/balance`
   - 👁 Auth status, a clean `0x…` address, and a balance preview load (Refresh re-fetches).
   - 👁 **Send**: fill To + Amount → button reads *Simulate Send (paper)* → returns a `simulated: true` fill (no funds moved).

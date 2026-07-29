@@ -15,7 +15,7 @@
 - [x] Room-scoped paper agent strategy sharing and member-only copy flow
 - [x] Agent workshop with leverage limits, perpetual/spot engines, status pausing, and strategy copying
 - [x] Simulated read-only Vault Clubs tracking contributions and milestone achievements
-- [x] High-fidelity MetaMask readiness sheet updated for Agent Wallet v3 browser login, `mm doctor`, policy, 24h outflow, 2FA approval, quote-first swaps/perps/prediction markets, and explicit Live locked state
+- [x] High-fidelity MetaMask readiness sheet updated for Agent Wallet v5 browser login, `mm doctor`, policy, 24h outflow, 2FA approval, quote-first swaps/perps/prediction markets, and explicit Live locked state
 - [x] Central Paper/Live toggle switch in navigation header
 - [x] Knowledge Graph projection endpoint (`/api/graph`) and visual network display in `GraphEvidence.tsx`
 - [x] Optimized `package.json` dev script to run from bundled production code to eliminate Vite-induced rate limits.
@@ -24,7 +24,7 @@
 - [x] Verified build output, zero linter warnings, compiled green.
 
 ## Failed Checks
-- None for journeys 1, 2, 3, 4, 5, and the MetaMask v3 readiness update.
+- None for journeys 1, 2, 3, 4, 5, and the MetaMask v5 readiness update.
 
 ## Next Fix
 - Journey 6: paper trade fill integrity and room attribution.

@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
-    "@metamask/agentic-cli": "^3.1.1",
+    "@metamask/agentic-cli": "5.2.1",
     "@tailwindcss/vite": "^4.1.14",
     "@types/cookie-parser": "^1.4.10",
     "@vitejs/plugin-react": "^5.0.4",

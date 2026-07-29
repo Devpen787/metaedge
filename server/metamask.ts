@@ -44,7 +44,7 @@ metamaskRouter.use((req: any, res, next) => {
   next();
 });
 
-const MM_PACKAGE = '@metamask/agentic-cli@3';
+const MM_PACKAGE = '@metamask/agentic-cli@5.2.1';
 // Prefer the locally installed binary (fast, deterministic); fall back to npx.
 const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
 const liveReviewStore = new MetaMaskLiveReviewStore();
@@ -375,6 +375,17 @@ function unwrap(result: Awaited<ReturnType<typeof runMm>>): any {
   return d && typeof d === 'object' && d.data ? d.data : d;
 }
 
+// Agentic CLI v5 wraps Predict search results as
+// { data: { command, params, result: { markets } } }. Keep one normalizer at
+// the CLI boundary so every product surface receives the same market array.
+function predictMarkets(result: Awaited<ReturnType<typeof runMm>>): any[] {
+  const data = unwrap(result);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.markets)) return data.markets;
+  if (Array.isArray(data?.result?.markets)) return data.result.markets;
+  return [];
+}
+
 // A simulated ("paper") fill. Paper mode is a first-class execution path — it's
 // what competitions run on — so an action returns a real result built from a live
 // quote, marked simulated, with no funds moved. Live mode does the real thing.
@@ -455,7 +466,7 @@ async function computeReadiness(uid: string) {
   const canonicalMatches = Boolean(activeAddress && canonicalAddress
     && activeAddress.toLowerCase() === canonicalAddress.toLowerCase());
   const checks: MmCheck[] = [
-    makeCheck('cli_v3', 'Agent Wallet v3', doctor, 'Agent Wallet CLI v3 responded to health check.'),
+    makeCheck('cli_v5', 'Agent Wallet v5', doctor, 'Agent Wallet CLI v5 responded to health check.'),
     {
       id: 'wallet_connected',
       label: 'Your wallet connected',
@@ -654,7 +665,7 @@ metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
 });
 
 metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
-  await runMmAs(req.userId, ['logout', '--json'], 20_000);
+  await runMmAs(req.userId, ['logout', '--yes', '--json'], 20_000);
   invalidateMmCache(profileHome(req.userId));
   invalidateReadiness(req.userId);
   invalidateWallets(req.userId);
@@ -1232,7 +1243,7 @@ metamaskRouter.get('/api/mm/predict/markets', async (req: any, res) => {
 
   const result = await runMmFor(req, ['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
   if (isCommandOk(result)) {
-    res.json({ markets: result.data, source: 'metamask', message: 'Prediction markets loaded via MetaMask.' });
+    res.json({ markets: predictMarkets(result), source: 'metamask', message: 'Prediction markets loaded via MetaMask.' });
     return;
   }
 
@@ -1367,7 +1378,7 @@ metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
            estimatedCost = feeUsd ? `~$${Number(feeUsd).toFixed(2)} fee` : 'swap fee (est.)';
         } else if (step.action === 'PREDICTION') {
            const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 6_000);
-           const markets = marketsResult.data as any[];
+           const markets = predictMarkets(marketsResult);
            data = { market: markets[0]?.question || 'Market ready' };
         }
       } catch (e) {
@@ -1511,7 +1522,7 @@ metamaskRouter.post('/api/mm/autopilot/execute', async (req: any, res) => {
     let marketName = 'ETH > $4000 by July';
     try {
       const marketsResult = await runMm(['predict', 'markets', 'search', 'ethereum', '--limit', '1', '--json'], 20_000);
-      const markets = marketsResult.data as any[];
+      const markets = predictMarkets(marketsResult);
       if (markets && markets.length > 0) { marketName = markets[0].question || marketName; realDataFound = true; }
     } catch { fallbackUsed = true; }
 

@@ -636,7 +636,7 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
+      <div className="min-h-0 flex-1 min-w-0 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
         {/* Dynamic Header */}
         <header className="sticky top-0 z-40 bg-[#060813]/85 backdrop-blur-xl border-b border-slate-900/80 px-4 py-3 md:px-8 shadow-sm">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">

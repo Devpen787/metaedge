@@ -73,6 +73,7 @@ export function readDatabase(): DatabaseState {
         arenaBadges: [],
         arenaRankSnapshots: {},
         trailingState: {},
+        cooldowns: {},
         decisionRuntime: {
           strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
         }
@@ -112,6 +113,7 @@ export function readDatabase(): DatabaseState {
       parsed.arenaRankSnapshots = {};
     }
     if (!parsed.trailingState) parsed.trailingState = {};
+    if (!parsed.cooldowns) parsed.cooldowns = {};
     if (!parsed.decisionRuntime) {
       parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
     }

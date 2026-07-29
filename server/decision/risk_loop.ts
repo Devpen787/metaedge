@@ -16,6 +16,7 @@ import { AGENT_STRATEGY_PLUGIN } from './runtime.js';
 //
 // Paper only — routes through placePaperTrade, no live order path (same as the runtime).
 const RISK_TICK_MS = Math.max(2_000, Number(process.env.RISK_LOOP_TICK_MS) || 10_000);
+const COOLDOWN_MS = Math.max(0, Number(process.env.GC_COOLDOWN_HOURS ?? '72')) * 3_600_000;   // per-symbol re-entry cooldown after an exit (scanner-consumed)
 
 // One pass over every open autopilot position: enforce its protective stop at the current
 // price. A position with a persisted db.trailingState entry uses a TRAILING stop (ratchet the
@@ -81,11 +82,17 @@ export function checkStopsOnce(): { checked: number; flattened: string[]; traili
     if (result.ok) { flattened.push(b.agentId); console.log(`[risk-os] ${b.trigger} flatten ${b.agentName} ${b.symbol} @ ${b.price} (stop ${b.level.toFixed(4)})`); }
   }
 
-  if (flattened.length) {                                // (C) clear trailing state of the now-flat positions, fresh read
+  if (flattened.length) {                                // (C) clear trailing state + set per-symbol cooldown, fresh read
     const fresh = readDatabase();
     fresh.trailingState = fresh.trailingState || {};
+    fresh.cooldowns = fresh.cooldowns || {};
+    const until = Date.now() + COOLDOWN_MS;
     let changed = false;
-    for (const b of breaches) if (flattened.includes(b.agentId) && fresh.trailingState[`${b.agentId}:${b.symbol}`]) { delete fresh.trailingState[`${b.agentId}:${b.symbol}`]; changed = true; }
+    for (const b of breaches) if (flattened.includes(b.agentId)) {
+      const key = `${b.agentId}:${b.symbol}`;
+      if (fresh.trailingState[key]) { delete fresh.trailingState[key]; changed = true; }
+      if (COOLDOWN_MS > 0) { fresh.cooldowns[key] = until; changed = true; }   // scanner won't re-enter until this passes
+    }
     if (changed) writeDatabase(fresh);
   }
   return { checked, flattened, trailing };

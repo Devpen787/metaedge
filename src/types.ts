@@ -285,6 +285,9 @@ export interface DatabaseState {
   // Persisted trailing-stop high-water marks, keyed by `${agentId}:${symbol}`. Survives
   // process restarts so the Risk-OS's trailing peak is never reset to the current price.
   trailingState?: { [key: string]: { highWaterMark: number; trailPct: number; updatedAt: number } };
+  // Per-symbol cooldown after an exit, keyed `${agentId}:${symbol}` → epoch ms until which the
+  // scanner must not re-enter that symbol (prevents churning back into a fresh loser).
+  cooldowns?: { [key: string]: number };
   decisionRuntime?: {
     strategySpecs: { [hash: string]: FrozenStrategySpec };
     validations: { [id: string]: ValidationRecord };

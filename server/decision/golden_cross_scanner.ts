@@ -21,14 +21,21 @@ const CLIP_USD = Number(process.env.GC_CLIP_USD) || 500;          // notional pe
 const MAX_POSITIONS = Number(process.env.GC_MAX_POSITIONS) || 25;
 const START_BALANCE = Number(process.env.GC_START_BALANCE) || 100_000;
 const SCAN_MS = Math.max(600_000, Number(process.env.GC_SCAN_MS) || 6 * 3_600_000); // ~4x/day; the signal is daily
+const MODE = process.env.GC_ENTRY_MODE || 'participate';           // 'strict' = frozen forward-test signal only; 'participate' = any bull-regime + volume-confirmed coin
+const COOLDOWN_MS = Math.max(0, Number(process.env.GC_COOLDOWN_HOURS ?? '72')) * 3_600_000; // no re-entry into a symbol for N hours after an exit
 
-// Pure entry rule — exactly the researched, fact-gated edge. Exported for the probe.
-export function evaluateGoldenCrossEntry(ind: DailyIndicators, opts: { volMult?: number; minVolUsd?: number } = {}) {
-  const volMult = opts.volMult ?? VOL_MULT, minVolUsd = opts.minVolUsd ?? MIN_VOL_USD;
-  const freshCross = ind.sma50Prev <= ind.sma200Prev && ind.sma50 > ind.sma200;   // 50 crossed above 200 today
+// Entry rule. 'strict' = the frozen forward-test signal (fresh cross + vol + liquidity). 'participate'
+// = wider reach for the paper opportunity book (any BULL-REGIME coin that is volume-confirmed + liquid).
+// strictCross is always reported so the frozen forward test stays extractable from the ledger.
+export function evaluateGoldenCrossEntry(ind: DailyIndicators, opts: { volMult?: number; minVolUsd?: number; mode?: string } = {}) {
+  const volMult = opts.volMult ?? VOL_MULT, minVolUsd = opts.minVolUsd ?? MIN_VOL_USD, mode = opts.mode ?? MODE;
+  const bullRegime = ind.sma50 > ind.sma200;                                       // 50 above 200 (crossed and holding)
+  const freshCross = ind.sma50Prev <= ind.sma200Prev && bullRegime;               // crossed up today specifically
   const volSurge = ind.vol24hUsd != null && ind.vol50dAvg > 0 && ind.vol24hUsd >= volMult * ind.vol50dAvg;
-  const liquid = ind.vol24hUsd != null && ind.vol24hUsd >= minVolUsd;              // absolute liquidity floor
-  return { enter: freshCross && volSurge && liquid, freshCross, volSurge, liquid };
+  const liquid = ind.vol24hUsd != null && ind.vol24hUsd >= minVolUsd;             // absolute liquidity floor
+  const strictCross = freshCross && volSurge && liquid;                            // the frozen forward-test signal
+  const enter = mode === 'strict' ? strictCross : (bullRegime && volSurge && liquid);
+  return { enter, strictCross, freshCross, bullRegime, volSurge, liquid };
 }
 
 // The context captured for every candidate/trade — the "why", not just yes/no.
@@ -42,6 +49,7 @@ export interface GcEnriched {
   return30dPct: number | null;  // recent momentum context
   realizedVolPctDaily: number | null;  // for judging whether a fixed 15% trail fits this token
   days: number; score: number;
+  strictCross?: boolean;        // did this entry also meet the frozen strict (fresh-cross) criteria?
 }
 
 // Ranking is grounded ONLY in what the research proved: the volume multiple (dose-responsive
@@ -88,7 +96,7 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
       thesis: {
         strategy: 'golden_cross', setup: '50/200 daily golden cross',
         trigger: ctx ? `vol ${ctx.volMultiple.toFixed(1)}x 50d-avg, $${(ctx.turnover24hUsd / 1e6).toFixed(1)}M turnover, 50d ${ctx.distAboveCrossPct.toFixed(1)}% above 200d` : 'vol>=3x50d + $1M turnover',
-        trailingStopPct: TRAIL_PCT, context: ctx ?? null,
+        trailingStopPct: TRAIL_PCT, mode: MODE, strictCross: ctx?.strictCross ?? null, context: ctx ?? null,
       } },
     { action: 'GC_ENTRY', detailsPrefix: 'Golden-cross entry' }
   );
@@ -109,16 +117,22 @@ export function scanOnce(): { scanned: number; evaluated: number; qualified: num
   const held = new Set(Object.keys(db.trailingState || {}).filter((k) => k.startsWith(`${agentId}:`)).map((k) => k.slice(agentId.length + 1)));
   let evaluated = 0;
   const candidates: GcEnriched[] = [];
+  const cooldowns = db.cooldowns || {};
+  const now = Date.now();
   for (const base of listBroadSymbols()) {
     if (held.has(base)) continue;
     if (!isRealSpot(base)) continue;                        // frozen hypothesis: eligible real crypto spot only (no leveraged/stable/wrapped/tokenized-equity)
+    if ((cooldowns[`${agentId}:${base}`] || 0) > now) continue;   // in cooldown after a recent exit — don't churn back in
     const tick = getBroadTick(base);
     if (!tick || tick.vol24hUsd < MIN_VOL_USD) continue;   // cheap liquidity pre-filter before touching the daily cache
     const ind = dailyIndicators(base, tick.price, tick.vol24hUsd);
     if (!ind) continue;
     evaluated++;
-    if (!evaluateGoldenCrossEntry(ind).enter) continue;
-    candidates.push(enrichCandidate(base, tick.price, ind));
+    const ev = evaluateGoldenCrossEntry(ind);
+    if (!ev.enter) continue;
+    const enr = enrichCandidate(base, tick.price, ind);
+    enr.strictCross = ev.strictCross;                        // tag so the frozen strict forward-test subset stays extractable
+    candidates.push(enr);
   }
   candidates.sort((a, b) => b.score - a.score);           // best crosses first
   const entries: GcEnriched[] = [];
@@ -131,7 +145,7 @@ export function scanOnce(): { scanned: number; evaluated: number; qualified: num
   // OBSERVABILITY: emit + persist a record for EVERY scan (incl. no-entry), so scans are provable
   // and the forward run is auditable — not silent when nothing qualifies.
   const scanned = listBroadSymbols().length, feed = broadFeedState();
-  const record = { ts: new Date().toISOString(), scanned, evaluated, qualified: candidates.length, opened: entries.length, held: held.size, feedSymbols: feed.symbols, feedAgeSec: feed.ageSec, feedStale: feed.stale, entries: entries.map((e) => ({ base: e.base, score: e.score, volMultiple: e.volMultiple, turnoverUsd: e.turnover24hUsd })) };
+  const record = { ts: new Date().toISOString(), scanned, evaluated, qualified: candidates.length, opened: entries.length, held: held.size, feedSymbols: feed.symbols, feedAgeSec: feed.ageSec, feedStale: feed.stale, mode: MODE, entries: entries.map((e) => ({ base: e.base, score: e.score, volMultiple: e.volMultiple, turnoverUsd: e.turnover24hUsd, strictCross: e.strictCross })) };
   try { fs.mkdirSync(path.dirname(SCAN_LOG), { recursive: true }); fs.appendFileSync(SCAN_LOG, JSON.stringify(record) + '\n'); } catch (e: any) { console.warn('[golden-cross] scan-log write failed:', e?.message); }
   console.log(`[golden-cross] scan: ${scanned} symbols, ${evaluated} evaluated, ${candidates.length} qualified, ${entries.length} opened | feed ${feed.symbols} sym age ${feed.ageSec}s${feed.stale ? ' STALE' : ''}${entries.length ? ' → ' + entries.map((e) => `${e.base}@${e.score}`).join(', ') : ''}`);
   return { scanned, evaluated, qualified: candidates.length, entries, record };

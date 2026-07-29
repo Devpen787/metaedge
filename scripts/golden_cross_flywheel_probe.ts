@@ -28,10 +28,11 @@ const ind = (o: Partial<any>) => ({ sma50: 110, sma200: 100, sma50Prev: 99, sma2
   const risk = await import('../server/decision/risk_loop.js');
 
   // 1) ENTRY LOGIC — the gate truth table (fresh cross + 3x vol + $1M)
-  const passAll = gc.evaluateGoldenCrossEntry(ind({})).enter;
-  const noCross = gc.evaluateGoldenCrossEntry(ind({ sma50Prev: 101 })).enter;    // already above yesterday → not fresh
-  const noVol = gc.evaluateGoldenCrossEntry(ind({ vol24hUsd: 2e6 })).enter;      // 2x < 3x surge
-  const illiquid = gc.evaluateGoldenCrossEntry(ind({ vol50dAvg: 1e5, vol24hUsd: 4e5 })).enter; // 4x surge but < $1M
+  const S = { mode: 'strict' };   // this probe verifies the STRICT frozen-forward-test gates
+  const passAll = gc.evaluateGoldenCrossEntry(ind({}), S).enter;
+  const noCross = gc.evaluateGoldenCrossEntry(ind({ sma50Prev: 101 }), S).enter;    // already above yesterday → not fresh
+  const noVol = gc.evaluateGoldenCrossEntry(ind({ vol24hUsd: 2e6 }), S).enter;      // 2x < 3x surge
+  const illiquid = gc.evaluateGoldenCrossEntry(ind({ vol50dAvg: 1e5, vol24hUsd: 4e5 }), S).enter; // 4x surge but < $1M
   const gatesCorrect = passAll && !noCross && !noVol && !illiquid;
 
   // 2) ENTRY ACTION — open + tag trailing stop (use BTC so the exit price is controllable)

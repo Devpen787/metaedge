@@ -679,6 +679,7 @@ export default function App() {
                  </optgroup>
                  <optgroup label="Analytics & Evidence">
                    <option value="analytics">Platform Data</option>
+                   <option value="research">Research Fleet</option>
                    <option value="graph">Evidence Map</option>
                    <option value="specs">Specs Hub</option>
                    {proModeEnabled && <option value="quant">Quant Engine</option>}

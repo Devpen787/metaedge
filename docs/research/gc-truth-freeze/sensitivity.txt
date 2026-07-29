@@ -1,0 +1,4 @@
+=== SENSITIVITY GRID (net = gross - 0.4%; each a full --max 99999 multi run) ===
+vol>=2x trail10%  n=211   median +4.0% (gross)  win rate 65%
+vol>=2 15x trail%  n=658   median -37.1% (gross)  win rate 8%
+vol>=3x trail20%  n=134   median -2.7% (gross)  win rate 45%

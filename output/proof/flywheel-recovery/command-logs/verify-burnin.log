@@ -1,0 +1,60 @@
+{
+  "output": "/private/tmp/metaedge-flywheel-final-verify2/output/proof/flywheel-recovery/availability-burnin-verification.json",
+  "schemaVersion": 1,
+  "verifiedAt": 1784371253649,
+  "runRoot": "/Users/devinsonpena/Documents/metaedge-gemini/output/proof/flywheel-recovery/soak-availability-split-1784363625767",
+  "durationMs": 7200002,
+  "samples": 479,
+  "utcHours": [
+    "2026-07-18T08",
+    "2026-07-18T09",
+    "2026-07-18T10"
+  ],
+  "processPids": [
+    10496,
+    10578,
+    10579,
+    10580
+  ],
+  "coreProcessPids": [
+    10496,
+    10578,
+    10579,
+    10580
+  ],
+  "metrics": {
+    "endpointFailures": 0,
+    "nonOperationalSamples": 0,
+    "sessionP95Ms": 34.29666699998779,
+    "v3P95Ms": 33.66812500008382,
+    "v3P99Ms": 42.413832999998704,
+    "averageCpuPercent": 12.004384133611696,
+    "p95CpuPercent": 16.9,
+    "startRssKb": 531232,
+    "endRssKb": 605040,
+    "finalSixRssGrowthFraction": 0.13893741340883078,
+    "rawKbPerDay": 264207.6408806684,
+    "derivedKbPerDay": 359.45540959275655,
+    "microstructureDecisionCount": 0,
+    "microstructureDecisionLagP99Ms": null,
+    "fastEventDecisionCount": 0,
+    "fastEventDecisionLagP99Ms": null,
+    "maximumQueueDepth": 0,
+    "maximumQueueLagMs": 0,
+    "maximumUnresolvedDecisions": 0,
+    "finalUnresolvedDecisions": 0,
+    "liveExecutionLockedThroughout": true,
+    "contractCreationWithoutResearch": false,
+    "processRestarts": 0,
+    "finalThirtyRssGrowthFraction": 0.09965948453002994,
+    "maintenanceRecords": 60,
+    "maintenanceBatches": 30,
+    "maximumMaintenanceBatch": 2,
+    "orphanTemporaryFiles": 0,
+    "maximumProcessCount": 5,
+    "maximumTransientProcesses": 1
+  },
+  "failures": [],
+  "passed": true,
+  "liveExecution": "locked"
+}

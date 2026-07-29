@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": 1784371308789,
+  "captures": [
+    {
+      "file": "/private/tmp/metaedge-flywheel-final-verify2/output/playwright/flywheel-recovery/research-fleet-desktop.png",
+      "viewport": {
+        "width": 1440,
+        "height": 1000,
+        "deviceScaleFactor": 1
+      },
+      "requiredTextPresent": true
+    },
+    {
+      "file": "/private/tmp/metaedge-flywheel-final-verify2/output/playwright/flywheel-recovery/research-fleet-mobile.png",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "deviceScaleFactor": 1
+      },
+      "requiredTextPresent": true
+    }
+  ],
+  "liveExecution": "locked"
+}

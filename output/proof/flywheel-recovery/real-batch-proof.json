@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "evidenceExport": {
+    "id": "fast_perp_evidence_export_781c79941eee70962d9111e9",
+    "payloadHash": "db149273b69857737580f863f48edec563325ae26110f1fd19bb610ec4693612",
+    "createdAt": 1784362888410,
+    "expiresAt": 1784384488410,
+    "chunks": 239,
+    "bytes": 746516932,
+    "counts": {
+      "trades": 736154,
+      "books": 163217,
+      "contexts": 284309,
+      "priorResearchRuns": 5,
+      "priorContracts": 0
+    }
+  },
+  "preservedTimeout": {
+    "attemptId": "fast_perp_attempt_e2d811045fd1d49c4aa196f1",
+    "startedAt": 1784362988723,
+    "deadlineAt": 1784363288723,
+    "completedAt": 1784363289113,
+    "durationMs": 300390,
+    "status": "timed_out",
+    "proposalId": null,
+    "canonicalImport": false,
+    "liveExecution": "locked"
+  },
+  "completedRetry": {
+    "attemptId": "fast_perp_attempt_ce8ae515b9f22aaa82f87c0b",
+    "startedAt": 1784363414872,
+    "deadlineAt": 1784363714872,
+    "completedAt": 1784363537319,
+    "durationMs": 122447,
+    "status": "completed",
+    "proposalId": "fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713",
+    "liveExecution": "locked"
+  },
+  "proposal": {
+    "id": "fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713",
+    "payloadHash": "de5dfb0930b26942c3d3a7f2e9d23bc760f7ef5fe4405e6ea8f74371f67aa82f",
+    "runId": "fast_perp_research_7a25be6616811b8ac90a",
+    "evaluations": 300,
+    "contracts": 0,
+    "lifecycleEvents": 0,
+    "blockers": ["AUTHORITATIVE_LIQUIDATION_FLAG_MISSING"],
+    "liveExecution": "locked"
+  },
+  "canonicalImport": {
+    "importedAt": 1784363545698,
+    "runId": "fast_perp_research_7a25be6616811b8ac90a",
+    "contractIds": [],
+    "lifecycleEventIds": [],
+    "persisted": true,
+    "liveExecution": "locked"
+  },
+  "verdict": "PASS_NO_NEW_CONTRACT",
+  "profitabilityClaim": "none",
+  "liveExecution": "locked"
+}

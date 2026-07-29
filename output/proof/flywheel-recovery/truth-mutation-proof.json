@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": 1784371270562,
+  "cases": [
+    {
+      "name": "clean_control",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "name": "late_signal",
+      "passed": true,
+      "failures": [
+        "DECISION_USED_LATE_EVIDENCE:decision_1:signal_event"
+      ]
+    },
+    {
+      "name": "predecision_outcome",
+      "passed": true,
+      "failures": [
+        "OUTCOME_USED_PREDECISION_EVENT:outcome_1:outcome_event"
+      ]
+    },
+    {
+      "name": "precutover_forward",
+      "passed": true,
+      "failures": [
+        "FORWARD_DECISION_PRECEDES_CUTOVER:decision_1",
+        "FORWARD_DECISION_USED_PRECUTOVER_EVIDENCE:decision_1:signal_event"
+      ]
+    },
+    {
+      "name": "canary_promotion",
+      "passed": true,
+      "failures": [
+        "INELIGIBLE_PROMOTABLE_OUTCOME:outcome_1"
+      ]
+    },
+    {
+      "name": "false_nav",
+      "passed": true,
+      "failures": [
+        "NAV_RECONCILIATION_FAILED:outcome_1"
+      ]
+    },
+    {
+      "name": "false_no_trade_value",
+      "passed": true,
+      "failures": [
+        "NO_TRADE_COUNTERFACTUAL_NOT_ZERO:outcome_1"
+      ]
+    },
+    {
+      "name": "no_trade_became_fill",
+      "passed": true,
+      "failures": [
+        "NO_TRADE_DECISION_BECAME_EXECUTABLE:outcome_1"
+      ]
+    },
+    {
+      "name": "unmeasured_promoted_risk",
+      "passed": true,
+      "failures": [
+        "PROMOTED_WITH_UNMEASURED_RISK:contract_1"
+      ]
+    },
+    {
+      "name": "live_switch",
+      "passed": true,
+      "failures": [
+        "LIVE_EXECUTION_ENABLED_DURING_RECOVERY"
+      ]
+    }
+  ],
+  "passed": true,
+  "liveExecution": "locked"
+}

@@ -1,0 +1,25 @@
+
+> react-example@0.0.0 smoke:tabs
+> node scripts/all_tabs_smoke.mjs
+
+
+MetaEdge tab data-layer smoke
+
+  ✅ Dashboard / Platform Data    200  /api/dashboard-data
+  ✅ Trading Agents / Arena       200  /api/agents
+  ✅ Market Charts (prices)       200  /api/prices
+  ✅ Trading Desk (trades)        200  /api/trades
+  ✅ Predictions                  200  /api/predictions
+  ✅ Rooms                        200  /api/rooms
+  ✅ Vaults                       200  /api/vaults
+  ✅ Evidence Map (graph)         200  /api/graph
+  ✅ Profile (session)            200  /api/session
+  ✅ Quant Engine                 200  /api/quant/backtest
+  ⚠️  Intent Solver                400  /api/mm/intent/solve  (OK (registered))
+  ⚠️  Autopilot                    400  /api/mm/autopilot/execute  (OK (registered))
+  ✅ Swarm Copilot                200  /api/mm/chat
+  ✅ MM · wallet status           200  /api/mm/status
+  ⚠️  MM · wallet balance          403  /api/mm/balance  (OK (wallet gate))
+  ✅ MM · predict markets         200  /api/mm/predict/markets
+
+16/16 OK · 0 broken · 0 needs attention

@@ -13,6 +13,8 @@ import PredictionMarkets from './components/PredictionMarkets';
 import SpecsCatalog from './components/SpecsCatalog';
 import TokenMarketChart from './components/TokenMarketChart';
 import AgentWalletModal from './components/AgentWalletModal';
+import WalletCenter from './components/WalletCenter';
+import ResearchFleet from './components/ResearchFleet';
 import CommandPalette from './components/CommandPalette';
 import QuantEngine from './components/QuantEngine';
 import AgenticAutopilot from './components/AgenticAutopilot';
@@ -21,16 +23,28 @@ import SwarmCopilot from './components/SwarmCopilot';
 import { AgentArena } from './components/AgentArena';
 import MetaedgeAnalytics from './components/MetaedgeAnalytics';
 import { Shield, Sparkles, AlertTriangle, Users, Bot, Landmark, Network, Info, CheckCircle, ArrowRightLeft, Coins, Award, TrendingUp, Wallet, Command, Database, Cpu, Search, Terminal, Swords, Loader2, BarChart2 } from 'lucide-react';
-import { apiFetch } from './lib/api';
+import { apiFetch, safeJson } from './lib/api';
 
 import GuidedTour from './components/GuidedTour';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  // Most handlers below are `async` with no catch. A rejected one used to vanish:
+  // no toast, no log the user could see, nothing. ErrorBoundary (wired in main.tsx)
+  // only catches errors thrown during RENDER, never a rejected promise from an
+  // event handler. This surfaces those instead of letting them disappear.
+  const [appError, setAppError] = useState<string | null>(null);
 
   // Navigation
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'rooms' | 'agents' | 'vaults' | 'graph' | 'trading' | 'predictions' | 'specs' | 'charts' | 'quant' | 'autopilot' | 'intent' | 'copilot' | 'arena' | 'analytics'>(() => {
+    // Resolve the social deep link before the profile/setup branch renders.
+    // Otherwise a first-time visitor can finish their profile and land on the
+    // Dashboard even though they arrived through a league invitation.
+    return window.location.pathname === '/arena' || new URLSearchParams(window.location.search).get('league')
+      ? 'arena'
+      : 'dashboard';
+  });
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
   const [proModeEnabled, setProModeEnabled] = useState(false);
   const [showTour, setShowTour] = useState(() => {
@@ -47,8 +61,8 @@ export default function App() {
   // Mode Selection
   const [paperLiveMode, setPaperLiveMode] = useState<'paper' | 'live'>('paper');
   const [showReadiness, setShowReadiness] = useState(false);
+  const [liveArmed, setLiveArmed] = useState(false); // set only via the readiness sheet's Enter Live (allowlisted accounts)
   const [showWalletModal, setShowWalletModal] = useState(false);
-  const [isGlobalAutopilotEnabled, setIsGlobalAutopilotEnabled] = useState(false);
   const [isAgentProcessing, setIsAgentProcessing] = useState(false);
   const [agentProcessingAction, setAgentProcessingAction] = useState<string | null>(null);
 
@@ -65,7 +79,7 @@ export default function App() {
   const loadSession = async () => {
     try {
       const res = await apiFetch('/api/session');
-      const data = await res.json();
+      const data = await safeJson(res);
       if (data.user) {
         setCurrentUser(data.user);
         localStorage.removeItem('metaedge_session_id');
@@ -82,7 +96,7 @@ export default function App() {
     try {
       // Use batched endpoint to avoid hitting rate limits
       const res = await apiFetch('/api/dashboard-data');
-      const data = await res.json();
+      const data = await safeJson(res);
 
       setRooms(data.rooms || []);
       setAgents(data.agents || []);
@@ -100,6 +114,19 @@ export default function App() {
     loadSession();
   }, []);
 
+  // Catch every rejected promise that no handler caught, and show it once. This
+  // is deliberately global rather than 22 hand-wrapped handlers: the failure mode
+  // is "the user clicked and nothing happened", and that can originate anywhere.
+  useEffect(() => {
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const reason: any = e.reason;
+      console.error('Unhandled rejection in a handler:', reason);
+      setAppError(reason?.message || 'Something went wrong. Please try again.');
+    };
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => window.removeEventListener('unhandledrejection', onRejection);
+  }, []);
+
   useEffect(() => {
     if (currentUser) {
       fetchEntities();
@@ -109,6 +136,11 @@ export default function App() {
       const token = params.get('token');
       if (token) {
         handleAutoJoinInvite(token);
+      }
+      // Arena share links (/arena?league=...) land straight in the Arena;
+      // AgentArena picks up the league id from the same param.
+      if (params.get('league')) {
+        setActiveTab('arena');
       }
     }
   }, [currentUser]);
@@ -136,10 +168,21 @@ export default function App() {
     };
     window.addEventListener('agent-processing', handleAgentProcessing);
 
+    // Refresh the session after a wallet connect/disconnect so
+    // currentUser.walletAddress (the compete gate) stays accurate.
+    const handleWalletConnected = () => { loadSession(); };
+    window.addEventListener('wallet-connected', handleWalletConnected);
+
+    // Any component can prompt the user to connect their wallet.
+    const handleOpenWalletModal = () => setShowWalletModal(true);
+    window.addEventListener('open-wallet-modal', handleOpenWalletModal);
+
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('navigate', handleNavigate);
       window.removeEventListener('agent-processing', handleAgentProcessing);
+      window.removeEventListener('wallet-connected', handleWalletConnected);
+      window.removeEventListener('open-wallet-modal', handleOpenWalletModal);
     };
   }, []);
 
@@ -170,7 +213,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName, bio, avatarUrl })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update profile.');
       }
@@ -181,13 +224,17 @@ export default function App() {
       }
     } catch (err) {
       console.error('Error updating profile', err);
+      // Rethrow. Dashboard.handleSaveProfile already catches this, keeps the modal
+      // open and renders the message. Swallowing it here made the promise resolve,
+      // so the modal closed as though the save had succeeded.
+      throw err;
     }
   };
 
   // Faucet claim handler
   const handleClaimFaucet = async () => {
     const res = await apiFetch('/api/faucet', { method: 'POST' });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({
@@ -209,7 +256,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       await fetchEntities();
       return data.room.id;
@@ -225,7 +272,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ inviteToken: token })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       fetchEntities();
       return data.roomId;
@@ -241,12 +288,21 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
       throw new Error(data.error || 'Failed to initialize agent.');
     }
+  };
+
+  const handleAgentAutopilotChanged = async (id: string, enabled: boolean) => {
+    const res = await apiFetch(`/api/agents/${id}/autopilot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    if (res.ok) fetchEntities();
   };
 
   // Update Agent Status handler
@@ -259,7 +315,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to change agent status.');
     }
   };
@@ -271,7 +327,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ strategyId })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
@@ -286,7 +342,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -304,7 +360,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to delete agent.');
     }
   };
@@ -316,7 +372,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to delete trade.');
     }
   };
@@ -328,7 +384,7 @@ export default function App() {
     if (res.ok) {
       fetchEntities();
     } else {
-      const data = await res.json();
+      const data = await safeJson(res);
       throw new Error(data.error || 'Failed to clear trades.');
     }
   };
@@ -340,7 +396,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ amount })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -358,7 +414,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, description })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok) {
       fetchEntities();
     } else {
@@ -373,7 +429,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ side, amount })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       if (currentUser) {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
@@ -391,7 +447,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ outcome })
     });
-    const data = await res.json();
+    const data = await safeJson(res);
     if (res.ok && data.success) {
       loadSession();
       fetchEntities();
@@ -453,6 +509,14 @@ export default function App() {
 
   return (
     <div className="h-screen bg-[#060813] text-slate-100 flex flex-col lg:flex-row relative overflow-hidden">
+      {appError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 max-w-lg w-[90%] rounded-xl border border-rose-500/40 bg-rose-950/90 backdrop-blur px-4 py-3 shadow-lg">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-rose-200">{appError}</p>
+            <button onClick={() => setAppError(null)} className="text-rose-400 hover:text-rose-200 text-xs font-semibold shrink-0">Dismiss</button>
+          </div>
+        </div>
+      )}
       {/* Ambient glowing background meshes */}
       <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-[600px] h-[600px] bg-orange-600/5 rounded-full blur-[150px] pointer-events-none" />
@@ -476,7 +540,14 @@ export default function App() {
             {
               title: 'Overview',
               items: [
-                { id: 'dashboard', label: 'Dashboard', icon: Info }
+                { id: 'dashboard', label: 'Dashboard', icon: Info },
+                { id: 'wallet', label: 'Wallet & Funds', icon: Wallet }
+              ]
+            },
+            {
+              title: 'Compete',
+              items: [
+                { id: 'arena', label: 'Agent Arena', icon: Swords },
               ]
             },
             {
@@ -501,13 +572,13 @@ export default function App() {
               items: [
                 { id: 'rooms', label: 'Rooms', icon: Users },
                 { id: 'vaults', label: 'Vaults', icon: Landmark },
-                { id: 'arena', label: 'Agent Arena', icon: Swords },
               ]
             },
             {
               title: 'Analytics & Evidence',
               items: [
                 { id: 'analytics', label: 'Platform Data', icon: BarChart2 },
+                { id: 'research', label: 'Research Fleet', icon: Database },
                 { id: 'graph', label: 'Evidence Map', icon: Network },
                 { id: 'specs', label: 'Specs Hub', icon: Award },
                 ...(proModeEnabled ? [{ id: 'quant', label: 'Quant Engine', icon: Database }] : [])
@@ -565,7 +636,7 @@ export default function App() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
+      <div className="min-h-0 flex-1 min-w-0 flex flex-col relative z-10 w-full lg:w-[calc(100%-16rem)]">
         {/* Dynamic Header */}
         <header className="sticky top-0 z-40 bg-[#060813]/85 backdrop-blur-xl border-b border-slate-900/80 px-4 py-3 md:px-8 shadow-sm">
           <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
@@ -608,6 +679,7 @@ export default function App() {
                  </optgroup>
                  <optgroup label="Analytics & Evidence">
                    <option value="analytics">Platform Data</option>
+                   <option value="research">Research Fleet</option>
                    <option value="graph">Evidence Map</option>
                    <option value="specs">Specs Hub</option>
                    {proModeEnabled && <option value="quant">Quant Engine</option>}
@@ -637,20 +709,6 @@ export default function App() {
             {/* Mode switch & Wallet */}
             <div className="flex items-center gap-3 ml-auto">
               <button
-                onClick={() => setIsGlobalAutopilotEnabled(!isGlobalAutopilotEnabled)}
-                className={`flex items-center gap-1.5 border rounded-xl px-3 py-1.5 transition-all cursor-pointer shadow-inner ${
-                  isGlobalAutopilotEnabled
-                    ? 'bg-blue-500/10 border-blue-500/40 text-blue-400 shadow-blue-500/20 shadow-[0_0_10px_rgba(59,130,246,0.2)]'
-                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-400'
-                }`}
-                title="Toggle Global Autopilot"
-              >
-                <Cpu className={`w-3.5 h-3.5 ${isGlobalAutopilotEnabled ? 'animate-pulse' : ''}`} />
-                <span className="text-xs font-mono hidden md:inline">
-                  Autopilot {isGlobalAutopilotEnabled ? 'ON' : 'OFF'}
-                </span>
-              </button>
-              <button
                 onClick={() => {
                   setProModeEnabled(!proModeEnabled);
                   if (proModeEnabled && activeTab === 'quant') {
@@ -662,19 +720,31 @@ export default function App() {
                     ? 'bg-fuchsia-500/10 border-fuchsia-500/30 hover:bg-fuchsia-500/20 text-fuchsia-400 shadow-sm shadow-fuchsia-900/20'
                     : 'bg-slate-950 border-slate-900 hover:bg-slate-900 text-slate-500'
                 }`}
-                title="Toggle Advanced Quant Mode"
+                title={proModeEnabled ? 'Hide the Quant Engine tab' : 'Show the Quant Engine tab (advanced backtesting)'}
               >
                 <Database className="w-3.5 h-3.5" />
-                <span className="text-xs font-mono hidden md:inline">Pro Mode</span>
+                <span className="text-xs font-mono hidden md:inline">{proModeEnabled ? 'Pro Tools: On' : 'Pro Tools'}</span>
               </button>
-              <button
-                onClick={() => setShowWalletModal(true)}
-                className="flex items-center gap-1.5 bg-slate-950 border border-slate-900 rounded-xl px-3 py-1.5 hover:bg-slate-900 transition-colors cursor-pointer"
-                title="MetaMask Agent Wallet"
-              >
-                <Wallet className="w-3.5 h-3.5 text-orange-500" />
-                <span className="text-xs font-mono text-slate-300 hidden md:inline">Wallet</span>
-              </button>
+              {(() => {
+                const wa = currentUser?.walletAddress;
+                const isConn = !!wa && wa !== 'connected';
+                return (
+                  <button
+                    onClick={() => setShowWalletModal(true)}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 transition-colors cursor-pointer border ${
+                      isConn
+                        ? 'bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/20'
+                        : 'bg-slate-950 border-slate-900 hover:bg-slate-900'
+                    }`}
+                    title={isConn ? `Agent Wallet: ${wa} — click to view & copy` : 'Connect your MetaMask Agent Wallet'}
+                  >
+                    <Wallet className={`w-3.5 h-3.5 ${isConn ? 'text-emerald-400' : 'text-orange-500'}`} />
+                    <span className={`text-xs font-mono hidden md:inline ${isConn ? 'text-emerald-300' : 'text-slate-300'}`}>
+                      {isConn ? `${wa.slice(0, 6)}…${wa.slice(-4)}` : 'Wallet'}
+                    </span>
+                  </button>
+                );
+              })()}
               <span className="text-[11px] font-mono text-slate-400 hidden lg:inline">Mode:</span>
               <div className="bg-slate-950 border border-slate-900 rounded-xl p-1 flex items-center gap-1.5 shadow-inner">
                 <button
@@ -704,16 +774,18 @@ export default function App() {
         </header>
 
         {/* Main Body */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8 space-y-8 relative z-10">
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 md:p-8 space-y-8 relative z-10">
           <div className="max-w-7xl mx-auto space-y-8">
             {/* Verification Alert when switching modes */}
             {paperLiveMode === 'live' && (
-              <div className="bg-rose-500/10 border border-rose-500/30 p-4 rounded-xl flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className={`p-4 rounded-xl flex items-start gap-3 border ${liveArmed ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-rose-500/10 border-rose-500/30'}`}>
+                <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${liveArmed ? 'text-emerald-400' : 'text-rose-400'}`} />
                 <div>
-                  <h4 className="text-xs font-mono font-bold text-rose-400 uppercase tracking-wider">Live locked</h4>
+                  <h4 className={`text-xs font-mono font-bold uppercase tracking-wider ${liveArmed ? 'text-emerald-400' : 'text-rose-400'}`}>{liveArmed ? 'LIVE — real funds armed' : 'Live locked'}</h4>
                   <p className="text-xs text-slate-300 mt-1 font-mono leading-relaxed">
-                    Real execution needs MetaMask browser login, policy limits, quote preview, and human approval. Return to Paper mode to keep playing with paper money.
+                    {liveArmed
+                      ? 'Live execution is enabled for your account. MetaMask actions (transfer, swap execute, perps open, predictions) move real funds from your Agent Wallet — quotes first, your policy limits and phone approvals apply. Paper trading stays simulated.'
+                      : 'Real execution needs MetaMask browser login, policy limits, quote preview, and human approval. Return to Paper mode to keep playing with paper money.'}
                   </p>
                 </div>
               </div>
@@ -736,7 +808,16 @@ export default function App() {
                     onRefreshAudits={fetchEntities}
                     trades={trades}
                     onEditProfile={handleProfileClaimed}
+                    liveArmed={liveArmed && paperLiveMode === 'live'}
                   />
+                )}
+
+                {currentUser && activeTab === 'wallet' && (
+                  <WalletCenter user={currentUser} onConnect={() => setShowWalletModal(true)} />
+                )}
+
+                {currentUser && activeTab === 'research' && (
+                  <ResearchFleet />
                 )}
 
                 {currentUser && activeTab === 'rooms' && (
@@ -769,8 +850,6 @@ export default function App() {
                     agents={agents}
                     trades={trades}
                     onPlaceSimulatedTrade={handlePlaceSimulatedTrade}
-                    onDeleteTrade={handleTradeDeleted}
-                    onClearAllTrades={handleClearAllTrades}
                   />
                 )}
 
@@ -812,7 +891,14 @@ export default function App() {
                 )}
 
                 {currentUser && activeTab === 'autopilot' && (
-                  <AgenticAutopilot user={currentUser} />
+                  <AgenticAutopilot
+                    user={currentUser}
+                    agents={agents}
+                    trades={trades}
+                    audits={audits}
+                    onAgentAutopilotChanged={handleAgentAutopilotChanged}
+                    onRefresh={fetchEntities}
+                  />
                 )}
 
                 {currentUser && activeTab === 'intent' && (
@@ -824,7 +910,14 @@ export default function App() {
                 )}
 
                 {currentUser && activeTab === 'arena' && (
-                  <AgentArena user={currentUser} />
+                  <AgentArena
+                    user={currentUser}
+                    agents={agents}
+                    trades={trades}
+                    onAgentCreated={handleAgentCreated}
+                    onAgentStatusChanged={handleAgentStatusChanged}
+                    onAgentAutopilotChanged={handleAgentAutopilotChanged}
+                  />
                 )}
 
                 {currentUser && activeTab === 'analytics' && (
@@ -849,28 +942,6 @@ export default function App() {
         </footer>
       </div>
 
-      {/* Global Autopilot Active Indicator */}
-      <AnimatePresence>
-        {isGlobalAutopilotEnabled && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-2 pointer-events-none"
-          >
-            <div className="bg-slate-900/90 backdrop-blur-md border border-blue-500/30 p-3 rounded-xl shadow-lg shadow-blue-500/10 flex items-center gap-3">
-              <div className="relative">
-                <Cpu className="w-5 h-5 text-blue-400" />
-                <div className="absolute top-0 right-0 w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-white font-mono tracking-tight">AUTOPILOT GLOBAL</p>
-                <p className="text-[10px] text-blue-300/80 font-mono">Running Swarm Background Directives</p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Safety Compliance Readiness Sheet */}
       {showReadiness && (
@@ -878,6 +949,12 @@ export default function App() {
           onClose={() => setShowReadiness(false)}
           onStayPaper={() => {
             setPaperLiveMode('paper');
+            setLiveArmed(false);
+            setShowReadiness(false);
+          }}
+          onGoLive={() => {
+            setPaperLiveMode('live');
+            setLiveArmed(true);
             setShowReadiness(false);
           }}
         />

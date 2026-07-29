@@ -1,0 +1,107 @@
+# MetaEdge Gemini Flywheel Recovery Proof Pack
+
+Status: **COMPLETE — AVAILABILITY SPLIT AND PAPER-TRUTH RECOVERY VERIFIED**
+
+This file is the evidence index for the completed engineering recovery. Historical
+replay, canary data, and invalidated soaks are plumbing evidence only and contribute
+zero promotable economic evidence. Live execution remained locked throughout.
+
+## Acceptance evidence
+
+| Requirement | Authoritative evidence | Current status |
+| --- | --- | --- |
+| Legacy containment, 14,312-contract quarantine, archive hashes, recursive read-only state | `persisted-state-verification.json`; `data/archive/flywheel-recovery-preacceptance-1784201556251/manifest.json` | PASS post-burn-in with runtime required |
+| Cutover separates `historical_replay` from `paper_forward` | `persisted-state-verification.json`; `data/opportunity-factory-v3/fast-perp-cutover.json` | PASS post-burn-in |
+| Deterministic 10x canary replay, decision-before-outcome, restart/recovery paths, zero promotable evidence | `deterministic-replay.json` | PASS: 265 decisions / 265 outcomes twice; identical hash `0393afde65e236d5a91a01c89aee9b7a7b8b7d7adb16b8bd1a953c12d7d62ba2`; zero promotable |
+| Deliberate lies are rejected | `truth-mutation-proof.json` | PASS: clean control plus nine rejected mutations |
+| Full discovery, decision, Python parity, TypeScript, production build, strict capability, and product smoke commands | `final-verification-matrix.json`; fresh logs under `command-logs/` | PASS: all 13 commands exit zero |
+| Cached operator UI and API truth | `output/playwright/flywheel-recovery/browser-proof.json`; desktop/mobile screenshots | PASS fresh post-burn-in; UI says paper-only, live locked, and `no_promoted_alpha` |
+| Desktop and mobile screenshots | `output/playwright/flywheel-recovery/research-fleet-desktop.png`; `research-fleet-mobile.png` | PASS fresh post-burn-in |
+| Bounded hourly compression, manifest durability, retention/orphan integrity | `soak-availability-split-1784363625767/summary.json`; `availability-burnin-verification.json` | PASS: 60 files, 30 batches, maximum two, zero orphans |
+| Continuous-paper availability after removing challenger from liveness | `availability-split-proof.json`; real attempt/proposal/import records; two-hour burn-in | PASS: finite 20-cycle/fault proof, real 712 MB batch, and 7,200,002 ms burn-in |
+| Persisted decision/outcome/lifecycle/authorization uniqueness, causality, reconciliation, archive integrity, and current two-key live lock after burn-in | Fresh `persisted-state-verification.json` with `runtimeRequired: true` | PASS |
+| Invalid runs remain visibly excluded | Each invalid run's `INVALIDATED.json`; `proof-manifest.json` | PASS: all invalid runs remain excluded from the completed evidence index |
+| Economic claim boundary | Final operator snapshot and proof conclusion | Current result is `no_promoted_alpha`; no profitability, HFT, or live-readiness claim is authorized |
+
+## Availability-split evidence
+
+- Recovery checkpoint: `3b10d00`.
+- Deterministic fault proof: `availability-split-proof.json`, 20 cycles twice,
+  semantic hash `44756b5a1e87cf5a8e3a71ada18e623a8cdfda565a33fb557b8546d59bf33c87`.
+- Exercised: partial research-run import, partial contract import, duplicate import,
+  killed/abandoned attempt, kill-during-publication, concurrent import, stale,
+  corrupt and expired bundles, and challenger exclusion
+  from continuous health. Synthetic fixtures produced two paper contracts solely to
+  exercise lifecycle/import plumbing.
+- Real export: `fast_perp_evidence_export_781c79941eee70962d9111e9`, payload SHA-256
+  `db149273b69857737580f863f48edec563325ae26110f1fd19bb610ec4693612`,
+  atomically published as a manifest plus bounded per-chunk hashes.
+- First real attempt `fast_perp_attempt_e2d811045fd1d49c4aa196f1` timed out at the
+  fixed five-minute deadline before publication. This is preserved failure evidence.
+- Optimized retry `fast_perp_attempt_ce8ae515b9f22aaa82f87c0b` completed in about
+  two minutes and published `fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713`.
+- Sole-writer import persisted `fast_perp_research_7a25be6616811b8ac90a`: 300
+  evaluations, zero contracts/lifecycle events, blocker
+  `AUTHORITATIVE_LIQUIDATION_FLAG_MISSING`, live locked.
+- Completed burn-in: `soak-availability-split-1784363625767`; server PID 10496;
+  continuous clock PIDs 10578/10579/10580. Research was disabled on this node and
+  reported separately with `affectsContinuousOperation: false`. It passed 479
+  samples over 7,200,002 ms with zero violations. Session p95 34.30 ms; v3 p95/p99
+  33.67/42.41 ms; CPU average/p95 12.00/16.9%; final-window RSS growth 9.97%.
+
+## Invalid first final soak
+
+- Evidence directory: `soak-final-1784219319422/`
+- Started: `2026-07-16T16:28:39.422Z`
+- Expected server PID at start: `49565`
+- Expected clock PIDs at start: signal `49619`, resolver `49620`, challenger `49621`, lifecycle `49622`
+- Both live keys were explicitly false at launch.
+- Permanent exclusion marker: `soak-final-1784219319422/INVALIDATED.json`
+- Failure: scheduled challenger research exceeded the 60-second running-heartbeat budget, produced non-operational samples, and drove CPU p95 above the fixed 70% gate.
+- The preserved partial series and post-invalidation shutdown record are diagnostic evidence only. They can never satisfy acceptance or be relabeled valid.
+- A repaired challenger completed once against the real corpus in 19.955 seconds, followed by the passing compiled all-clock boundary below. This was an interim result under the superseded co-located-daemon design, not final acceptance.
+
+## Passed repair boundary
+
+- Evidence directory: `soak-challenger-settled-1784228991059/`
+- Full scheduled challenger: policy v7, 1,820 global trials, 260 evaluations, 20.110 seconds.
+- Monitor: 600,000 ms / 120 samples, every declared gate true, zero violations, CPU p95 39.4%, live locked.
+- Independent persisted-state verification passed with runtime heartbeats required.
+- This stage proved only the then-current repaired boundary. It did not authorize an economic claim and was later superseded by the three-role availability decision and its finite proof contract.
+
+## Invalid second final soak
+
+- Evidence directory: `soak-final-1784229832302/`
+- Started: `2026-07-16T19:23:52.302Z`
+- Permanent exclusion marker: `soak-final-1784229832302/INVALIDATED.json`; exact pause: `PAUSE_RECORD.json`.
+- Failure: a momentary WebSocket reconnect set the transport `connected` bit false while evidence remained only 142 ms old. The old health expression degraded immediately instead of applying the fixed 30-second evidence-freshness boundary; the guard correctly paused on the resulting false health value.
+- Preserved series: 3,177 rows, SHA-256 `917b81f8de850fbee67abea725ac765ab5fcaf42dfb9d83ae3799dbfee4342af`. Live stayed locked; the run can never be relabeled valid.
+- Test-first repair keeps connection state visible but bases operator eligibility on recorder-running plus current trade/book evidence. The unchanged store freshness gate fails after 30 seconds, and the unchanged soak policy still pauses on false operator health.
+
+## Invalid PTY-supervised final soak
+
+- Evidence directory: `soak-final-1784281383326/`
+- Started: `2026-07-17T09:43:03.326Z`; expected completion no earlier than `2026-07-18T09:43:03.326Z`.
+- Permanent exclusion marker: `soak-final-1784281383326/INVALIDATED.json`.
+- Failure: PTY-backed server and monitor disappeared together after 0.555 measured hours despite every partial sample being green and no application error, pause, or graceful shutdown record. The run is preserved and cannot be relabeled valid.
+
+## Invalid detached replacement final soak
+
+- Evidence directory: `soak-final-1784284906426/`.
+- Started: `2026-07-17T10:41:46.426Z`; invalidated at `2026-07-17T12:38:30.089Z`.
+- Expected server PID: `27288`; clock PIDs: signal `27289`, resolver `27290`, challenger `27291`, lifecycle `27292`.
+- Monitor PID: `27980`.
+- Durable supervision: detached screen sessions `27286.metaedge_final_server` and `27978.metaedge_final_monitor`, independent of individual Codex tool sessions.
+- Permanent exclusion marker: `soak-final-1784284906426/INVALIDATED.json`; original `RUNNING.json` remains preserved as launch evidence.
+- Corrected failure sequence: at the first bad sample endpoints were still about 17 ms, recorder evidence was 254 ms old, storage was healthy, and the 12-core Mac was not proven starved. Challenger's running heartbeat reached 74,085 ms, exceeded its 60-second watchdog, and made operator health false; the monitor then wrote the global fail-closed pause, which stopped recorder and dependent clocks. The preserved 475-row series contains nine non-operational samples and can never be relabeled valid.
+
+## Completion result
+
+Every engineering row above passed. `proof-manifest.json` hashes the final summary,
+series, independent verifier, deterministic/fault/mutation proofs, fresh command
+logs, browser evidence, archive manifest, frozen schema, and decision record.
+Persisted truth and UI truth agree on `no_promoted_alpha`: the recovery proves a
+truthful, bounded paper system, not profitability. The obsolete 24-hour co-located
+daemon acceptance is superseded by the implemented three-role boundary, finite
+batch/fault proof, and two-hour continuous-only burn-in in the corrected decision
+record. Canonical Python integration and any live execution remain separate goals.

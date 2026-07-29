@@ -1,0 +1,254 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": 1784371413391,
+  "burnin": "output/proof/flywheel-recovery/soak-availability-split-1784363625767",
+  "entries": [
+    {
+      "file": "data/archive/flywheel-recovery-preacceptance-1784201556251/manifest.json",
+      "bytes": 858,
+      "sha256": "149b86e522f3bd08efab9ef16fba9c11449a073f426cee9da911d35bc374c931"
+    },
+    {
+      "file": "data/opportunity-factory-v3/fast-perp-cutover.json",
+      "bytes": 858,
+      "sha256": "149b86e522f3bd08efab9ef16fba9c11449a073f426cee9da911d35bc374c931"
+    },
+    {
+      "file": "data/opportunity-factory-v3/research-bridge/attempts/fast_perp_attempt_ce8ae515b9f22aaa82f87c0b.json",
+      "bytes": 357,
+      "sha256": "58f8f82cac004833a9ceae45c4237cf7a0948db6f48621ab2cce5a9da4a50dde"
+    },
+    {
+      "file": "data/opportunity-factory-v3/research-bridge/attempts/fast_perp_attempt_e2d811045fd1d49c4aa196f1.json",
+      "bytes": 577,
+      "sha256": "7aaad0923a59d2f411f5a575016e24d7292f093d25c16961c0512cb51baf21ef"
+    },
+    {
+      "file": "data/opportunity-factory-v3/research-bridge/imports/fast_perp_research_proposal_d29ba4cf8b163e6b8afc8713.json",
+      "bytes": 229,
+      "sha256": "d156dc1296751d68c629c2d007959135408ae084bb813f396753172a71f8ffef"
+    },
+    {
+      "file": "docs/decision_records/2026-07-16-flywheel-availability-split.md",
+      "bytes": 12801,
+      "sha256": "b7f1da247bd8231a36a055fd71a20664a3a99afdfed6cb2cd53fd0606bede6b9"
+    },
+    {
+      "file": "output/playwright/flywheel-recovery/browser-proof.json",
+      "bytes": 660,
+      "sha256": "9d19dd2578e6fb9a1f1822fcba64492522d31ca6a11d0401ee231e29bdcdd586"
+    },
+    {
+      "file": "output/playwright/flywheel-recovery/research-fleet-desktop.png",
+      "bytes": 224820,
+      "sha256": "14fb1a755245f66b523e14b9cab130e7b65d44d5371f26a730cc236297f60780"
+    },
+    {
+      "file": "output/playwright/flywheel-recovery/research-fleet-mobile.png",
+      "bytes": 74053,
+      "sha256": "18db10042604f81c15a51755e1d23af6db664f460a9d903431709a4ee5db05eb"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/availability-burnin-verification.json",
+      "bytes": 1603,
+      "sha256": "6eee90d72bd54aceacf6043eb9a9523b5f195270af0db4ee1f70e4a5eec7ad22"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/availability-split-proof.json",
+      "bytes": 13705,
+      "sha256": "1a38f9b48e74ad76acb954b0fe74a425e76a5e051d11ceb6590ed120535d31a4"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/availability-proof.log",
+      "bytes": 948,
+      "sha256": "38272b19da0d8404224ef636bd7b8d7e410d6a2ca7766369687014a2e2e0bab8"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/browser-proof.log",
+      "bytes": 661,
+      "sha256": "50f544e43fec760ba88055604c10ccba2441868652f56049e7ef0982547a3664"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/browser-smoke.log",
+      "bytes": 1112,
+      "sha256": "103cdcb809b78e72f7d31a7517e8de2d5d486e5ae97316212bbe773488ed3177"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/capability-matrix.log",
+      "bytes": 3386,
+      "sha256": "b3134c148afcca730ccd60d659176257a544bbc20436bf11d9a1ddc31529f284"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/decision-tests.log",
+      "bytes": 1864,
+      "sha256": "8b44830ff98308fe4fcab28c30ac6b5f0023543edffaf4886d2674dcb2b1db26"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/diff-check.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/discovery-tests.log",
+      "bytes": 15624,
+      "sha256": "4f65cbc475959c40d62855d11353b34447027e334d5020944c7a01f9a354caf9"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/persisted-state.log",
+      "bytes": 1906,
+      "sha256": "8fd2aa59ebe0cba4fff2d84a9eca8fbd54b62182b71a1a610d46f32d862cc4df"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/production-build.log",
+      "bytes": 1686,
+      "sha256": "e52d2b2d11d78fbb9ff94501b3874abefd0acf8dfca784d66c9478d3550ace7a"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/reference-parity.log",
+      "bytes": 167,
+      "sha256": "7d09979e083be87ef0b8d5ccd20ccabd5e2a5a46f88b852b5a2ace57617508a5"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/truth-mutations.log",
+      "bytes": 1853,
+      "sha256": "d1d8e8e0c6518e78267dfa8a55ed2144cfd410ece1c9ca7aa0c04656925c6f19"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/typecheck.log",
+      "bytes": 43,
+      "sha256": "690316afb0b6add259284b099f7a26bf28bdfd4ce45d92b582980d8706d0d9dc"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/command-logs/verify-burnin.log",
+      "bytes": 1733,
+      "sha256": "eddea620ca0dea62f0822ff8aded73c67ea3b4f63db589205ea3a034ce2bc4ea"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/deterministic-replay.json",
+      "bytes": 1024,
+      "sha256": "a85a46cd02afabd6ead9bddea1b79e160f3cf375855b25800241143c32bf5353"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/final-verification-matrix.json",
+      "bytes": 5441,
+      "sha256": "84128c6eec4299a585806d784036605103a57684ebd35b5809d3ee69ffa814d9"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/persisted-state-verification.json",
+      "bytes": 1780,
+      "sha256": "3315803ca6ab4b0fef53a44eb56d204f402de102b4422be84d8486cba3c47662"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/real-batch-proof.json",
+      "bytes": 1845,
+      "sha256": "656e05c6eedb9a5b32732de985c59a44dd4a438816bb2650e2cc8583dccc7dac"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-all-clocks-1784204486055/INVALIDATED.json",
+      "bytes": 418,
+      "sha256": "9837a3ceff12f6aa718dd46eeeb723ef98d1194c935fb55f570040c0107c4470"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-all-clocks-1784205184497/INVALIDATED.json",
+      "bytes": 382,
+      "sha256": "645a6c7d473821f398421efac984290e18772cf094b193f72b1dcf3cfe8aff5a"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-availability-split-1784363625767/series.jsonl",
+      "bytes": 685654,
+      "sha256": "119226eeca32d6cdec8cc488446633be7e3ea7c908546fabe0b32d650419ff2a"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-availability-split-1784363625767/summary.json",
+      "bytes": 1504,
+      "sha256": "62c1b35bdcb5487c54e1a235c11494334f40baed430a83c3539e322c08737f43"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-canary-1784203728411/INVALIDATED.json",
+      "bytes": 318,
+      "sha256": "bc8800bd6304c2613d510c45ec6cac4bc239cb67a704affb6feb530a3552473e"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-challenger-boundary-1784227734694/INVALIDATED.json",
+      "bytes": 653,
+      "sha256": "707c66977f4e90e5346b855ad6f5e2cb8460a684930a5a81e14a09f20d68da45"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-challenger-clean-1784228624428/INVALIDATED.json",
+      "bytes": 883,
+      "sha256": "7cddab5b4ce38e238133e06f37eca45f16af494c0d89456b00b46e4047000b19"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-challenger-full-1784227862258/INVALIDATED.json",
+      "bytes": 871,
+      "sha256": "c3316e3d8a0919d718467fb7a9646733abb4857ded55c1bee48690774401854d"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784198658415/INVALIDATED.json",
+      "bytes": 437,
+      "sha256": "fc0dbf8e66f50c4e68f10f4b57fb3bc2fc9d0d1e6df4c531aad16a93bdb401c5"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784206704275/INVALIDATED.json",
+      "bytes": 382,
+      "sha256": "d3dc8bc654652743af3d2e364ea7a0264bb751a0efce26f9034916e9c54f368d"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784219319422/INVALIDATED.json",
+      "bytes": 934,
+      "sha256": "badf2c495e73d987216cae5970f252b0a4d54bf7955760863dcef98ba68365b9"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784229832302/INVALIDATED.json",
+      "bytes": 2640,
+      "sha256": "5f53940b24604c1c9a23fbcd62f6318e482a550f2bb2018eae9a05edbe521ed1"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784281383326/INVALIDATED.json",
+      "bytes": 1935,
+      "sha256": "ec4c30e85039d641249ca2eefaa9bf7d92fe12682a7c825af17a3c6617ce2ea6"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-final-1784284906426/INVALIDATED.json",
+      "bytes": 3299,
+      "sha256": "bfa69495118fd0c97fe65eab8d35eb9315d466c4bbc759d7e59556735b44cc00"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-recorder-1784195221076/INVALIDATED.json",
+      "bytes": 387,
+      "sha256": "9983697540dced03c1a71060c8e1b69ee5f0666be817a90c636edcfab93c63a0"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-recorder-1784195337731/INVALIDATED.json",
+      "bytes": 462,
+      "sha256": "27f53a65d359da979c688933f03065ca100d53fa32b711ed6b52823666a135dc"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-recorder-1784201662179/INVALIDATED.json",
+      "bytes": 421,
+      "sha256": "83b23963227c058be5743fdecf43591a0b790176fdec7437f816bb35c4ab57d6"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/soak-resolver-margin-1784207902772/INVALIDATED.json",
+      "bytes": 445,
+      "sha256": "f4fb70cf76f01b952bbd0b398507086ede46f5af47192c7fde1abb6261208448"
+    },
+    {
+      "file": "output/proof/flywheel-recovery/truth-mutation-proof.json",
+      "bytes": 1648,
+      "sha256": "c55afcbce72fe770fe11734f0ae18429bfd3bb7848e834f49ff82043287086b9"
+    },
+    {
+      "file": "schemas/flywheel-recovery/v1/contracts.schema.json",
+      "bytes": 15205,
+      "sha256": "9cb064e209d39232908dd1ff2b397c0a6015723001a166186e895e2935c4028e"
+    },
+    {
+      "file": "tests/fixtures/flywheel_recovery_contracts_v1.json",
+      "bytes": 5534,
+      "sha256": "0fe9c4534de5c49e1b4175582b8aead035d938e609e3db0100c4ca1f5cc4e24e"
+    }
+  ],
+  "missing": [],
+  "liveExecution": "locked"
+}

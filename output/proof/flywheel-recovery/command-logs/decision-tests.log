@@ -1,0 +1,29 @@
+
+> react-example@0.0.0 test:decision
+> tsx --test tests/decision/*.test.ts
+
+✔ strategy compilation is content-addressed and independent of creation time (10.374042ms)
+✔ all decision layers are recorded in stable order and portfolio can veto a signal (1.514708ms)
+✔ an unvalidated signal becomes a research hypothesis, never a paper candidate (0.307042ms)
+✔ only a matching forward-paper validation promotes the signal to the candidate queue (0.184459ms)
+✔ a rejected strategy remains declined even when market conditions trigger (0.196667ms)
+✔ a passing validation cannot authorize a symbol outside its recorded scope (0.172417ms)
+✔ offline and live adapters produce byte-identical versioned features for the same evidence (1.964625ms)
+✔ realized volatility declines rather than fabricating an insufficient lookback (0.117458ms)
+✔ source-specific freshness budgets mark stale evidence without poisoning current sources (0.135709ms)
+[AUDIT] CREATE_ORDER_INTENT by user_test on ord_intent_1784371268108_1z70xcc (Req: decision_decision_router_fixture)
+[AUDIT] EXECUTE_ORDER_INTENT by user_test on ord_intent_1784371268108_1z70xcc (Req: decision_decision_router_fixture_exec)
+✔ a validated queued decision routes exactly once through the canonical paper ledger (194.9965ms)
+✔ strategy, validation, decision, and execution state survive a database reread (85.459375ms)
+✔ research tools require an explicit universe authority (1.071042ms)
+✔ criterion feed files resolve included symbols without a convenience list (0.668792ms)
+✔ walk-forward validation is reproducible, finite, and promotes only after precommitted gates pass (19.105209ms)
+✔ insufficient samples remain inconclusive rather than being promoted (3.656125ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 467.455958

@@ -1,0 +1,100 @@
+{
+  "artifact": "golden-cross research truth freeze",
+  "created": "2026-07-27",
+  "purpose": "Make the existing in-sample golden-cross result fully reproducible and define what genuinely new evidence must come next. NOT a proof of edge.",
+  "disclaimer": "This is an IN-SAMPLE, PARAMETER-SELECTED, SURVIVORSHIP-BIASED result. No holdout, no out-of-sample, no forward evidence. Nothing here is proven/validated/executable.",
+
+  "git_base_commit": "9ba490a15047662c6f14e7695cccda39e5bdd2fa",
+  "note_on_commit": "The base tree was dirty (uncommitted). The additive --emit-trades change + these freeze artifacts are committed on top; see the commit that adds docs/research/gc-truth-freeze.",
+
+  "scripts": {
+    "golden_cross_backtest.mjs": {
+      "sha256_headline_producing": "b0c5838e74068ae00e19797d83fcefade145d5e0352582f5a4d708f49adebca0",
+      "sha256_with_emit_trades": "18a62a63523a5a39c3d98b70f7f41359732082172edb1599d7c1ef5c1f108cdb",
+      "note": "The --emit-trades change is READ-ONLY: both SHAs produce byte-identical headline stats (median +1.1% gross / win 54% / n=134)."
+    },
+    "gc_robustness.mjs": { "sha256": "ac93fc1a29cc89ae7768d3856486bfccd5fc8d7975b698875740222f5afcd5cf" }
+  },
+
+  "corrected_reproduction_command": "node scripts/golden_cross_backtest.mjs --source multi --max 99999 --fast 50 --slow 200 --wait 90 --trail 15 --volmult 3 --min-vol-usd 1000000",
+  "documented_command_was_BROKEN": {
+    "command": "node scripts/golden_cross_backtest.mjs --source multi --fast 50 --slow 200 --wait 90 --trail 15 --volmult 3 --min-vol-usd 1000000",
+    "bug": "omits --max; MAX defaults to 211, so it runs only the first 211 symbols of the ~2874-coin universe",
+    "result_it_actually_produces": { "median_gross": "-0.4%", "win": "46%", "n": 69 }
+  },
+
+  "frozen_hypothesis": {
+    "instrument_intended": "eligible real crypto spot assets only",
+    "entry": "fresh daily SMA50 crossing above SMA200, AND cross-day volume >= 3x its 50-day average, AND cross-day quote turnover >= $1,000,000",
+    "exit": "15% trailing stop (ratchets on intraday highs, triggers on intraday lows); death-cross / series-end as backstops",
+    "no_other_filters": true
+  },
+
+  "data": {
+    "source_venues": "multi = union of Binance + Gate + MEXC USDT spot pairs, deduped by base asset with priority Binance>Gate>MEXC",
+    "cache_dir": "data/market/momentum/gccache-multi",
+    "cache_files": 2673,
+    "cache_combined_sha256": "0ac3da3cda7f033b208a5f86bcc494f2cfadbdd01cb1b8b29427b2dcdf139750",
+    "cache_inventory_file": "docs/research/gc-truth-freeze/cache-inventory.sha256",
+    "data_cutoff_utc": "2026-07-23 (BTC reference last daily bar; fetched ~2026-07-23)",
+    "universe_discovered": 2874,
+    "usable_symbols_with_200d_history": "~2253 (varies with feed; 2529 raw crosses detected, 134 passed the frozen filters)",
+    "venue_provenance_GAP": "Per-symbol source venue was NOT persisted at fetch time. It is re-derived by multiUniverse() at run time from CURRENT exchange listings, which may differ from the 2026-07-23 fetch. Leave-one-venue-out uses this re-derived mapping. Trade log venue mix: binance 82, gate 50, mexc 2."
+  },
+
+  "instrument_rules": {
+    "excluded_at_backtest_time": ["USDT","USDC","FDUSD","TUSD","DAI","USDP","USDE","PYUSD","GUSD","USDD","USDG","USD1","USDY","USDF","BUSD","EUR","EURT","EURI","WBTC","WETH","WBETH","STETH","WEETH"],
+    "NOT_excluded_MISMATCH": "Leveraged tokens (e.g. BTC3S, PEPE3L, DOGE5L) and tokenized equities (e.g. AMZNON) were NOT excluded. This VIOLATES the frozen 'real spot only' intent. 9 such instruments appear in the 134 trades; a real-spot-only diagnostic is in robustness.txt.",
+    "production_divergence": "Production scanner is Gate-only with ZERO exclusions (admits leveraged + tokenized). Backtest is multi-venue with the stable/wrapped exclusion above. Backtest and production instrument sets DIFFER."
+  },
+
+  "fees_and_fills": {
+    "fee_per_side": 0.002,
+    "round_trip_cost_pct": 0.4,
+    "slippage_model": "NONE (no slippage, no order-book depth, no market impact)",
+    "capacity_model": "NONE ($1M turnover floor is a liquidity proxy, not depth)",
+    "fill_model": "daily OHLC; trailing high-water mark ratchets on daily highs, stop triggers on daily lows; conservative intrabar ordering (stops checked before take-profit). LIVE production only sees 30s snapshots -> a known backtest-vs-live parity gap."
+  },
+
+  "parameter_variants_already_tried_MULTIPLE_TESTING_SURFACE": {
+    "note": "The frozen config (vol3x / $1M / trail15 / wait90 / 50-200) was SELECTED as best-looking from a large in-sample search. No multiple-testing correction was applied.",
+    "source": ["multi","backfill","binance"],
+    "fast_slow": ["50/200","20/50"],
+    "wait_days": [30, 90],
+    "trail_pct": [15, 20, 25, 30, 40, "15+tp30", "25+tp40", "40+tp60"],
+    "volmult": [0, 1.5, 2, 3],
+    "min_vol_usd": [0, 250000, 500000, 1000000],
+    "slope": [0, 20, 50],
+    "fresh_days": [0, 120, 180, 365],
+    "btc_regime_gate": [true, false],
+    "plus_separate": "regime_filter_backtest.mjs (K, hold, cap, source), momentum_backtest.mjs"
+  },
+
+  "headline_result": {
+    "gross": { "median": "+1.1%", "mean": "+18.1%", "win_gt0": "54%", "n": 134 },
+    "net_after_0.4pct": { "median": "+0.69%", "mean": "+17.66%", "win_gt0": "52%", "n": 134 },
+    "median_net_95pct_CI_bootstrap": "[-1.49%, +4.48%] (straddles zero; ignores date-clustering so true CI is wider)"
+  },
+
+  "known_biases_and_mismatches": [
+    "SURVIVORSHIP: universe = coins listed today; dead/delisted coins that crossed then died are absent (optimistic).",
+    "MULTIPLE TESTING: many param combos tried, best selected, no correction; frozen config is not even the best in-sample (vol2x/trail10 = +4.0%/65%).",
+    "NO HOLDOUT / NO OUT-OF-SAMPLE: all discovery and selection on the same data.",
+    "OUTLIER CONCENTRATION: ~66% of total summed return comes from 10 of 134 trades; removing them makes the median negative.",
+    "NON-INDEPENDENCE: 134 trades on only 92 distinct entry dates (one date has 8 simultaneous entries); crypto is highly cross-correlated, so effective sample << 134.",
+    "VENUE HETEROGENEITY: Binance-sourced trades are net-negative; the entire positive result comes from Gate-sourced trades.",
+    "CROSS-VENUE VOLUME: 50-day average and 24h volume can come from different venues; not normalized/tested (and production is Gate-only).",
+    "INSTRUMENT CONTRACT: backtest admits leveraged/tokenized-equity; production admits even more; no enforced 'real spot only' contract.",
+    "BACKTEST-vs-LIVE PARITY: backtest uses daily OHLC extremes for the trail; production ratchets only from 30s snapshots -> spikes between refreshes are missed live.",
+    "DAILY SETTLEMENT (live): production startDailyRoll records the first post-midnight snapshot as the settled bar (wrong).",
+    "NET vs GROSS: the headline +1.1% is GROSS; net of the 0.4% assumed round-trip is +0.69% median; no slippage/impact modeled."
+  ],
+
+  "classification": "FRAGILE HYPOTHESIS",
+  "classification_reasoning": "Positive point estimate but net median +0.69% with 95% CI straddling zero; entirely dependent on a handful of outlier trades (remove top 10 of 134 -> negative median), one venue (Binance subset negative), and an extreme-volume subset (>=10x bucket carries it); one chronological fold strongly negative (29% win); knife-edge parameter sensitivity (trail 15->20 flips sign). Net win rate 52% is below the 55% kill threshold. Not REJECTED because the mechanism is plausible and day-level/high-volume signals are suggestive; not a clean FORWARD-TEST CANDIDATE without the caveats above.",
+
+  "only_acceptable_future_confirmation": [
+    "Genuinely unseen FORWARD data collected strictly AFTER this freeze timestamp (paper trades from the live flywheel, dated after 2026-07-27), OR",
+    "A clearly independent dataset never examined during this parameter search (e.g., a different exchange universe or a pre-2023 history window never used here) — evaluated ONCE at the frozen config with no re-tuning."
+  ]
+}

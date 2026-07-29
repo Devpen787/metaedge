@@ -1,0 +1,108 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { getBroadTick } from '../broad_feed.js';
+
+// DAILY FEATURES — the golden cross is a 200-DAY signal, but the live recorder keeps only ~16
+// days of hourly closes. This bootstraps daily 50/200 SMAs + 50-day average volume from the
+// on-disk daily cache (data/market/momentum/gccache-multi/*.json, ~2.7yr per symbol), and lets
+// TODAY's bar evolve with the live price/volume from the broad feed — so a cross forming right
+// now is detectable without re-fetching 200 days on every tick.
+const DAILY_DIR = path.join(process.cwd(), 'data', 'market', 'momentum', 'gccache-multi');
+const DAY_MS = 86_400_000;
+const series = new Map<string, { t: number; p: number; v: number }[] | null>();   // parsed once per symbol, then cached
+
+function load(base: string): { t: number; p: number; v: number }[] | null {
+  const b = base.toUpperCase();
+  if (series.has(b)) return series.get(b)!;
+  let out: { t: number; p: number; v: number }[] | null = null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(DAILY_DIR, `${b}.json`), 'utf8'));
+    if (Array.isArray(raw)) out = raw.map((d: any) => ({ t: d.t, p: Number(d.p), v: Number(d.v) || 0 })).filter((d) => d.p > 0);
+  } catch { /* no cache for this symbol */ }
+  series.set(b, out && out.length ? out : null);
+  return series.get(b)!;
+}
+const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+
+export interface DailyIndicators {
+  sma50: number; sma200: number; sma50Prev: number; sma200Prev: number;   // today (with live) vs the prior settled day
+  vol50dAvg: number;      // 50-day average DAILY quote volume (USD), from settled bars
+  vol24hUsd: number | null;   // live 24h volume from the broad feed
+  days: number;           // settled daily bars available
+  lastClose: number;      // most recent settled close
+  return30dPct: number | null;      // price vs 30 settled days ago (recent momentum context)
+  realizedVolPctDaily: number | null;   // stdev of the last 30 daily returns (%), for stop/size context
+}
+
+// Daily indicators for a base asset, evolving today's bar with the live price when supplied.
+export function dailyIndicators(base: string, livePrice?: number, live24hUsd?: number): DailyIndicators | null {
+  const s = load(base);
+  if (!s || s.length < 200) return null;                      // need 200 settled days for a 200-SMA
+  const closes = s.map((d) => d.p);
+  const px = livePrice && livePrice > 0 ? livePrice : null;
+  const lastDay = Math.floor(s[s.length - 1].t / DAY_MS), today = Math.floor(Date.now() / DAY_MS);
+  // prev = SMA ending at the last SETTLED bar; today = same series with today's provisional close
+  const settled = lastDay === today ? closes.slice(0, -1) : closes;          // don't double-count a same-day cache bar
+  const todayCloses = px ? [...settled, px] : closes;
+  const sma = (arr: number[], n: number) => arr.length >= n ? mean(arr.slice(-n)) : mean(arr);
+  const nowPx = px ?? settled[settled.length - 1];
+  const ret30 = settled.length > 30 ? (nowPx / settled[settled.length - 30] - 1) * 100 : null;
+  // realized daily vol: stdev of the last 30 settled close-to-close returns (%)
+  let rvol: number | null = null;
+  if (settled.length > 31) {
+    const rets: number[] = [];
+    for (let k = settled.length - 30; k < settled.length; k++) if (settled[k - 1] > 0) rets.push((settled[k] / settled[k - 1] - 1) * 100);
+    const m = mean(rets);
+    rvol = Math.sqrt(rets.reduce((a, r) => a + (r - m) ** 2, 0) / (rets.length || 1));
+  }
+  return {
+    sma50: sma(todayCloses, 50), sma200: sma(todayCloses, 200),
+    sma50Prev: sma(settled, 50), sma200Prev: sma(settled, 200),
+    vol50dAvg: mean(s.slice(-50).map((d) => d.v)),
+    vol24hUsd: live24hUsd ?? getBroadTick(base)?.vol24hUsd ?? null,
+    days: settled.length, lastClose: settled[settled.length - 1],
+    return30dPct: ret30, realizedVolPctDaily: rvol,
+  };
+}
+
+// Extend a symbol's in-memory daily series with a settled bar (called by the daily roll so the
+// SMAs stay current over time instead of decaying against a frozen cache snapshot).
+export function appendDailyClose(base: string, close: number, vol: number, dayTs = Date.now()) {
+  const b = base.toUpperCase();
+  const s = load(b);
+  if (!s || !(close > 0)) return;
+  const day = Math.floor(dayTs / DAY_MS);
+  if (Math.floor(s[s.length - 1].t / DAY_MS) === day) { s[s.length - 1] = { t: dayTs, p: close, v: vol }; }
+  else s.push({ t: dayTs, p: close, v: vol });
+}
+
+// Per-symbol running close for the in-progress UTC day (the last price we observed today).
+const dayState = new Map<string, { day: number; close: number; vol: number }>();
+
+// One roll step: track each symbol's running close; when the UTC day rolls over, FINALIZE the
+// PRIOR day's bar at its LAST-observed close (its actual close), dated to that day — NOT the new
+// day's opening price. tickOf is injectable so the settlement rule can be proven deterministically.
+export function dailyRollStep(nowMs: number = Date.now(), tickOf: (b: string) => { price: number; vol24hUsd: number } | null = getBroadTick): number {
+  const today = Math.floor(nowMs / DAY_MS);
+  let finalized = 0;
+  for (const b of series.keys()) {
+    const t = tickOf(b); if (!t || !(t.price > 0)) continue;
+    const st = dayState.get(b);
+    if (st && today > st.day) { appendDailyClose(b, st.close, st.vol, st.day * DAY_MS + DAY_MS - 1); finalized++; }
+    dayState.set(b, { day: today, close: t.price, vol: t.vol24hUsd });
+  }
+  return finalized;
+}
+
+// Keep the daily series current from the broad feed: track running closes, settle each day at
+// rollover. OPEN BLOCKERS (logged, not fixed): forward bars come from the live feed venue (Gate on
+// the VM) while bootstrap history may be Binance-sourced (cross-venue); and days between the cache
+// fetch and the first roll are a gap.
+export function startDailyRoll() {
+  dailyRollStep();                              // seed today's running close immediately
+  setInterval(() => { const n = dailyRollStep(); if (n) console.log(`[daily-features] settled ${n} prior-day bars`); }, 1_800_000).unref();
+}
+
+// test-only hooks (not used by production paths)
+export function __seedSeries(base: string, bars: { t: number; p: number; v: number }[]) { series.set(base.toUpperCase(), bars); }
+export function __getSeries(base: string) { return series.get(base.toUpperCase()); }

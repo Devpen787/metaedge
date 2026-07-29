@@ -1,0 +1,50 @@
+{
+  "version": "opportunity-factory-v1",
+  "minimumSamplesPerEvaluationSplit": 20,
+  "alpha": 0.05,
+  "requestedPaperNotionalUsd": 250,
+  "stock": {
+    "symbols": [
+      { "symbol": "AAPL", "cik": "0000320193" },
+      { "symbol": "MSFT", "cik": "0000789019" },
+      { "symbol": "NVDA", "cik": "0001045810" },
+      { "symbol": "AMZN", "cik": "0001018724" },
+      { "symbol": "GOOGL", "cik": "0001652044" },
+      { "symbol": "META", "cik": "0001326801" },
+      { "symbol": "TSLA", "cik": "0001318605" },
+      { "symbol": "AMD", "cik": "0000002488" }
+    ],
+    "benchmark": "SPY",
+    "forms": ["8-K", "10-Q", "10-K"],
+    "horizonBars": 10,
+    "upperBarrierBps": 300,
+    "lowerBarrierBps": -200,
+    "roundTripCostBps": 20
+  },
+  "crypto": {
+    "symbols": ["ETH", "SOL", "BNB", "XRP", "ADA", "AVAX", "LINK", "DOT", "NEAR", "UNI", "AAVE", "LTC", "SUI", "ARB", "INJ"],
+    "benchmark": "BTC",
+    "momentumLookbackBars": 24,
+    "minimumMomentumBps": 200,
+    "minimumVolumeAcceleration": 1.2,
+    "horizonBars": 24,
+    "upperBarrierBps": 300,
+    "lowerBarrierBps": -200,
+    "roundTripCostBps": 20
+  },
+  "memecoins": {
+    "symbols": ["DOGE", "SHIB", "PEPE"],
+    "benchmark": "BTC",
+    "momentumLookbackBars": 24,
+    "minimumMomentumBps": 500,
+    "minimumVolumeAcceleration": 1.5,
+    "minimumTradeCountAcceleration": 1.2,
+    "minimumQuoteVolume24hUsd": 10000000,
+    "maximumExitShareOfQuoteVolume": 0.0005,
+    "maximumTop10HolderConcentrationPct": 50,
+    "horizonBars": 12,
+    "upperBarrierBps": 700,
+    "lowerBarrierBps": -500,
+    "roundTripCostBps": 40
+  }
+}

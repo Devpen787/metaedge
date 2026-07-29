@@ -15,6 +15,11 @@ vaultsRouter.post('/api/vaults', (req: any, res) => {
   }
 
   const db = readDatabase();
+  const VAULT_CAP = 25;
+  if (Object.values(db.vaultClubs).filter((v) => v.ownerId === userId).length >= VAULT_CAP) {
+    res.status(400).json({ error: `You've reached the maximum of ${VAULT_CAP} vaults.` });
+    return;
+  }
   const vaultId = 'vlt_' + generateId();
 
   const newVault: VaultClub = {

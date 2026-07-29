@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
 import { ResponsiveContainer, LineChart, Line, YAxis, ReferenceDot } from 'recharts';
 import { User, TradingAgent, PaperTrade } from '../types';
-import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2 } from 'lucide-react';
+import { Landmark, Activity, TrendingUp, Sparkles, HelpCircle, ArrowRightLeft, Percent, ShieldCheck, Trash2, Wallet, RefreshCw } from 'lucide-react';
+import { apiFetch, safeJson } from '../lib/api';
+import ActingAsChip from './ActingAsChip';
+import { spark, originOf } from '../lib/fx';
 
 interface TradingHubProps {
   currentUser: User;
@@ -31,6 +34,20 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  // EdgeOps trade notes: optional thesis attached to the fill. When setup,
+  // trigger AND invalidation are given, the trade counts as edgeops_complete
+  // and feeds the weekly edge report; otherwise it's tagged thesis_missing.
+  const [showThesis, setShowThesis] = useState(false);
+  const [thesisSetup, setThesisSetup] = useState('');
+  const [thesisTrigger, setThesisTrigger] = useState('');
+  const [thesisInvalidation, setThesisInvalidation] = useState('');
+  const submitBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Live-market sanity check via the MetaMask Agent Wallet: one line of real
+  // route/venue data for the trade on the ticket. Fetched on demand (the CLI
+  // call takes a few seconds), rendered as text — never a JSON dump.
+  const [mmRoute, setMmRoute] = useState<{ loading?: boolean; text?: string; error?: string }>({});
+
   // Active agents owned by user
   const myAgents = agents.filter(a => a.status === 'active');
   const filteredAgents = myAgents.filter(a => a.tradeType === tradeType);
@@ -55,7 +72,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
     const fetchPrices = async () => {
       try {
         const response = await fetch('/api/prices');
-        const data = await response.json();
+        const data = await safeJson(response);
         if (data.success && data.prices) {
           const pricesMap: Record<string, number> = {};
           Object.keys(data.prices).forEach(symbol => {
@@ -91,11 +108,45 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
   const positionSize = Number(size) || 0;
   const notional = positionSize * currentPrice;
   const marginRequired = tradeType === 'perp' ? notional / leverage : notional;
-  const estLiquidation = tradeType === 'perp' 
-    ? side === 'long' 
-      ? currentPrice * (1 - 1 / leverage) 
+  const estLiquidation = tradeType === 'perp'
+    ? side === 'long'
+      ? currentPrice * (1 - 1 / leverage)
       : currentPrice * (1 + 1 / leverage)
     : 0;
+
+  const checkMmRoute = async () => {
+    setMmRoute({ loading: true });
+    try {
+      if (tradeType === 'token') {
+        const usd = Math.max(1, Math.round(notional));
+        const res = await apiFetch('/api/mm/swap/quote', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ from: 'USDC', to: assetSymbol === 'BTC' ? 'WBTC' : assetSymbol === 'ETH' ? 'WETH' : assetSymbol, amount: String(usd) })
+        });
+        const body = await safeJson(res);
+        if (!res.ok) throw new Error(body.message || 'No live route for this pair right now.');
+        const inner = body.quote?.data?.quote || {};
+        const dec = Number(inner?.destAsset?.decimals);
+        const out = inner?.destAssetAmount != null && Number.isFinite(dec) ? (Number(inner.destAssetAmount) / 10 ** dec).toFixed(6) : null;
+        if (!out) throw new Error('No live route for this pair right now.');
+        setMmRoute({ text: `${inner.bridgeId || 'MetaMask'} route: ${usd.toLocaleString()} USDC → ${out} ${inner?.destAsset?.symbol || assetSymbol}` });
+      } else {
+        const res = await apiFetch('/api/mm/perps/quote', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ symbol: assetSymbol, side, size: String(positionSize || 0.1), leverage: String(leverage) })
+        });
+        const body = await safeJson(res);
+        if (!res.ok) throw new Error(body.message || 'No live venue quote for this market right now.');
+        const q = body.quote?.data || {};
+        if (!q.entryPrice) throw new Error('No live venue quote for this market right now.');
+        setMmRoute({ text: `hyperliquid: entry $${Number(q.entryPrice).toLocaleString()} · liq $${Number(q.estimatedLiquidationPrice).toLocaleString()} · fee $${q.estimatedFee}` });
+      }
+    } catch (err: any) {
+      setMmRoute({ error: err.message || 'Live route unavailable.' });
+    }
+  };
 
   const handleSubmitTrade = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +170,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
     setSubmitting(true);
     try {
+      const hasNotes = thesisSetup.trim() || thesisTrigger.trim() || thesisInvalidation.trim();
       await onPlaceSimulatedTrade({
         agentId: selectedAgentId,
         assetSymbol,
@@ -126,9 +178,16 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         size: positionSize,
         price: currentPrice,
         leverage: tradeType === 'perp' ? leverage : 1,
-        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
+        nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+        ...(hasNotes ? { thesis: { signalFamily: 'manual', setup: thesisSetup.trim(), trigger: thesisTrigger.trim(), invalidation: thesisInvalidation.trim() } } : {})
       });
       setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
+      // Every fill earns a tactile spark from the button — long/buy runs
+      // emerald, short/sell runs rose, matching the order's own semantics.
+      spark({
+        origin: originOf(submitBtnRef.current),
+        palette: side === 'buy' || side === 'long' ? 'emerald' : 'rose',
+      });
       setSize('');
     } catch (err: any) {
       setError(err.message || 'Failed to place trade');
@@ -139,7 +198,10 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 fade-in relative z-10">
-      
+
+      {/* Guardrail: which wallet real actions would run from. */}
+      <ActingAsChip className="lg:col-span-12" />
+
       {/* Interactive Terminal Order Panel */}
       <div className="lg:col-span-4 bg-slate-900/60 backdrop-blur-md border border-slate-700/50 rounded-3xl p-6 flex flex-col justify-between shadow-2xl relative overflow-hidden group hover:bg-slate-900/80 transition-all">
         <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full blur-[80px] pointer-events-none group-hover:bg-indigo-500/10 transition-all duration-700" />
@@ -320,26 +382,26 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {/* AI Auto-Risk Guards */}
           <div className="grid grid-cols-2 gap-2 mt-2">
-            <button
-              type="button"
-              className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-colors group cursor-pointer text-left shadow-inner"
-            >
+            {/* H1: these were <button> elements with hover states, cursor-pointer
+                and no onClick. They named order types that do not exist and did
+                nothing when pressed. On a trading surface, a control that looks
+                like it arms a trailing stop and does not is a way to lose money.
+                They are no longer buttons, so nothing invites the click, and the
+                copy states what is true. */}
+            <div className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/60 text-left shadow-inner opacity-60">
               <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">Bot Trailing Stop</span>
+                <div className="w-2 h-2 rounded-full bg-slate-600"></div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">Bot Trailing Stop</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Secures profit dynamically</span>
-            </button>
-            <button
-              type="button"
-              className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800 hover:border-indigo-500/50 transition-colors group cursor-pointer text-left shadow-inner"
-            >
+              <span className="text-[9px] text-slate-500 font-mono leading-tight">Not built yet — no trailing stop is armed</span>
+            </div>
+            <div className="flex flex-col items-start bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/60 text-left shadow-inner opacity-60">
               <div className="flex items-center gap-1.5 mb-1">
-                <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-                <span className="text-[10px] font-bold text-slate-300 font-mono">AI Take-Profit</span>
+                <div className="w-2 h-2 rounded-full bg-slate-600"></div>
+                <span className="text-[10px] font-bold text-slate-400 font-mono">AI Take-Profit</span>
               </div>
-              <span className="text-[9px] text-slate-500 font-mono leading-tight group-hover:text-slate-400">Auto-exit on resistance</span>
-            </button>
+              <span className="text-[9px] text-slate-500 font-mono leading-tight">Not built yet — no auto-exit is set</span>
+            </div>
           </div>
 
           {/* AI Insight Box */}
@@ -349,23 +411,56 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                 <Sparkles className="w-4 h-4 text-indigo-400" />
               </div>
               <div>
-                <h5 className="text-[10px] font-bold text-indigo-300 font-mono uppercase tracking-widest mb-1">Agent Intelligence</h5>
+                {/* These four strings claimed to read the market. Their only inputs
+                    are `side`, `tradeType` and `leverage` — no funding rate is
+                    fetched, no moving average is computed, nothing is measured.
+                    "Funding rates show bullish momentum" and "recommended by
+                    historical agent moving averages" were fabricated analysis
+                    printed beside a trade button. Two of them also told the user to
+                    switch on Bot Trailing Stop and AI Take-Profit, features that do
+                    not exist (H1).
+
+                    Replaced with the mechanics of the order type, which is what the
+                    component actually knows. Not renamed to "Agent Intelligence"
+                    with better copy — it is not intelligence, so it does not carry
+                    the name. */}
+                <h5 className="text-[10px] font-bold text-indigo-300 font-mono uppercase tracking-widest mb-1">Order Mechanics</h5>
                 <p className="text-[11px] text-indigo-200/70 leading-relaxed font-sans">
-                  {tradeType === 'perp' 
-                    ? side === 'long'
-                      ? `Funding rates show bullish momentum for ${assetSymbol}. Keep leverage under ${leverage > 10 ? '10x' : '15x'} to survive volatility wicks. Activate Bot Trailing Stop to secure profits dynamically.`
-                      : `Shorting ${assetSymbol} here requires caution against short-squeezes. Ensure AI Take-Profit is active to lock in downside gains automatically.`
-                    : side === 'buy'
-                      ? `Spot accumulation for ${assetSymbol} is safe from funding fees and liquidations. DCAing here is recommended by historical agent moving averages.`
-                      : `Selling ${assetSymbol} spot locks in your capital. The agent suggests keeping 20% in cold storage in case of sudden macro breakouts.`
+                  {tradeType === 'perp'
+                    ? `At ${leverage}x, roughly a ${(100 / leverage).toFixed(1)}% move against you erases this ${assetSymbol} position's margin — liquidation lands sooner, once maintenance margin and fees are counted. Perps also pay or receive funding for every hour held.`
+                    : `Spot ${side === 'buy' ? 'buys' : 'sells'} pay no funding and cannot be liquidated — your ${assetSymbol} exposure is limited to what you put in.`
                   }
                 </p>
               </div>
             </div>
           )}
 
+          {/* EdgeOps trade notes: why this trade — feeds the weekly edge report. */}
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowThesis(!showThesis)}
+              className="w-full flex items-center justify-between px-3 py-2 text-[11px] font-mono text-slate-400 hover:text-slate-200"
+            >
+              <span>📝 Trade notes {thesisSetup && thesisTrigger && thesisInvalidation ? '· thesis complete ✓' : '(optional — why this trade?)'}</span>
+              <span>{showThesis ? '−' : '+'}</span>
+            </button>
+            {showThesis && (
+              <div className="px-3 pb-3 space-y-2">
+                <input value={thesisSetup} onChange={(e) => setThesisSetup(e.target.value)} placeholder="Setup — what condition exists (e.g. ETH near 24h high)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <input value={thesisTrigger} onChange={(e) => setThesisTrigger(e.target.value)} placeholder="Trigger — what fired now (e.g. breakout + rising volume)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <input value={thesisInvalidation} onChange={(e) => setThesisInvalidation(e.target.value)} placeholder="Invalidation — what proves you wrong (e.g. closes back below)"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-indigo-500/50" />
+                <p className="text-[10px] text-slate-600">All three filled = counts in your edge report. Notes ride with the trade — special events, reasons, anything worth remembering.</p>
+              </div>
+            )}
+          </div>
+
           {/* Submit button */}
           <button
+            ref={submitBtnRef}
             type="submit"
             disabled={submitting || !selectedAgentId}
             className={`w-full py-3 rounded-xl font-mono text-xs font-bold shadow-lg transition-all cursor-pointer ${
@@ -379,6 +474,21 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
 
           {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
           {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
+
+          {/* Live-market check via MetaMask — one line, on demand. */}
+          <div className="bg-slate-950/40 border border-slate-800/60 rounded-xl p-3 space-y-2">
+            <button
+              type="button"
+              onClick={checkMmRoute}
+              disabled={!!mmRoute.loading}
+              className="w-full flex items-center justify-center gap-2 text-[11px] font-mono text-orange-400/90 hover:text-orange-300 disabled:opacity-60 transition-colors"
+            >
+              {mmRoute.loading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Wallet className="w-3.5 h-3.5" />}
+              {mmRoute.loading ? 'Checking live market…' : 'Check live route (MetaMask)'}
+            </button>
+            {mmRoute.text && <p className="text-[11px] text-emerald-300 font-mono text-center">{mmRoute.text}</p>}
+            {mmRoute.error && <p className="text-[11px] text-slate-500 font-mono text-center">{mmRoute.error}</p>}
+          </div>
         </form>
 
         {/* Telemetry Status Footer */}
@@ -476,14 +586,18 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
               <Activity className="w-4 h-4 text-emerald-400" />
               Active Leveraged Positions & Spot Fills
             </h4>
-            {trades.length > 0 && onClearAllTrades && (
+            {trades.length > 0 && onClearAllTrades ? (
               <button
                 onClick={onClearAllTrades}
                 className="text-[10px] font-mono text-rose-400 hover:text-rose-300 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-500/30 px-3 py-1.5 rounded-lg transition-colors cursor-pointer shadow-inner"
               >
                 Clear All History
               </button>
-            )}
+            ) : trades.length > 0 ? (
+              <span className="text-[10px] font-mono text-slate-500 border border-slate-800 px-3 py-1.5 rounded-lg">
+                Immutable scored ledger
+              </span>
+            ) : null}
           </div>
 
           {trades.length === 0 ? (
@@ -571,6 +685,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           {trade.pnl === undefined ? '—' : `$${trade.pnl.toFixed(2)}`}
                         </td>
                         <td className="py-2.5 px-3 text-right">
+                          {onDeleteTrade && (
                           <button
                             onClick={() => onDeleteTrade && onDeleteTrade(trade.id)}
                             className="p-1 text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
@@ -578,6 +693,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          )}
                         </td>
                       </tr>
                     );

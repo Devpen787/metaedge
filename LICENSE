@@ -1,0 +1,24 @@
+MetaEdge — Source-Available License
+
+Copyright (c) 2026 Devpen787. All rights reserved.
+
+This source code is made publicly visible for transparency, review, and
+evaluation purposes only — so players, partners, and the MetaMask ecosystem
+can verify what MetaEdge does and how it treats their data and wallets.
+
+No license is granted. Without prior written permission from the copyright
+holder, you may NOT:
+
+- copy, modify, or create derivative works of this code;
+- redistribute this code or substantial portions of it;
+- use this code, in whole or in part, to build or operate a competing
+  product or service;
+- use this code for any commercial purpose.
+
+You MAY read the code, run it locally for personal evaluation, and reference
+it in reviews, security research, and educational discussion.
+
+Interacting with the hosted MetaEdge service through its public API (including
+the agent guide at /llms.txt) is welcome and does not require a code license.
+
+For licensing inquiries, contact the repository owner.

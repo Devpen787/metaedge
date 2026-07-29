@@ -1,0 +1,73 @@
+{
+  "strategyVersion": {
+    "id": "strategy_fixture_v1", "schemaVersion": 1, "strategyFamilyId": "book_imbalance:fast_event",
+    "mechanism": "point-in-time executable imbalance", "parameterGrammar": "threshold=0.4,horizon=15000",
+    "universeVersionId": "universe_fixture_v1",
+    "costModel": { "feeBps": 7, "spreadBps": 1, "slippageBps": 1, "impactBps": 1, "fundingBps": 0,
+      "borrowBps": 0, "adverseSelectionBps": 1, "latencyBps": 1, "totalBps": 12 },
+    "riskPolicy": { "maximumPositionUsd": 250, "maximumLossPerTradeUsd": 5, "maximumStrategyDrawdownUsd": 100,
+      "maximumGrossExposureUsd": 500, "maximumConsecutiveLosses": 8 },
+    "softwareVersion": "fixture-v1", "immutable": true
+  },
+  "paperDecision": {
+    "id": "decision_fixture_v1", "schemaVersion": 1, "contractId": "contract_fixture_v1",
+    "strategyVersionId": "strategy_fixture_v1", "candidateId": "candidate_fixture_v1",
+    "sourceSignalEventIds": ["book_fixture_1"], "symbol": "SOL", "side": "long", "cohort": "taker",
+    "evidenceMode": "paper_forward", "recordedAt": 2000, "decidedAt": 1995, "evidenceCutoffAt": 1990,
+    "expiresAt": 17000, "horizonMs": 15000, "latencyMs": 5, "requestedNotionalUsd": 100,
+    "participationRate": 0.02, "referenceMidPrice": 100, "primaryExecutionPolicy": "taker_market",
+    "decisionLagMs": 10, "riskReservationId": "reservation_fixture_v1", "decisionBlockers": [],
+    "liveExecution": "locked"
+  },
+  "paperOutcome": {
+    "id": "outcome_fixture_v1", "schemaVersion": 1, "decisionId": "decision_fixture_v1",
+    "contractId": "contract_fixture_v1", "cohort": "taker", "evidenceMode": "paper_forward",
+    "promotable": true, "resolvedAt": 17000, "expectedResolutionAt": 17000, "timingDeviationMs": 0,
+    "timingValid": true, "status": "filled", "requestedNotionalUsd": 100, "filledNotionalUsd": 100,
+    "fillRate": 1, "queueAheadUsd": null, "entryPrice": 100, "exitPrice": 100.2, "grossPnlUsd": 0.2,
+    "feeUsd": 0.07, "spreadUsd": 0.01, "slippageUsd": 0.01, "impactUsd": 0.01, "fundingUsd": 0,
+    "borrowUsd": 0, "adverseSelectionUsd": 0.01, "netPnlUsd": 0.09,
+    "noTradeCounterfactualNetPnlUsd": 0, "navBeforeUsd": 10000, "navAfterUsd": 10000.09,
+    "marginUsedUsd": 100, "blockers": [], "sourceEventIds": ["book_fixture_2"], "liveExecution": "locked"
+  },
+  "lifecycleEvent": {
+    "id": "lifecycle_fixture_v1", "schemaVersion": 1, "contractId": "contract_fixture_v1",
+    "from": "research_candidate", "to": "shadow_paper", "evaluatedAt": 2000,
+    "evidence": { "historicalSamples": 40, "untouchedForwardSamples": 0, "fundedPaperSamples": 0,
+      "forwardNetEdgeLowerBoundBps": null, "costStressedNetEdgeLowerBoundBps": null, "worstNetReturnBps": null,
+      "realizedNetPnlUsd": 0, "fillRate": null, "costCalibrationErrorFraction": null, "maximumDrawdownUsd": 0,
+      "consecutiveLosses": 0, "sourceObservationIds": ["book_fixture_1"], "eligibleSampleIds": [],
+      "independentBlockCount": 4, "blockLengthMs": 75000, "statisticalLookNumber": 1, "alphaSpent": 0.025 },
+    "passed": true, "blockers": [], "policyId": "economic-objective-policy-v2", "eligibleSampleIds": [],
+    "independentBlockCount": 4, "statisticalLookNumber": 1, "alphaSpent": 0.025,
+    "costEvidence": { "expectedCostBps": 12, "calibrationErrorFraction": null },
+    "riskEvidence": { "maximumDrawdownUsd": 0, "consecutiveLosses": 0 }, "liveExecution": "locked"
+  },
+  "operatorHealth": {
+    "schemaVersion": 1, "generatedAt": 3000, "operational": true, "status": "operational",
+    "recorder": { "running": true, "connected": true, "symbols": ["SOL"], "reconnectAttempt": 0,
+      "lastMessageAt": 2990, "startedAt": 1000, "sourceVersion": "fixture-v1", "liveExecution": "locked" },
+    "eventAgeMs": 10, "queueLagMs": 0, "apiSummaryAgeMs": 100, "apiSummaryStale": false,
+    "diskGrowthBytesPerDay": 1000, "contractChurn": 0, "unresolvedDecisions": 0, "unresolvedOutcomes": 0,
+    "storageHealthy": true,
+    "clocks": [
+      { "id": "signal_evaluator", "cadenceMs": 250, "ageMs": 10, "queueDepth": 0, "queueLagMs": 0, "fresh": true, "bounded": true, "status": "healthy" },
+      { "id": "outcome_resolver", "cadenceMs": 1000, "ageMs": 20, "queueDepth": 0, "queueLagMs": 0, "fresh": true, "bounded": true, "status": "healthy" },
+      { "id": "lifecycle_evaluator", "cadenceMs": 60000, "ageMs": 1000, "queueDepth": 0, "queueLagMs": 0, "fresh": true, "bounded": true, "status": "healthy" }
+    ],
+    "researchBatch": { "id": "challenger_research", "cadenceMs": 21600000, "timeoutMs": 300000,
+      "latestAttemptId": "attempt_fixture_v1", "status": "failed", "startedAt": 1000, "completedAt": 1200,
+      "deadlineAt": 301000, "failureReason": "fixture failure", "affectsContinuousOperation": false },
+    "currentLiveLock": true, "liveExecution": "locked"
+  },
+  "executionAuthorization": {
+    "id": "authorization_fixture_v1", "schemaVersion": 1, "packetDigest": "packet_fixture_v1",
+    "preparationId": "preparation_fixture_v1", "contractId": "contract_fixture_v1",
+    "signalId": "decision_fixture_v1", "quoteReference": "quote_fixture_v1", "userId": "user_fixture_v1",
+    "trade": { "symbol": "SOL", "side": "long", "size": 1, "leverage": 1, "orderType": "market" },
+    "executionBounds": { "maximumNotionalUsd": 100, "maximumFeeUsd": 1, "referenceEntryPrice": 100,
+      "maximumSlippageBps": 20 }, "approvedAt": 3000, "expiresAt": 120000,
+    "confirmation": "I AUTHORIZE THIS EXACT REVIEWED TRADE", "oneTime": true, "atomicState": "approved",
+    "executionReference": null, "failureReason": null
+  }
+}

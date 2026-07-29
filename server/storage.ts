@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
 
 export const DB_FILE = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
+let databaseCache: { mtimeMs: number; size: number; state: DatabaseState } | null = null;
 
 export function readDatabase(): DatabaseState {
   try {
@@ -46,6 +47,14 @@ export function readDatabase(): DatabaseState {
       }
     };
 
+    const now = Date.now();
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const defaultLeagues = {
+      "lg_bluechip": { id: "lg_bluechip", name: "Blue Chip Autopilot", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 14, createdAt: now, endsAt: now + 14 * DAY_MS, risk: "Low" as const, prize: "Reputation Badge", status: "active" as const },
+      "lg_degen": { id: "lg_degen", name: "Degen Perps Only", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 7, createdAt: now, endsAt: now + 7 * DAY_MS, risk: "High" as const, prize: "500 USDC Pool", status: "active" as const },
+      "lg_predict": { id: "lg_predict", name: "Prediction Market Masters", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 30, createdAt: now, endsAt: now + 30 * DAY_MS, risk: "Medium" as const, prize: "Winner Takes All", status: "active" as const },
+    };
+
     if (!fs.existsSync(DB_FILE)) {
       const initialState: DatabaseState = {
         users: {},
@@ -57,7 +66,17 @@ export function readDatabase(): DatabaseState {
         vaultClubs: {},
         auditEvents: [],
         graphEvents: [],
-        predictionMarkets: defaultPredictions
+        predictionMarkets: defaultPredictions,
+        predictionBetEvents: [],
+        arenaLeagues: defaultLeagues,
+        arenaMembers: [],
+        arenaBadges: [],
+        arenaRankSnapshots: {},
+        trailingState: {},
+        cooldowns: {},
+        decisionRuntime: {
+          strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
+        }
       };
       
       const dir = path.dirname(DB_FILE);
@@ -65,8 +84,11 @@ export function readDatabase(): DatabaseState {
         fs.mkdirSync(dir, { recursive: true });
       }
       fs.writeFileSync(DB_FILE, JSON.stringify(initialState, null, 2), 'utf8');
+      const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: initialState };
       return initialState;
     }
+    const stat = fs.statSync(DB_FILE);
+    if (databaseCache && databaseCache.mtimeMs === stat.mtimeMs && databaseCache.size === stat.size) return databaseCache.state;
     const data = fs.readFileSync(DB_FILE, 'utf8');
     const parsed = JSON.parse(data);
     if (!parsed.sessions) {
@@ -75,20 +97,61 @@ export function readDatabase(): DatabaseState {
     if (!parsed.predictionMarkets) {
       parsed.predictionMarkets = defaultPredictions;
     }
+    if (!parsed.predictionBetEvents) {
+      parsed.predictionBetEvents = [];
+    }
+    if (!parsed.arenaLeagues) {
+      parsed.arenaLeagues = defaultLeagues;
+    }
+    if (!parsed.arenaMembers) {
+      parsed.arenaMembers = [];
+    }
+    if (!parsed.arenaBadges) {
+      parsed.arenaBadges = [];
+    }
+    if (!parsed.arenaRankSnapshots) {
+      parsed.arenaRankSnapshots = {};
+    }
+    if (!parsed.trailingState) parsed.trailingState = {};
+    if (!parsed.cooldowns) parsed.cooldowns = {};
+    if (!parsed.decisionRuntime) {
+      parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
+    }
+    if (!parsed.decisionRuntime.strategySpecs) parsed.decisionRuntime.strategySpecs = {};
+    if (!parsed.decisionRuntime.validations) parsed.decisionRuntime.validations = {};
+    if (!parsed.decisionRuntime.decisions) parsed.decisionRuntime.decisions = [];
+    if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
+    databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: parsed };
     return parsed;
   } catch (error) {
-    console.error('Error reading database, resetting:', error);
+    databaseCache = null;
+    console.error('Error reading database:', error);
+    // A parse error must NOT silently wipe everyone's data. Preserve the bad
+    // file for forensics, then try to recover from the newest daily backup
+    // before falling back to an empty state.
+    try {
+      if (fs.existsSync(DB_FILE)) {
+        fs.copyFileSync(DB_FILE, `${DB_FILE}.corrupt-${Date.now()}`);
+      }
+      const dir = path.dirname(DB_FILE);
+      const backups = fs.existsSync(dir)
+        ? fs.readdirSync(dir).filter((f) => f.startsWith('db-backup-')).sort()
+        : [];
+      for (const b of backups.reverse()) {
+        try {
+          const recovered = JSON.parse(fs.readFileSync(path.join(dir, b), 'utf8'));
+          console.warn(`Recovered database from backup: ${b}`);
+          return recovered;
+        } catch { /* try older backup */ }
+      }
+    } catch (recoverErr) {
+      console.error('Backup recovery failed:', recoverErr);
+    }
     return {
-      users: {},
-      sessions: {},
-      rooms: {},
-      agents: {},
-      strategies: {},
-      trades: [],
-      vaultClubs: {},
-      auditEvents: [],
-      graphEvents: [],
-      predictionMarkets: {}
+      users: {}, sessions: {}, rooms: {}, agents: {}, strategies: {}, trades: [],
+      vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {}, predictionBetEvents: [],
+      arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {},
+      decisionRuntime: { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} }
     };
   }
 }
@@ -99,7 +162,20 @@ export function writeDatabase(state: DatabaseState) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(DB_FILE, JSON.stringify(state, null, 2), 'utf8');
+    // Atomic write: serialize, flush to a temp file, then rename over the
+    // target. rename() is atomic on POSIX, so a crash mid-write can never leave
+    // a half-written (corrupt) db.json — readers see either the old or new file.
+    const json = JSON.stringify(state, null, 2);
+    const tmp = `${DB_FILE}.tmp-${process.pid}`;
+    const fd = fs.openSync(tmp, 'w');
+    try {
+      fs.writeFileSync(fd, json, 'utf8');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(tmp, DB_FILE);
+    const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state };
   } catch (error) {
     console.error('Error writing database:', error);
   }

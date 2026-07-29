@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Send, Bot, User as UserIcon, ShieldCheck, Zap, Activity, ChevronRight, CheckCircle, AlertTriangle, Terminal, Cpu, Sparkles } from 'lucide-react';
 import { User } from '../types';
 import { setGlobalAgentProcessing } from '../lib/events';
+import { parseTrade, executeTrade, TradeAction } from '../lib/tradeParse';
+import { safeJson } from '../lib/api';
 
 interface SwarmCopilotProps {
   user: User;
@@ -19,8 +21,11 @@ interface ChatMessage {
     estimatedCost: string;
     riskLevel: string;
   } | null;
+  tradeAction?: TradeAction | null;
+  fillResult?: string;
   status?: 'typing' | 'done' | 'executing' | 'executed';
 }
+
 
 export default function SwarmCopilot({ user }: SwarmCopilotProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -57,7 +62,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMsg.content, model: selectedModel, apiKey: userApiKey })
       });
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (res.ok) {
         const assistantMsg: ChatMessage = {
@@ -66,6 +71,7 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
           content: data.response,
           thoughtProcess: data.thoughtProcess,
           proposal: data.proposal,
+          tradeAction: parseTrade(userMsg.content),
           status: 'done'
         };
         setMessages(prev => [...prev, assistantMsg]);
@@ -85,22 +91,14 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
     }
   };
 
-  const handleExecuteProposal = async (msgId: string) => {
+  // Real execution: place the parsed trade as a paper fill that scores in the Arena.
+  const handleExecuteTrade = async (msgId: string, action: TradeAction) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'executing' } : m));
-    setGlobalAgentProcessing(true, 'Executing Proposal');
-    
-    // Simulate execution
-    await new Promise(r => setTimeout(r, 2000));
-    
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, status: 'executed' } : m));
-    
-    setMessages(prev => [...prev, {
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: 'Execution complete. Assets have been routed securely according to the proposal.',
-      status: 'done'
-    }]);
-    
+    setGlobalAgentProcessing(true, 'Executing paper trade');
+    const result = await executeTrade(action, 'copilot', messages.filter(m => m.role === 'user').slice(-1)[0]?.content);
+    setMessages(prev => prev.map(m => m.id === msgId
+      ? { ...m, status: result.ok ? 'executed' : 'done', fillResult: result.message }
+      : m));
     setGlobalAgentProcessing(false);
   };
 
@@ -219,21 +217,31 @@ export default function SwarmCopilot({ user }: SwarmCopilotProps) {
                             <span className={msg.proposal.riskLevel === 'High' ? 'text-red-400' : msg.proposal.riskLevel === 'Medium' ? 'text-amber-400' : 'text-emerald-400'}>{msg.proposal.riskLevel} Risk</span>
                           </span>
                         </div>
-
-                        <button 
-                          onClick={() => handleExecuteProposal(msg.id)}
-                          disabled={msg.status !== 'done'}
-                          className={`w-full py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors ${
-                            msg.status === 'executed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
-                            msg.status === 'executing' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
-                            'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/50'
-                          }`}
-                        >
-                          {msg.status === 'executed' ? <><CheckCircle className="w-4 h-4" /> Executed</> :
-                           msg.status === 'executing' ? <><Activity className="w-4 h-4 animate-spin" /> Simulating...</> :
-                           <><ShieldCheck className="w-4 h-4" /> Approve & Execute</>}
-                        </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Real, executable paper trade parsed from your request. */}
+                  {msg.role === 'assistant' && msg.tradeAction && (
+                    <div className="bg-slate-950 border border-indigo-500/30 rounded-xl p-3 mt-2 max-w-sm space-y-2">
+                      <div className="text-xs font-mono text-slate-300">
+                        Ready to place: <span className={`font-bold ${msg.tradeAction.side === 'buy' ? 'text-emerald-400' : 'text-rose-400'}`}>{msg.tradeAction.side.toUpperCase()}</span>{' '}
+                        {msg.tradeAction.usd ? `$${msg.tradeAction.usd.toLocaleString()} of ` : `${msg.tradeAction.size} `}{msg.tradeAction.assetSymbol}
+                      </div>
+                      <button
+                        onClick={() => handleExecuteTrade(msg.id, msg.tradeAction!)}
+                        disabled={msg.status === 'executing' || msg.status === 'executed'}
+                        className={`w-full py-2 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors ${
+                          msg.status === 'executed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                          msg.status === 'executing' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
+                          'bg-indigo-600 hover:bg-indigo-500 text-white'
+                        }`}
+                      >
+                        {msg.status === 'executed' ? <><CheckCircle className="w-4 h-4" /> Filled</> :
+                         msg.status === 'executing' ? <><Activity className="w-4 h-4 animate-spin" /> Placing…</> :
+                         <><Zap className="w-4 h-4" /> Execute paper trade</>}
+                      </button>
+                      {msg.fillResult && <p className="text-[11px] font-mono text-slate-400 leading-relaxed">{msg.fillResult}</p>}
                     </div>
                   )}
                 </div>

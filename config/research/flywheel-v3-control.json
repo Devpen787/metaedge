@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "liveExecution": "locked",
+  "pauseAll": false,
+  "lockTtlMs": 1800000,
+  "constraints": [
+    "LIVE_EXECUTION_LOCKED",
+    "NUMERICAL_VERDICT_NON_OVERRIDABLE",
+    "FAILED_EVIDENCE_APPEND_ONLY",
+    "ALL_RESEARCH_CHOICES_COUNT_AS_TRIALS",
+    "LOCKBOX_EVALUATED_ONCE_PER_FAMILY_VERSION",
+    "FORWARD_EVIDENCE_MUST_POSTDATE_RESEARCH",
+    "NO_NEW_EVIDENCE_REQUIRES_EARLY_EXIT",
+    "PRIVATE_KEYS_AND_SECRETS_PROHIBITED"
+  ],
+  "budget": {
+    "maxRunsPerDay": 2000,
+    "maxEstimatedTokensPerDay": 2000000,
+    "reportOnlyAtFraction": 0.8,
+    "maxAgentActionsPerDay": 8,
+    "maxDeclaredTrialsPerCycle": 2500,
+    "maxAttemptsPerEvidence": 3,
+    "maxConsecutiveFailures": 3,
+    "maxRuntimeMs": 300000
+  },
+  "loops": [
+    { "id": "market_data_health", "goal": "Poll and audit freshness, gaps, anomalies and universe coverage", "nonGoals": ["alter historical evidence", "place orders", "promote research"], "cadenceMs": 300000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": false, "numericalGateRequired": true, "humanGates": ["source replacement", "historical repair"], "writeScopes": ["data/opportunity-factory/**", "data/opportunity-factory-v3/data-world/**"] },
+    { "id": "evidence_gap_acquisition", "goal": "Prioritize and propose the smallest missing evidence adapter", "nonGoals": ["invent missing evidence", "add credentials"], "cadenceMs": 86400000, "level": "L1_report", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": false, "humanGates": ["new paid source", "credentialed venue"], "writeScopes": ["data/opportunity-factory-v3/control/**"] },
+    { "id": "signal_discovery", "goal": "Generate accountable transformed and structured alpha hypotheses", "nonGoals": ["promote strategies", "change validation thresholds"], "cadenceMs": 21600000, "level": "L2_assisted", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["new mechanism family", "code changes"], "writeScopes": ["data/opportunity-factory-v2/**", "data/opportunity-factory-v3/world/**", "data/opportunity-factory-v3/signals/**", "data/opportunity-factory-v3/lane-signals/**", "data/opportunity-factory-v3/council/**"] },
+    { "id": "fast_event_research", "goal": "Evaluate concurrent microstructure and fast-event liquidity-selected perp mechanisms and create accountable economic contracts", "nonGoals": ["claim colocated HFT", "route live", "weaken lifecycle gates"], "cadenceMs": 60000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["new mechanism family", "threshold changes"], "writeScopes": ["data/opportunity-factory-v3/fast-perps/research-runs.jsonl", "data/opportunity-factory-v3/economics/paper-trade-contracts.jsonl", "data/opportunity-factory-v3/economics/lifecycle-events.jsonl"] },
+    { "id": "fast_event_shadow", "goal": "Create and resolve forward-only event-driven shadow orders with execution cohorts and sequential NAV", "nonGoals": ["send live orders", "backdate decisions", "choose cohorts with hindsight"], "cadenceMs": 60000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["execution policy changes", "risk-limit changes"], "writeScopes": ["data/opportunity-factory-v3/economics/shadow-decisions.jsonl", "data/opportunity-factory-v3/economics/shadow-outcomes.jsonl"] },
+    { "id": "numerical_verification", "goal": "Apply non-overridable research, lockbox, regime and cost gates", "nonGoals": ["narrative override", "live execution"], "cadenceMs": 21600000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["threshold changes"], "writeScopes": ["data/opportunity-factory-v3/validation/**"] },
+    { "id": "forward_quarantine", "goal": "Resolve forecasts only from genuinely new authoritative evidence", "nonGoals": ["backfill outcomes", "tune candidates"], "cadenceMs": 3600000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["ambiguous settlement"], "writeScopes": ["data/market/predictions/**", "data/opportunity-factory-v2/**"] },
+    { "id": "execution_calibration", "goal": "Measure paper fills, impact, decay and execution shortfall", "nonGoals": ["send orders", "assume fills"], "cadenceMs": 3600000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["venue access"], "writeScopes": ["data/opportunity-factory-v3/portfolio-execution/**"] },
+    { "id": "portfolio_risk", "goal": "Create a target paper portfolio under factor, tail and capacity limits", "nonGoals": ["allocate to unvalidated alpha", "route live"], "cadenceMs": 3600000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["risk-limit changes"], "writeScopes": ["data/opportunity-factory-v3/portfolio-execution/**"] },
+    { "id": "attribution_research", "goal": "Attribute forward outcomes and trigger decay, kill or new research", "nonGoals": ["patch failed strategy", "rewrite outcomes"], "cadenceMs": 86400000, "level": "L3_deterministic", "earlyExitWithoutNewEvidence": true, "numericalGateRequired": true, "humanGates": ["strategy resurrection"], "writeScopes": ["data/opportunity-factory-v3/forward-learning/**"] },
+    { "id": "research_governance", "goal": "Audit budgets, state drift, stalled research and human inbox", "nonGoals": ["perform strategy research", "auto-approve"], "cadenceMs": 86400000, "level": "L1_report", "earlyExitWithoutNewEvidence": false, "numericalGateRequired": false, "humanGates": ["all escalations"], "writeScopes": ["data/opportunity-factory-v3/control/**"] }
+  ]
+}

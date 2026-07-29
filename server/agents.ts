@@ -17,6 +17,13 @@ agentsRouter.post('/api/agents', (req: any, res) => {
   }
 
   const db = readDatabase();
+  // Per-user cap: prevents unbounded agent creation from bloating the db.
+  const AGENT_CAP = 50;
+  const owned = Object.values(db.agents).filter((a: any) => a.ownerId === userId && a.status !== 'revoked').length;
+  if (owned >= AGENT_CAP) {
+    res.status(400).json({ error: `You already have the maximum of ${AGENT_CAP} agents. Retire some to create more.` });
+    return;
+  }
   const sharedRoomId = sanitizeText(roomId || '', 50);
   if (sharedRoomId) {
     const room = db.rooms[sharedRoomId];
@@ -36,7 +43,7 @@ agentsRouter.post('/api/agents', (req: any, res) => {
     roomId: sharedRoomId || undefined,
     assetSymbol: agentAssetSymbol,
     tradeType: tradeType === 'perp' ? 'perp' : 'token',
-    strategyType: ['momentum', 'grid', 'mean_reversion', 'custom_ai'].includes(strategyType) ? strategyType : 'momentum',
+    strategyType: ['momentum', 'grid', 'mean_reversion', 'custom_ai', 'rsi_meanrev'].includes(strategyType) ? strategyType : 'momentum',
     leverage: Number(leverage) || 1,
     status: 'active',
     createdAt: Date.now()
@@ -107,6 +114,41 @@ agentsRouter.get('/api/agents', (req: any, res) => {
 });
 
 // Toggle Status (Pause / Revoke)
+// Toggle per-agent Autopilot: opt-in server-side self-trading (paper only).
+agentsRouter.post('/api/agents/:id/autopilot', (req: any, res) => {
+  const userId = req.userId;
+  const agentId = req.params.id;
+  const enabled = req.body?.enabled === true;
+
+  const db = readDatabase();
+  const agent = db.agents[agentId];
+  if (!agent) { res.status(404).json({ error: 'Agent not found' }); return; }
+  if (agent.ownerId !== userId) { res.status(403).json({ error: 'Unauthorized to control this agent' }); return; }
+
+  // Cap concurrent autopilot agents per user so the server-side engine stays
+  // bounded no matter how many agents someone spins up.
+  const AUTOPILOT_CAP = 8;
+  if (enabled && !agent.autopilot) {
+    const active = Object.values(db.agents).filter((a) => a.ownerId === userId && a.autopilot && a.status === 'active').length;
+    if (active >= AUTOPILOT_CAP) {
+      res.status(400).json({ error: `You can run at most ${AUTOPILOT_CAP} agents on autopilot at once.` });
+      return;
+    }
+  }
+
+  agent.autopilot = enabled;
+  db.auditEvents.push({
+    id: 'aud_' + generateId(),
+    userId,
+    username: db.users[userId].username,
+    action: 'AGENT_AUTOPILOT',
+    details: `${enabled ? 'Enabled' : 'Disabled'} autopilot for agent ${agent.name}`,
+    timestamp: Date.now()
+  });
+  writeDatabase(db);
+  res.json({ success: true, agent });
+});
+
 agentsRouter.post('/api/agents/:id/status', (req: any, res) => {
   const userId = req.userId;
   const agentId = req.params.id;

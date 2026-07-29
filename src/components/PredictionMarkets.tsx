@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { User, PredictionMarket } from '../types';
-import { Landmark, TrendingUp, HelpCircle, AlertCircle, Percent, Coins, ChevronRight, Award } from 'lucide-react';
+import { Landmark, TrendingUp, HelpCircle, AlertCircle, Percent, Coins, ChevronRight, Award, Globe } from 'lucide-react';
+import { apiFetch, safeJson } from '../lib/api';
 
 interface PredictionMarketsProps {
   currentUser: User;
@@ -11,6 +12,51 @@ interface PredictionMarketsProps {
 }
 
 export default function PredictionMarkets({ currentUser, markets, onPlacePredictionBet, onResolveMarket }: PredictionMarketsProps) {
+  // Real-world market discovery (MetaMask → Polymarket fallback, labeled).
+  const [liveMarkets, setLiveMarkets] = useState<any[] | null>(null);
+  const [liveSource, setLiveSource] = useState<string>('');
+  const [liveError, setLiveError] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch('/api/mm/predict/markets');
+        const data = await safeJson(res);
+        if (cancelled) return;
+        if (!res.ok) {
+          setLiveMarkets([]);
+          // Kept SOURCE-AGNOSTIC deliberately: this endpoint is slated to become a
+          // Polymarket -> Kalshi -> local proxy, so naming a provider here would
+          // start lying the day that proxy lands.
+          setLiveError(data?.error || `Could not load live markets (HTTP ${res.status}).`);
+          return;
+        }
+        setLiveSource(data.source || '');
+        if (data.source === 'polymarket') {
+          setLiveMarkets((data.markets || []).slice(0, 5));
+        } else {
+          // MetaMask CLI shape: dig out the market list and normalize lightly.
+          const raw = data.markets?.data?.result?.markets || data.markets?.result?.markets || [];
+          setLiveMarkets(raw.slice(0, 5).map((m: any) => {
+            let prices: number[] = [];
+            // Malformed outcomePrices yields NO price rather than a wrong one — but
+            // say so, instead of silently rendering a market with a blank price.
+            try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); }
+            catch { console.warn('[predictions] malformed outcomePrices for market', m?.id); }
+            return { id: m.id, question: m.question, yesPrice: prices[0] ?? null, volume: m.volume ?? m.liquidity ?? null };
+          }));
+        }
+        setLiveError('');
+      } catch (err: any) {
+        if (!cancelled) {
+          setLiveMarkets([]);
+          setLiveError(err?.message || 'Could not reach the markets service.');
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [selectedMarketId, setSelectedMarketId] = useState('');
   const [betSide, setBetSide] = useState<'yes' | 'no'>('yes');
   const [betAmount, setBetAmount] = useState('1000');
@@ -23,6 +69,14 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
   const resolvedMarkets = markets.filter(m => m.resolved);
 
   const selectedMarket = markets.find(m => m.id === selectedMarketId) || activeMarkets[0];
+
+  // Share price / est. shares, guarded against empty or one-sided pools so the
+  // preview never renders "Infinity" or "NaN".
+  const poolTotal = selectedMarket ? selectedMarket.yesPool + selectedMarket.noPool : 0;
+  const sharePrice = poolTotal > 0
+    ? (betSide === 'yes' ? selectedMarket.yesPool : selectedMarket.noPool) / poolTotal
+    : 0.5;
+  const estShares = sharePrice > 0 ? (Number(betAmount) || 0) / sharePrice : 0;
 
   const handlePlaceBet = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -145,13 +199,13 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
               <div className="flex justify-between">
                 <span>Est. Shares Purchased:</span>
                 <span className="text-white font-bold">
-                  {(Number(betAmount) / (betSide === 'yes' ? (selectedMarket.yesPool / (selectedMarket.yesPool + selectedMarket.noPool)) : (selectedMarket.noPool / (selectedMarket.yesPool + selectedMarket.noPool))) || 0).toFixed(2)}
+                  {estShares.toFixed(2)}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Share Price:</span>
                 <span className="text-indigo-400">
-                  ${(betSide === 'yes' ? (selectedMarket.yesPool / (selectedMarket.yesPool + selectedMarket.noPool)) : (selectedMarket.noPool / (selectedMarket.yesPool + selectedMarket.noPool))).toFixed(2)}
+                  ${sharePrice.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -167,28 +221,23 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
             {error && <p className="text-[11px] text-rose-400 font-mono text-center">{error}</p>}
             {success && <p className="text-[11px] text-emerald-400 font-mono text-center">{success}</p>}
 
-            {/* Test resolution panel for admins/devs */}
-            <div className="pt-4 border-t border-slate-800 mt-4 space-y-2.5">
-              <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Simulated Resolution Trigger</h5>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleResolveMarket(selectedMarket.id, 'yes')}
-                  disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg cursor-pointer transition-all"
-                >
-                  Resolve YES
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleResolveMarket(selectedMarket.id, 'no')}
-                  disabled={resolving}
-                  className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg cursor-pointer transition-all"
-                >
-                  Resolve NO
-                </button>
+            {/* Dev-only resolution trigger — hidden from players; markets settle
+                at their end date. Enable locally with VITE_DEV_TOOLS=true. */}
+            {(import.meta as any).env?.VITE_DEV_TOOLS === 'true' && (
+              <div className="pt-4 border-t border-slate-800 mt-4 space-y-2.5">
+                <h5 className="text-[10px] font-mono text-slate-500 uppercase tracking-wider">Dev: Force Resolution</h5>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => handleResolveMarket(selectedMarket.id, 'yes')} disabled={resolving}
+                    className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg transition-all">
+                    Resolve YES
+                  </button>
+                  <button type="button" onClick={() => handleResolveMarket(selectedMarket.id, 'no')} disabled={resolving}
+                    className="flex-1 py-1.5 text-[10px] font-mono font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg transition-all">
+                    Resolve NO
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
           </form>
         ) : (
           <div className="text-center py-12 text-xs text-slate-500 font-mono">
@@ -196,14 +245,52 @@ export default function PredictionMarkets({ currentUser, markets, onPlacePredict
           </div>
         )}
 
-        <div className="text-[10px] font-mono text-slate-500 bg-slate-950/20 p-3 rounded-xl border border-slate-900/30 mt-4 text-center">
-          Decentralized pool pricing derived from current liquidity allocations.
+        <div className="text-[10px] font-mono text-emerald-400/80 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/20 mt-4 text-center">
+          {currentUser.walletAddress
+            ? 'Your position is marked-to-market and counts toward your Agent Arena standing.'
+            : 'Your position is marked-to-market now. Connect your Agent Wallet when you are ready for ranked Arena scoring.'}
         </div>
       </div>
 
       {/* Markets List catalog */}
       <div className="lg:col-span-7 flex flex-col gap-6">
-        
+
+        {/* Live real-world markets — discovery strip, honestly labeled by source. */}
+        <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Globe className="w-4 h-4 text-orange-400" />
+              Live Markets
+            </h4>
+            {liveSource && (
+              <span className="text-[10px] font-mono text-slate-500">
+                via {liveSource === 'metamask' ? 'MetaMask Agent Wallet' : 'Polymarket (MetaMask unavailable)'}
+              </span>
+            )}
+          </div>
+          {liveMarkets === null ? (
+            <div className="text-[11px] font-mono text-slate-500">Loading real markets…</div>
+          ) : liveMarkets.length === 0 ? (
+            <div className="text-[11px] font-mono text-slate-500">
+              {liveError
+                ? <span className="text-rose-400">{liveError} — paper pools below still work.</span>
+                : 'Live markets are unavailable right now — paper pools below still work.'}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {liveMarkets.map((m) => (
+                <div key={m.id} className="flex items-center justify-between gap-3 text-[11px] font-mono bg-slate-950/30 rounded-lg px-3 py-2 border border-slate-900/50">
+                  <span className="text-slate-300 truncate">{m.question}</span>
+                  <span className="shrink-0 text-slate-500">
+                    {m.yesPrice != null && <span className="text-emerald-400">YES {(Number(m.yesPrice) * 100).toFixed(0)}¢</span>}
+                    {m.volume != null && <span className="ml-2">vol ${Math.round(Number(m.volume)).toLocaleString()}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Active Markets Panel */}
         <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 flex-1">
           <h4 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-1.5">

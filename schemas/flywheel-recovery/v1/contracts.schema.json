@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metaedge.local/schemas/flywheel-recovery/v1/contracts.schema.json",
+  "title": "MetaEdge Flywheel Recovery Contracts v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["strategyVersion", "paperDecision", "paperOutcome", "lifecycleEvent", "operatorHealth", "executionAuthorization"],
+  "properties": {
+    "strategyVersion": { "$ref": "#/$defs/strategyVersion" },
+    "paperDecision": { "$ref": "#/$defs/paperDecision" },
+    "paperOutcome": { "$ref": "#/$defs/paperOutcome" },
+    "lifecycleEvent": { "$ref": "#/$defs/lifecycleEvent" },
+    "operatorHealth": { "$ref": "#/$defs/operatorHealth" },
+    "executionAuthorization": { "$ref": "#/$defs/executionAuthorization" }
+  },
+  "$defs": {
+    "nullableNumber": { "type": ["number", "null"] },
+    "nullableString": { "type": ["string", "null"] },
+    "stringArray": { "type": "array", "items": { "type": "string" } },
+    "costs": {
+      "type": "object", "additionalProperties": false,
+      "required": ["feeBps", "spreadBps", "slippageBps", "impactBps", "fundingBps", "borrowBps", "adverseSelectionBps", "latencyBps", "totalBps"],
+      "properties": {
+        "feeBps": { "type": "number" }, "spreadBps": { "type": "number" }, "slippageBps": { "type": "number" },
+        "impactBps": { "type": "number" }, "fundingBps": { "type": "number" }, "borrowBps": { "type": "number" },
+        "adverseSelectionBps": { "type": "number" }, "latencyBps": { "type": "number" }, "totalBps": { "type": "number" }
+      }
+    },
+    "riskLimits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maximumPositionUsd", "maximumLossPerTradeUsd", "maximumStrategyDrawdownUsd", "maximumGrossExposureUsd", "maximumConsecutiveLosses"],
+      "properties": {
+        "maximumPositionUsd": { "type": "number" }, "maximumLossPerTradeUsd": { "type": "number" },
+        "maximumStrategyDrawdownUsd": { "type": "number" }, "maximumGrossExposureUsd": { "type": "number" },
+        "maximumConsecutiveLosses": { "type": "number" }
+      }
+    },
+    "strategyVersion": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "schemaVersion", "strategyFamilyId", "mechanism", "parameterGrammar", "universeVersionId", "costModel", "riskPolicy", "softwareVersion", "immutable"],
+      "properties": {
+        "id": { "type": "string" }, "schemaVersion": { "const": 1 }, "strategyFamilyId": { "type": "string" },
+        "mechanism": { "type": "string" }, "parameterGrammar": { "type": "string" }, "universeVersionId": { "type": "string" },
+        "costModel": { "$ref": "#/$defs/costs" }, "riskPolicy": { "$ref": "#/$defs/riskLimits" },
+        "softwareVersion": { "type": "string" }, "immutable": { "const": true }
+      }
+    },
+    "paperDecision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "schemaVersion", "contractId", "strategyVersionId", "candidateId", "sourceSignalEventIds", "symbol", "side", "cohort", "evidenceMode", "recordedAt", "decidedAt", "evidenceCutoffAt", "expiresAt", "horizonMs", "latencyMs", "requestedNotionalUsd", "participationRate", "referenceMidPrice", "primaryExecutionPolicy", "decisionLagMs", "riskReservationId", "liveExecution"],
+      "properties": {
+        "id": { "type": "string" }, "schemaVersion": { "const": 1 }, "contractId": { "type": "string" },
+        "strategyVersionId": { "type": "string" }, "candidateId": { "type": "string" }, "sourceSignalEventIds": { "$ref": "#/$defs/stringArray" },
+        "symbol": { "type": "string" }, "side": { "enum": ["long", "short"] }, "cohort": { "enum": ["maker", "taker", "delayed", "no_trade"] },
+        "evidenceMode": { "enum": ["historical_replay", "canary", "paper_forward"] }, "recordedAt": { "type": "number" },
+        "decidedAt": { "type": "number" }, "evidenceCutoffAt": { "type": "number" }, "expiresAt": { "type": "number" },
+        "horizonMs": { "type": "number" }, "latencyMs": { "type": "number" }, "requestedNotionalUsd": { "type": "number" },
+        "participationRate": { "type": "number" }, "referenceMidPrice": { "type": "number" },
+        "primaryExecutionPolicy": { "enum": ["taker_market", "maker_limit", "delayed_taker"] },
+        "decisionLagMs": { "type": "number" }, "riskReservationId": { "type": "string" },
+        "decisionBlockers": { "$ref": "#/$defs/stringArray" }, "liveExecution": { "const": "locked" }
+      }
+    },
+    "paperOutcome": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "schemaVersion", "decisionId", "contractId", "cohort", "evidenceMode", "promotable", "resolvedAt", "expectedResolutionAt", "timingDeviationMs", "timingValid", "status", "requestedNotionalUsd", "filledNotionalUsd", "fillRate", "queueAheadUsd", "entryPrice", "exitPrice", "grossPnlUsd", "feeUsd", "spreadUsd", "slippageUsd", "impactUsd", "fundingUsd", "borrowUsd", "adverseSelectionUsd", "netPnlUsd", "noTradeCounterfactualNetPnlUsd", "navBeforeUsd", "navAfterUsd", "marginUsedUsd", "blockers", "sourceEventIds", "liveExecution"],
+      "properties": {
+        "id": { "type": "string" }, "schemaVersion": { "const": 1 }, "decisionId": { "type": "string" }, "contractId": { "type": "string" },
+        "cohort": { "enum": ["maker", "taker", "delayed", "no_trade"] }, "evidenceMode": { "enum": ["historical_replay", "canary", "paper_forward"] },
+        "promotable": { "type": "boolean" }, "resolvedAt": { "type": "number" }, "expectedResolutionAt": { "type": "number" },
+        "timingDeviationMs": { "$ref": "#/$defs/nullableNumber" }, "timingValid": { "type": "boolean" },
+        "status": { "enum": ["filled", "partial", "cancelled", "no_trade", "risk_rejected", "unresolved"] },
+        "requestedNotionalUsd": { "type": "number" }, "filledNotionalUsd": { "type": "number" }, "fillRate": { "type": "number" },
+        "queueAheadUsd": { "$ref": "#/$defs/nullableNumber" }, "entryPrice": { "$ref": "#/$defs/nullableNumber" },
+        "exitPrice": { "$ref": "#/$defs/nullableNumber" }, "grossPnlUsd": { "type": "number" }, "feeUsd": { "type": "number" },
+        "spreadUsd": { "type": "number" }, "slippageUsd": { "type": "number" }, "impactUsd": { "type": "number" },
+        "fundingUsd": { "type": "number" }, "borrowUsd": { "type": "number" }, "adverseSelectionUsd": { "type": "number" },
+        "netPnlUsd": { "type": "number" }, "noTradeCounterfactualNetPnlUsd": { "type": "number" },
+        "navBeforeUsd": { "type": "number" }, "navAfterUsd": { "type": "number" }, "marginUsedUsd": { "type": "number" },
+        "blockers": { "$ref": "#/$defs/stringArray" }, "sourceEventIds": { "$ref": "#/$defs/stringArray" },
+        "liveExecution": { "const": "locked" }
+      }
+    },
+    "lifecycleEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["historicalSamples", "untouchedForwardSamples", "fundedPaperSamples", "forwardNetEdgeLowerBoundBps", "costStressedNetEdgeLowerBoundBps", "worstNetReturnBps", "realizedNetPnlUsd", "fillRate", "costCalibrationErrorFraction", "maximumDrawdownUsd", "consecutiveLosses", "sourceObservationIds"],
+      "properties": {
+        "historicalSamples": { "type": "number" }, "untouchedForwardSamples": { "type": "number" }, "fundedPaperSamples": { "type": "number" },
+        "forwardNetEdgeLowerBoundBps": { "$ref": "#/$defs/nullableNumber" }, "costStressedNetEdgeLowerBoundBps": { "$ref": "#/$defs/nullableNumber" },
+        "worstNetReturnBps": { "$ref": "#/$defs/nullableNumber" }, "realizedNetPnlUsd": { "type": "number" },
+        "fillRate": { "$ref": "#/$defs/nullableNumber" }, "costCalibrationErrorFraction": { "$ref": "#/$defs/nullableNumber" },
+        "maximumDrawdownUsd": { "type": "number" }, "consecutiveLosses": { "type": "number" },
+        "sourceObservationIds": { "$ref": "#/$defs/stringArray" }, "eligibleSampleIds": { "$ref": "#/$defs/stringArray" },
+        "independentBlockCount": { "type": "number" }, "blockLengthMs": { "type": "number" },
+        "statisticalLookNumber": { "type": "number" }, "alphaSpent": { "type": "number" }
+      }
+    },
+    "lifecycleEvent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "schemaVersion", "contractId", "from", "to", "evaluatedAt", "evidence", "passed", "blockers", "policyId", "eligibleSampleIds", "independentBlockCount", "statisticalLookNumber", "alphaSpent", "costEvidence", "riskEvidence", "liveExecution"],
+      "properties": {
+        "id": { "type": "string" }, "schemaVersion": { "const": 1 }, "contractId": { "type": "string" },
+        "from": { "enum": ["research_candidate", "shadow_paper", "funded_paper", "live_review"] },
+        "to": { "enum": ["research_candidate", "shadow_paper", "funded_paper", "live_review"] },
+        "evaluatedAt": { "type": "number" }, "evidence": { "$ref": "#/$defs/lifecycleEvidence" }, "passed": { "type": "boolean" },
+        "blockers": { "$ref": "#/$defs/stringArray" }, "policyId": { "type": "string" }, "eligibleSampleIds": { "$ref": "#/$defs/stringArray" },
+        "independentBlockCount": { "type": "number" }, "statisticalLookNumber": { "type": "number" }, "alphaSpent": { "type": "number" },
+        "costEvidence": { "type": "object", "additionalProperties": false, "required": ["expectedCostBps", "calibrationErrorFraction"],
+          "properties": { "expectedCostBps": { "type": "number" }, "calibrationErrorFraction": { "$ref": "#/$defs/nullableNumber" } } },
+        "riskEvidence": { "type": "object", "additionalProperties": false, "required": ["maximumDrawdownUsd", "consecutiveLosses"],
+          "properties": { "maximumDrawdownUsd": { "type": "number" }, "consecutiveLosses": { "type": "number" } } },
+        "liveExecution": { "const": "locked" }
+      }
+    },
+    "recorder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["running", "connected", "symbols", "reconnectAttempt", "lastMessageAt", "startedAt", "sourceVersion", "liveExecution"],
+      "properties": { "running": { "type": "boolean" }, "connected": { "type": "boolean" }, "symbols": { "$ref": "#/$defs/stringArray" },
+        "reconnectAttempt": { "type": "number" }, "lastMessageAt": { "$ref": "#/$defs/nullableNumber" }, "startedAt": { "$ref": "#/$defs/nullableNumber" },
+        "sourceVersion": { "type": "string" }, "liveExecution": { "const": "locked" } }
+    },
+    "clockHealth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "cadenceMs", "ageMs", "queueDepth", "queueLagMs", "fresh", "bounded", "status"],
+      "properties": { "id": { "enum": ["signal_evaluator", "outcome_resolver", "lifecycle_evaluator"] }, "cadenceMs": { "type": "number" },
+        "ageMs": { "$ref": "#/$defs/nullableNumber" }, "queueDepth": { "$ref": "#/$defs/nullableNumber" }, "queueLagMs": { "$ref": "#/$defs/nullableNumber" },
+        "fresh": { "type": "boolean" }, "bounded": { "type": "boolean" }, "status": { "enum": ["healthy", "degraded", "paused", "missing"] } }
+    },
+    "researchBatchHealth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "cadenceMs", "timeoutMs", "latestAttemptId", "status", "startedAt", "completedAt", "deadlineAt", "failureReason", "affectsContinuousOperation"],
+      "properties": { "id": { "const": "challenger_research" }, "cadenceMs": { "type": "number" }, "timeoutMs": { "type": "number" },
+        "latestAttemptId": { "$ref": "#/$defs/nullableString" }, "status": { "enum": ["disabled", "idle", "running", "committing", "completed", "failed", "timed_out", "abandoned"] },
+        "startedAt": { "$ref": "#/$defs/nullableNumber" }, "completedAt": { "$ref": "#/$defs/nullableNumber" },
+        "deadlineAt": { "$ref": "#/$defs/nullableNumber" }, "failureReason": { "$ref": "#/$defs/nullableString" },
+        "affectsContinuousOperation": { "const": false } }
+    },
+    "operatorHealth": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schemaVersion", "generatedAt", "operational", "status", "recorder", "eventAgeMs", "queueLagMs", "apiSummaryAgeMs", "apiSummaryStale", "diskGrowthBytesPerDay", "contractChurn", "unresolvedDecisions", "unresolvedOutcomes", "storageHealthy", "clocks", "researchBatch", "currentLiveLock", "liveExecution"],
+      "properties": { "schemaVersion": { "const": 1 }, "generatedAt": { "type": "number" }, "operational": { "type": "boolean" },
+        "status": { "enum": ["operational", "degraded", "disabled"] }, "recorder": { "$ref": "#/$defs/recorder" },
+        "eventAgeMs": { "$ref": "#/$defs/nullableNumber" }, "queueLagMs": { "$ref": "#/$defs/nullableNumber" },
+        "apiSummaryAgeMs": { "$ref": "#/$defs/nullableNumber" }, "apiSummaryStale": { "type": "boolean" },
+        "diskGrowthBytesPerDay": { "$ref": "#/$defs/nullableNumber" }, "contractChurn": { "type": "number" },
+        "unresolvedDecisions": { "type": "number" }, "unresolvedOutcomes": { "type": "number" }, "storageHealthy": { "type": "boolean" },
+        "clocks": { "type": "array", "items": { "$ref": "#/$defs/clockHealth" } }, "researchBatch": { "$ref": "#/$defs/researchBatchHealth" },
+        "currentLiveLock": { "type": "boolean" }, "liveExecution": { "enum": ["locked", "enabled"] } }
+    },
+    "tradeRequest": {
+      "type": "object", "additionalProperties": false, "required": ["symbol", "side", "size", "leverage", "orderType"],
+      "properties": { "symbol": { "type": "string" }, "side": { "enum": ["long", "short"] }, "size": { "type": "number" },
+        "leverage": { "type": "number" }, "orderType": { "const": "market" } }
+    },
+    "executionBounds": {
+      "type": "object", "additionalProperties": false,
+      "required": ["maximumNotionalUsd", "maximumFeeUsd", "referenceEntryPrice", "maximumSlippageBps"],
+      "properties": { "maximumNotionalUsd": { "type": "number" }, "maximumFeeUsd": { "type": "number" },
+        "referenceEntryPrice": { "$ref": "#/$defs/nullableNumber" }, "maximumSlippageBps": { "type": "number" } }
+    },
+    "executionAuthorization": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "schemaVersion", "packetDigest", "preparationId", "contractId", "signalId", "quoteReference", "userId", "trade", "executionBounds", "approvedAt", "expiresAt", "confirmation", "oneTime", "atomicState", "executionReference", "failureReason"],
+      "properties": { "id": { "type": "string" }, "schemaVersion": { "const": 1 }, "packetDigest": { "type": "string" },
+        "preparationId": { "type": "string" }, "contractId": { "type": "string" }, "signalId": { "type": "string" },
+        "quoteReference": { "type": "string" }, "userId": { "type": "string" }, "trade": { "$ref": "#/$defs/tradeRequest" },
+        "executionBounds": { "$ref": "#/$defs/executionBounds" }, "approvedAt": { "type": "number" }, "expiresAt": { "type": "number" },
+        "confirmation": { "const": "I AUTHORIZE THIS EXACT REVIEWED TRADE" }, "oneTime": { "const": true },
+        "atomicState": { "enum": ["approved", "reserved", "consumed", "failed", "cancelled"] },
+        "executionReference": { "$ref": "#/$defs/nullableString" }, "failureReason": { "$ref": "#/$defs/nullableString" } }
+    }
+  }
+}

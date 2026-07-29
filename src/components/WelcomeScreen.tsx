@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { User } from '../types';
 import { Sparkles, ArrowRight, ShieldCheck, Wallet } from 'lucide-react';
+import ParticleField from './ParticleField';
 
 interface WelcomeScreenProps {
   user: User;
@@ -35,6 +36,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
       {/* Background radial effects */}
       <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-600/15 rounded-full blur-3xl" />
       <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-cyan-600/15 rounded-full blur-3xl" />
+      <ParticleField className="absolute inset-0" />
 
       <motion.div
         initial={{ opacity: 0, y: 30 }}
@@ -51,7 +53,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
             MetaEdge
           </h1>
           <p className="text-slate-400 text-sm mt-2">
-            Social agent-wallet trading room. Play with paper strategies, coordinate in vault clubs, and audit evidence securely.
+            Learn MetaMask agent trading with paper money, then compete against friends and bots in the Agent Arena. No signup, no real funds.
           </p>
         </div>
 
@@ -72,7 +74,7 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
                 RND
               </button>
             </div>
-            <span className="text-xs text-slate-500 font-mono">Simulated Agent Profile Seed</span>
+            <span className="text-xs text-slate-500 font-mono">Your avatar — tap to reroll</span>
           </div>
 
           {/* Form Fields */}
@@ -121,11 +123,11 @@ export default function WelcomeScreen({ user, onProfileClaimed }: WelcomeScreenP
         <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-[11px] font-mono text-slate-500">
           <span className="flex items-center gap-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-            Paper Default
+            Paper money — zero risk
           </span>
           <span className="flex items-center gap-1.5">
             <Wallet className="w-3.5 h-3.5 text-indigo-400" />
-            MetaMask Integration
+            Bring your own MetaMask
           </span>
         </div>
       </motion.div>

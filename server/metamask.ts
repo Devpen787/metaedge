@@ -1,14 +1,74 @@
 import { Router } from 'express';
 import { execFile } from 'child_process';
 import util from 'util';
-import { generateId, readDatabase, writeDatabase } from './storage.js';
+import path from 'path';
+import fs from 'fs';
+import { generateId, readDatabase, writeDatabase, DB_FILE } from './storage.js';
+import { getSpotPrice, arenaSymbol } from './prices.js';
+import { recordDeclined } from './declined.js';
+import { rateLimitKey } from './ratelimit.js';
+import { EconomicOperationStore } from './discovery/economic_store.js';
+import {
+  buildLiveReviewPreparation,
+  liveExecutionRuntimeEnabled,
+  LIVE_REVIEW_CONFIRMATION,
+  MetaMaskLiveReviewStore,
+  type LiveReviewTradeRequest,
+} from './discovery/metamask_live_review.js';
 
 export const metamaskRouter = Router();
 const execFileAsync = util.promisify(execFile);
 
-const MM_PACKAGE = '@metamask/agentic-cli@3';
-const LIVE_EXECUTION_ENABLED = process.env.LIVE_EXECUTION_ENABLED === 'true';
-const ALLOW_BROWSER_LOGIN = process.env.METAEDGE_ALLOW_MM_BROWSER_LOGIN === 'true';
+// Every /api/mm/* call spawns a CLI process — the one abuse vector that could
+// pin the server's CPU. Simple per-user sliding window: plenty for real use,
+// a wall for floods.
+const RATE_WINDOW_MS = 30_000;
+const RATE_MAX_CALLS = 15;
+const rateBuckets = new Map<string, number[]>();
+
+// The key comes from rateLimitKey(), not `req.userId`: sessionMiddleware mints a
+// fresh userId for every cookieless request, so keying on it gave each request a
+// private bucket and this limiter never fired. Verified: 20 cookieless calls
+// returned 20x 200 before this change, 15x 200 + 5x 429 after.
+metamaskRouter.use((req: any, res, next) => {
+  if (!req.path.startsWith('/api/mm/')) return next();
+  const key = rateLimitKey(req);
+  const now = Date.now();
+  const bucket = (rateBuckets.get(key) || []).filter((t) => now - t < RATE_WINDOW_MS);
+  if (bucket.length >= RATE_MAX_CALLS) {
+    res.status(429).json({ error: 'rate_limited', message: 'Too many wallet requests — try again in a few seconds.' });
+    return;
+  }
+  bucket.push(now);
+  rateBuckets.set(key, bucket);
+  next();
+});
+
+const MM_PACKAGE = '@metamask/agentic-cli@5.2.1';
+// Prefer the locally installed binary (fast, deterministic); fall back to npx.
+const MM_LOCAL_BIN = path.join(process.cwd(), 'node_modules', '.bin', 'mm');
+const liveReviewStore = new MetaMaskLiveReviewStore();
+
+// Global live lock is authoritative. Operator status may grant product access,
+// but it can never bypass a disabled capital-mutation switch.
+function liveEnabledFor(_userId: string | undefined): boolean { return liveExecutionRuntimeEnabled(); }
+
+// Each user gets their OWN MetaMask CLI profile (an isolated HOME) on the
+// server, so wallet capabilities run as THEIR wallet — never a shared one.
+// A profile holds only the CLI's own session state; MetaEdge never sees keys.
+const PROFILES_DIR = path.join(path.dirname(DB_FILE), 'mm-profiles');
+const SAFE_USER_ID_RE = /^usr_[A-Za-z0-9_-]{4,64}$/;
+
+function profileHome(userId: string): string {
+  // Dev-only escape hatch: point every profile at a real authenticated ~/.metamask
+  // so local dev can exercise the wallet flows against a live account. Never set
+  // in production (would collapse all users onto one wallet).
+  if (process.env.MM_DEV_HOME) return process.env.MM_DEV_HOME;
+  if (!SAFE_USER_ID_RE.test(userId)) throw new Error('Invalid session.');
+  const dir = path.join(PROFILES_DIR, userId);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
 const SAFE_SYMBOL_RE = /^[A-Z0-9._:-]{1,32}$/;
 const SAFE_CHAIN_RE = /^[0-9]{1,10}$/;
 const SAFE_ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
@@ -50,27 +110,142 @@ function cliCommand(args: string[]) {
   return `mm ${args.filter((arg) => arg !== '--json').join(' ')}`;
 }
 
-async function runMm(args: string[], timeout = 12_000) {
+// The MetaMask CLI is a heavy Node process (~seconds of CPU per call). On a
+// small shared-vCPU box, running many at once thrashes and everything times
+// out. Cap concurrent mm subprocesses so calls queue instead of starving.
+const MM_MAX_CONCURRENT = Number(process.env.MM_MAX_CONCURRENT) || 2;
+let mmActive = 0;
+const mmWaiters: Array<() => void> = [];
+async function acquireMmSlot() {
+  if (mmActive < MM_MAX_CONCURRENT) { mmActive++; return; }
+  await new Promise<void>((resolve) => mmWaiters.push(resolve));
+  mmActive++;
+}
+function releaseMmSlot() {
+  mmActive = Math.max(0, mmActive - 1);
+  mmWaiters.shift()?.();
+}
+
+// Short-TTL cache for READ-ONLY calls (status/readiness/overview) so repeated
+// polling doesn't re-spawn the CLI every few seconds. Never caches quotes,
+// logins, or executions.
+const MM_CACHE_TTL_MS = Number(process.env.MM_CACHE_TTL_MS) || 12_000;
+const mmCache = new Map<string, { at: number; value: any }>();
+const CACHEABLE = ['auth', 'address', 'balance', 'doctor', 'init', 'trading-mode', 'policy'];
+function cacheKeyFor(args: string[], home?: string): string | null {
+  if (!args.some((a) => CACHEABLE.includes(a))) return null;
+  return `${home || 'server'}::${args.join(' ')}`;
+}
+
+async function runMmCore(args: string[], timeout: number, home?: string, noCache?: boolean): Promise<{ ok: boolean; command: string; data: any; summary: string }> {
+  const cacheKey = noCache ? null : cacheKeyFor(args, home);
+  if (cacheKey) {
+    const hit = mmCache.get(cacheKey);
+    if (hit && Date.now() - hit.at < MM_CACHE_TTL_MS) return hit.value;
+  }
+
+  await acquireMmSlot();
   try {
-    const { stdout } = await execFileAsync('npx', ['-y', MM_PACKAGE, ...args], {
+    const useLocal = fs.existsSync(MM_LOCAL_BIN);
+    const bin = useLocal ? MM_LOCAL_BIN : 'npx';
+    const finalArgs = useLocal ? args : ['-y', MM_PACKAGE, ...args];
+    const { stdout } = await execFileAsync(bin, finalArgs, {
       timeout,
       maxBuffer: 1024 * 1024,
-      shell: false
+      shell: false,
+      env: home ? { ...process.env, HOME: home } : process.env
     });
-    return {
-      ok: true,
-      command: cliCommand(args),
-      data: parseJsonOrText(stdout),
-      summary: 'Ready'
-    };
+    const result = { ok: true, command: cliCommand(args), data: parseJsonOrText(stdout), summary: 'Ready' };
+    if (cacheKey) mmCache.set(cacheKey, { at: Date.now(), value: result });
+    return result;
   } catch (error) {
-    return {
-      ok: false,
-      command: cliCommand(args),
-      data: null,
-      summary: productSafeError(error)
-    };
+    // The CLI writes structured errors to stderr on failure — surface those
+    // as data so callers can distinguish "not logged in" from "CLI missing".
+    const stderr = asString((error as any)?.stderr);
+    return { ok: false, command: cliCommand(args), data: parseJsonOrText(stderr), summary: productSafeError(error) };
+  } finally {
+    releaseMmSlot();
   }
+}
+
+// Invalidate a user's cached mm reads (call after a state change like connect).
+function invalidateMmCache(home?: string) {
+  const prefix = `${home || 'server'}::`;
+  for (const k of mmCache.keys()) if (k.startsWith(prefix)) mmCache.delete(k);
+}
+
+// Forget a user's cached readiness snapshot (after connect/disconnect) so the
+// next panel open reflects the new wallet state immediately.
+function invalidateReadiness(uid: string) {
+  READINESS_SWR.delete(uid);
+}
+
+// Server-profile run: used only for public market data (quotes-as-data,
+// market search) and AI helpers — never for anything that acts as a wallet.
+async function runMm(args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout);
+}
+
+// Per-user run: executes under the USER's own CLI profile, i.e. their wallet.
+async function runMmAs(userId: string, args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout, profileHome(userId));
+}
+
+// Like runMmAs but bypasses the read cache. Used when enumerating wallets: the
+// same `wallet balance` command is run per wallet, so a shared cache would
+// return the first wallet's balance for all of them.
+async function runMmAsFresh(userId: string, args: string[], timeout = 12_000) {
+  return runMmCore(args, timeout, profileHome(userId), true);
+}
+
+// Selecting a wallet mutates the profile's shared "active wallet" state, so
+// operations that hop between wallets must not interleave. This chains such
+// operations per profile HOME.
+const walletLocks = new Map<string, Promise<unknown>>();
+function withWalletLock<T>(home: string, fn: () => Promise<T>): Promise<T> {
+  const prev = walletLocks.get(home) || Promise.resolve();
+  const run = prev.then(fn, fn);
+  walletLocks.set(home, run.catch(() => {}));
+  return run;
+}
+
+// SWR cache for the (heavy) full wallet enumeration.
+const WALLETS_SWR = new Map<string, { at: number; payload: any; refreshing?: boolean }>();
+const WALLETS_FRESH_MS = 15_000;
+const WALLETS_MAX_AGE_MS = 5 * 60_000;
+function invalidateWallets(userId: string) {
+  WALLETS_SWR.delete(userId);
+}
+
+// One person = one mm login. Public lookups (quotes, market search) run under
+// the USER's own session once they've connected — their quota, their account.
+// The server profile only bridges guests, and catches an expired user session
+// so public data never breaks.
+async function runMmFor(req: any, args: string[], timeout = 12_000) {
+  const userId = req?.userId;
+  if (userId) {
+    const db = readDatabase();
+    if (db.users[userId]?.walletAddress) {
+      const result = await runMmAs(userId, args, timeout);
+      if (isCommandOk(result)) return result;
+    }
+  }
+  return runMm(args, timeout);
+}
+
+// Gate for capabilities that act as a wallet: the user must have connected
+// their own MetaMask Agent Wallet first. Competing requires this too.
+function requireWallet(req: any, res: any, next: any) {
+  const db = readDatabase();
+  const user = db.users[req.userId];
+  if (!user?.walletAddress) {
+    res.status(403).json({
+      error: 'wallet_required',
+      message: 'Connect your MetaMask Agent Wallet to use this capability.'
+    });
+    return;
+  }
+  next();
 }
 
 function isCommandOk(result: Awaited<ReturnType<typeof runMm>>) {
@@ -183,7 +358,7 @@ function recordMetaMaskEvent(req: any, action: string, details: string) {
 }
 
 function requireLiveExecution(req: any, res: any, next: any) {
-  if (!LIVE_EXECUTION_ENABLED) {
+  if (!liveEnabledFor(req.userId)) {
     recordMetaMaskEvent(req, 'METAMASK_BLOCKED_ACTION', 'Live locked: real execution remains disabled.');
     return res.status(403).json({
       error: 'Live locked',
@@ -194,15 +369,89 @@ function requireLiveExecution(req: any, res: any, next: any) {
   next();
 }
 
-metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
+// The mm CLI often wraps its JSON as { ok, data: {...} }. Return the inner data.
+function unwrap(result: Awaited<ReturnType<typeof runMm>>): any {
+  const d = result.data as any;
+  return d && typeof d === 'object' && d.data ? d.data : d;
+}
+
+// Agentic CLI v5 wraps Predict search results as
+// { data: { command, params, result: { markets } } }. Keep one normalizer at
+// the CLI boundary so every product surface receives the same market array.
+function predictMarkets(result: Awaited<ReturnType<typeof runMm>>): any[] {
+  const data = unwrap(result);
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.markets)) return data.markets;
+  if (Array.isArray(data?.result?.markets)) return data.result.markets;
+  return [];
+}
+
+// A simulated ("paper") fill. Paper mode is a first-class execution path — it's
+// what competitions run on — so an action returns a real result built from a live
+// quote, marked simulated, with no funds moved. Live mode does the real thing.
+function paperFill(req: any, action: string, summary: string, extra: Record<string, any>) {
+  recordMetaMaskEvent(req, 'METAMASK_PAPER_ACTION', `Simulated ${action}: ${summary}`);
+  return {
+    mode: 'simulation',
+    simulated: true,
+    action,
+    reference: 'SIM-' + generateId().slice(0, 10),
+    executedAt: Date.now(),
+    ...extra,
+    note: 'Simulated in paper mode — no funds moved. Switch to Live to execute for real.'
+  };
+}
+
+// Record a wallet paper action as an open Agent Arena position so it moves the
+// user's competition standing. The position's ENTRY is snapshotted from the
+// arena's spot-price universe (not the mm quote) so it marks-to-market
+// consistently. Unpriced tokens (e.g. stablecoins) aren't scored → returns null.
+function recordArenaPosition(
+  userId: string | undefined,
+  input: { assetSymbol: string; side: string; size: number; tradeType: 'token' | 'perp'; leverage?: number }
+): { entry: number; symbol: string } | null {
+  if (!userId) return null;
+  const entry = getSpotPrice(input.assetSymbol);
+  const size = Number(input.size);
+  if (entry == null || !Number.isFinite(size) || size <= 0) return null;
+  const db = readDatabase();
+  if (!db.users[userId]) return null;
+  const symbol = arenaSymbol(input.assetSymbol);
+  db.trades.push({
+    id: 'wtr_' + generateId(),
+    agentId: 'wallet',
+    userId,
+    assetSymbol: symbol,
+    tradeType: input.tradeType,
+    side: input.side as any,
+    size,
+    price: entry,
+    leverage: Number(input.leverage) || 1,
+    status: 'open',
+    source: 'wallet',
+    timestamp: Date.now()
+  });
+  writeDatabase(db);
+  return { entry, symbol };
+}
+
+// Building readiness means spawning 7 CLI processes. On a small box that's the
+// heaviest thing the app does, so we cache the whole payload per user and serve
+// it stale-while-revalidate: the panel opens instantly on the last snapshot and
+// silently refreshes in the background when it's getting old.
+const READINESS_SWR = new Map<string, { at: number; payload: any; refreshing?: boolean }>();
+const READINESS_FRESH_MS = 15_000;        // older than this → kick a background refresh
+const READINESS_MAX_AGE_MS = 5 * 60_000;  // older than this → too stale, rebuild synchronously
+
+async function computeReadiness(uid: string) {
   const [doctor, auth, init, address, balance, tradingMode, policy] = await Promise.all([
-    runMm(['doctor', '--json']),
-    runMm(['auth', 'status', '--json']),
-    runMm(['init', 'show', '--json']),
-    runMm(['wallet', 'address']),
-    runMm(['wallet', 'balance', '--chain', '8453', '--json']),
-    runMm(['wallet', 'trading-mode', 'get', '--json']),
-    runMm(['wallet', 'policy', 'get'], 10_000)
+    runMmAs(uid, ['doctor', '--json']),
+    runMmAs(uid, ['auth', 'status', '--json']),
+    runMmAs(uid, ['init', 'show', '--json']),
+    runMmAs(uid, ['wallet', 'address']),
+    runMmAs(uid, ['wallet', 'balance', '--chain', '8453', '--json']),
+    runMmAs(uid, ['wallet', 'trading-mode', 'get', '--json']),
+    runMmAs(uid, ['wallet', 'policy', 'get'], 10_000)
   ]);
 
   const policyText = extractText(policy).toLowerCase();
@@ -211,11 +460,32 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
   const isGuardMode = tradingModeText.includes('guard');
   const isBeastMode = tradingModeText.includes('beast');
 
+  const isAuthed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  const activeAddress = isCommandOk(address) ? extractText(address).trim() : null;
+  const canonicalAddress = readDatabase().users[uid]?.canonicalWallet || null;
+  const canonicalMatches = Boolean(activeAddress && canonicalAddress
+    && activeAddress.toLowerCase() === canonicalAddress.toLowerCase());
   const checks: MmCheck[] = [
-    makeCheck('cli_v3', 'Agent Wallet v3', doctor, 'Agent Wallet CLI v3 responded to health check.'),
-    makeCheck('browser_login', 'Browser login', auth, 'MetaMask browser login is active.', 'Run MetaMask browser login before live review.'),
+    makeCheck('cli_v5', 'Agent Wallet v5', doctor, 'Agent Wallet CLI v5 responded to health check.'),
+    {
+      id: 'wallet_connected',
+      label: 'Your wallet connected',
+      status: isAuthed ? 'ready' : 'blocked',
+      summary: isAuthed ? 'Your MetaMask Agent Wallet is connected.' : 'Connect your own MetaMask Agent Wallet to compete.',
+      command: auth.command
+    },
     makeCheck('wallet_init', 'Wallet setup', init, 'Wallet mode and trading mode are initialized.'),
     makeCheck('wallet_address', 'Wallet address', address, 'Active wallet address is available.'),
+    {
+      id: 'canonical_wallet',
+      label: 'Canonical execution wallet',
+      status: canonicalMatches ? 'ready' : 'blocked',
+      summary: canonicalMatches
+        ? 'The active wallet matches your canonical execution wallet.'
+        : canonicalAddress
+          ? 'Switch to your canonical wallet before live review.'
+          : 'Choose one canonical wallet before live review.'
+    },
     makeCheck('base_balance', 'Base balance', balance, 'Base balance check completed.'),
     {
       id: 'trading_mode',
@@ -258,93 +528,404 @@ metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
     {
       id: 'live_lock',
       label: 'Live locked',
-      status: LIVE_EXECUTION_ENABLED ? 'ready' : 'blocked',
-      summary: LIVE_EXECUTION_ENABLED
+      status: liveEnabledFor(uid) ? 'ready' : 'blocked',
+      summary: liveEnabledFor(uid)
         ? 'Live execution flag is enabled for this environment.'
         : 'Live execution is globally locked in this environment.'
     }
   ];
 
-  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Checked MetaMask Agent Wallet readiness.');
-
-  res.json({
-    liveModeGlobalLock: !LIVE_EXECUTION_ENABLED,
+  return {
+    liveModeGlobalLock: !liveEnabledFor(uid),
     loginCommand: 'mm login browser',
     package: MM_PACKAGE,
     recommendedMode: 'Guard Mode',
     checks,
     wallet: {
-      address: isCommandOk(address) ? extractText(address).trim() : null,
+      address: activeAddress,
+      canonicalAddress,
+      canonicalMatches,
       baseBalanceReady: isCommandOk(balance)
     },
     capabilities: {
       swaps: {
         quoteBeforeExecute: true,
         refuelSupported: true,
-        executeLocked: !LIVE_EXECUTION_ENABLED
+        executeLocked: !liveEnabledFor(uid)
       },
       perps: {
         venuesCommand: 'mm perps list-venues',
         depositRequired: true,
         quoteBeforeOpen: true,
-        openLocked: !LIVE_EXECUTION_ENABLED
+        openLocked: !liveEnabledFor(uid)
       },
       predictionMarkets: {
         setupRequired: true,
         quoteBeforePlace: true,
-        placeLocked: !LIVE_EXECUTION_ENABLED
+        placeLocked: !liveEnabledFor(uid)
       }
     }
-  });
+  };
+}
+
+metamaskRouter.get('/api/mm/readiness', async (req: any, res) => {
+  // Readiness reflects the USER's own wallet profile, not a shared one.
+  const uid = req.userId;
+  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Checked MetaMask Agent Wallet readiness.');
+
+  const snap = READINESS_SWR.get(uid);
+  const age = snap ? Date.now() - snap.at : Infinity;
+  if (snap && age < READINESS_MAX_AGE_MS) {
+    // Serve instantly; refresh in the background if it's getting stale.
+    if (age > READINESS_FRESH_MS && !snap.refreshing) {
+      snap.refreshing = true;
+      computeReadiness(uid)
+        .then((payload) => READINESS_SWR.set(uid, { at: Date.now(), payload }))
+        .catch(() => { const s = READINESS_SWR.get(uid); if (s) s.refreshing = false; });
+    }
+    res.json(snap.payload);
+    return;
+  }
+  // No snapshot (or too stale): build it now.
+  const payload = await computeReadiness(uid);
+  READINESS_SWR.set(uid, { at: Date.now(), payload });
+  res.json(payload);
 });
 
-metamaskRouter.get('/api/mm/status', async (_req, res) => {
-  const auth = await runMm(['auth', 'status', '--json']);
-  res.status(isCommandOk(auth) ? 200 : 503).json({
-    isAuthenticated: isCommandOk(auth),
-    loginCommand: 'mm login browser',
-    message: isCommandOk(auth) ? 'MetaMask browser login is active.' : 'Needs MetaMask approval.',
+// ---- Per-user wallet connect. Each user logs in with THEIR OWN MetaMask
+// Agent Wallet: a one-click login link (opened in their browser) or a
+// pre-minted CLI token. The token is used once for login and never stored. ----
+
+function extractWalletAddress(result: Awaited<ReturnType<typeof runMm>>): string | null {
+  const text = extractText(result);
+  const m = text.match(/0x[a-fA-F0-9]{40}/);
+  return m ? m[0] : null;
+}
+
+async function finalizeConnect(req: any, res: any) {
+  const userId = req.userId;
+  // While polling for the user to approve in their browser we need a FRESH
+  // auth check each time, so the moment they approve is detected immediately.
+  invalidateMmCache(profileHome(userId));
+  const auth = await runMmAs(userId, ['auth', 'status', '--json']);
+  const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  if (!authed) {
+    res.json({ connected: false });
+    return;
+  }
+  const addrResult = await runMmAs(userId, ['wallet', 'address']);
+  const address = extractWalletAddress(addrResult);
+  const db = readDatabase();
+  const user = db.users[userId];
+  if (user) {
+    user.walletAddress = address || user.walletAddress || 'connected';
+    user.walletConnectedAt = user.walletConnectedAt || Date.now();
+    writeDatabase(db);
+  }
+  invalidateReadiness(userId);
+  recordMetaMaskEvent(req, 'METAMASK_WALLET_CONNECTED', `Connected own Agent Wallet${address ? ` (${address.slice(0, 6)}…${address.slice(-4)})` : ''}.`);
+  res.json({ connected: true, address });
+}
+
+// Start the one-click connect: returns a MetaMask login URL the user opens in
+// THEIR browser. The CLI session lands in their isolated profile.
+metamaskRouter.post('/api/mm/connect/start', async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['login', 'browser', '--no-wait', '--json'], 45_000);
+  const loginUrl = (result.data as any)?.data?.loginUrl;
+  if (!loginUrl) {
+    res.status(503).json({ error: 'Could not start MetaMask login.', message: result.summary });
+    return;
+  }
+  res.json({ loginUrl });
+});
+
+// Poll while the user completes login in their browser.
+metamaskRouter.get('/api/mm/connect/status', async (req: any, res) => {
+  await finalizeConnect(req, res);
+});
+
+// Pro path: connect with a pre-minted CLI token (used once, never stored).
+metamaskRouter.post('/api/mm/connect/token', async (req: any, res) => {
+  const token = asString(req.body?.token).trim();
+  // Real MetaMask tokens are `cliToken:cliRefreshToken` (each half a JWT), so
+  // they contain a colon and can be long. We accept any printable, whitespace-
+  // free string of reasonable length and let the CLI be the real validator —
+  // the token is passed as an argv element (shell:false), so there's no
+  // injection risk in being permissive here.
+  if (!/^[\x21-\x7e]{16,8192}$/.test(token)) {
+    res.status(400).json({ error: 'That does not look like a MetaMask CLI token. Paste the whole thing, including everything after the colon.' });
+    return;
+  }
+  const result = await runMmAs(req.userId, ['login', '--token', token, '--json'], 45_000);
+  if (!isCommandOk(result)) {
+    res.status(401).json({ error: 'Token login failed.', message: result.summary });
+    return;
+  }
+  await finalizeConnect(req, res);
+});
+
+metamaskRouter.post('/api/mm/connect/disconnect', async (req: any, res) => {
+  await runMmAs(req.userId, ['logout', '--yes', '--json'], 20_000);
+  invalidateMmCache(profileHome(req.userId));
+  invalidateReadiness(req.userId);
+  invalidateWallets(req.userId);
+  const db = readDatabase();
+  const user = db.users[req.userId];
+  if (user) {
+    delete user.walletAddress;
+    delete user.walletConnectedAt;
+    writeDatabase(db);
+  }
+  res.json({ success: true });
+});
+
+// ---- Multi-wallet account management ----
+// One authenticated account can hold several server wallets. These endpoints
+// make that visible and controllable so funds can never silently hide on a
+// wallet the app isn't acting as (the exact bug we hit with $3.77 on Arbitrum).
+
+// Enumerate every wallet under the account with its balance across all chains,
+// plus the perps balance (which is separate from spot). Selecting each wallet
+// mutates shared active state, so the whole scan runs under a per-profile lock
+// and restores whatever wallet was active before.
+async function computeWallets(userId: string) {
+  const home = profileHome(userId);
+  return withWalletLock(home, async () => {
+    const listRes = await runMmAsFresh(userId, ['wallet', 'list', '--json']);
+    const wallets = (listRes.data as any)?.data?.wallets || [];
+    const activeAddress = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+
+    const enriched: any[] = [];
+    for (const w of wallets) {
+      await runMmAsFresh(userId, ['wallet', 'select', '--address', w.address, '--json']);
+      const bd = (await runMmAsFresh(userId, ['wallet', 'balance', '--json'])).data?.data || {};
+      const chains = (bd.chains || []).map((c: any) => ({
+        name: c.name,
+        chainId: c.chainId || c.chain || null,
+        totalUsd: Number(c.totalValue || 0),
+        tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0), assetId: t.assetId || null, type: t.type || null }))
+      }));
+      enriched.push({ address: w.address, name: w.name || null, totalUsd: Number(bd.totalValue || 0), chains });
+    }
+    if (activeAddress) await runMmAsFresh(userId, ['wallet', 'select', '--address', activeAddress, '--json']);
+
+    // 30s: the default 12s intermittently times out on the small VM, which
+    // silently hid Devin's $5 perps balance from the panel.
+    const pd = (await runMmAsFresh(userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json'], 30_000)).data?.data || {};
+    const perps = { venue: 'hyperliquid', totalBalance: Number(pd.totalBalance || 0), spendable: Number(pd.spendableBalance || 0) };
+
+    const db = readDatabase();
+    const canonicalAddress = db.users[userId]?.canonicalWallet || null;
+    enriched.sort((a, b) => b.totalUsd - a.totalUsd);
+    return { activeAddress, canonicalAddress, perps, wallets: enriched };
+  });
+}
+
+// Progressive loading (the full enumeration takes minutes on a small box):
+// the panel fetches the fast wallet LIST first, renders immediately, then pulls
+// each wallet's balance one at a time so the UI fills in live.
+metamaskRouter.get('/api/mm/wallets/list', requireWallet, async (req: any, res) => {
+  try {
+    const wallets = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const activeAddress = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+    const db = readDatabase();
+    const canonicalAddress = db.users[req.userId]?.canonicalWallet || null;
+    res.json({ activeAddress, canonicalAddress, wallets: wallets.map((w: any) => ({ address: w.address, name: w.name || null })) });
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not list wallets.', message: e?.message });
+  }
+});
+
+metamaskRouter.get('/api/mm/wallets/balance', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.query?.address);
+    const home = profileHome(req.userId);
+    const payload = await withWalletLock(home, async () => {
+      const active = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address;
+      await runMmAsFresh(req.userId, ['wallet', 'select', '--address', address, '--json']);
+      const bd = (await runMmAsFresh(req.userId, ['wallet', 'balance', '--json'], 30_000)).data?.data || {};
+      if (active && active.toLowerCase() !== address.toLowerCase()) {
+        await runMmAsFresh(req.userId, ['wallet', 'select', '--address', active, '--json']);
+      }
+      return {
+        address,
+        totalUsd: Number(bd.totalValue || 0),
+        chains: (bd.chains || []).map((c: any) => ({
+          name: c.name, chainId: c.chainId || c.chain || null, totalUsd: Number(c.totalValue || 0),
+          tokens: (c.tokens || []).map((t: any) => ({ token: t.token, amount: t.amount, usd: Number(t.usdValue || 0), type: t.type || null }))
+        }))
+      };
+    });
+    res.json(payload);
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not read wallet balance.', message: e?.message });
+  }
+});
+
+metamaskRouter.get('/api/mm/wallets', requireWallet, async (req: any, res) => {
+  const uid = req.userId;
+  const snap = WALLETS_SWR.get(uid);
+  const age = snap ? Date.now() - snap.at : Infinity;
+  if (snap && age < WALLETS_MAX_AGE_MS) {
+    if (age > WALLETS_FRESH_MS && !snap.refreshing) {
+      snap.refreshing = true;
+      computeWallets(uid)
+        .then((payload) => WALLETS_SWR.set(uid, { at: Date.now(), payload }))
+        .catch(() => { const s = WALLETS_SWR.get(uid); if (s) s.refreshing = false; });
+    }
+    return res.json(snap.payload);
+  }
+  try {
+    const payload = await computeWallets(uid);
+    WALLETS_SWR.set(uid, { at: Date.now(), payload });
+    res.json(payload);
+  } catch (e: any) {
+    res.status(503).json({ error: 'Could not read your wallets.', message: e?.message });
+  }
+});
+
+// Switch which wallet the app (and CLI) acts as. Validated against the account's
+// own wallet list so you can only select a wallet you actually own.
+metamaskRouter.post('/api/mm/wallets/select', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.body?.address);
+    const wallets = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const match = wallets.find((w: any) => (w.address || '').toLowerCase() === address.toLowerCase());
+    if (!match) return res.status(400).json({ error: 'That wallet is not under your account.' });
+    await withWalletLock(profileHome(req.userId), () => runMmAsFresh(req.userId, ['wallet', 'select', '--address', match.address, '--json']));
+    invalidateMmCache(profileHome(req.userId));
+    invalidateReadiness(req.userId);
+    invalidateWallets(req.userId);
+    const db = readDatabase();
+    if (db.users[req.userId]) { db.users[req.userId].walletAddress = match.address; writeDatabase(db); }
+    res.json({ ok: true, address: match.address });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not switch wallet.' });
+  }
+});
+
+// Mark one wallet as canonical (the "this is THE one" flag) — stored per user,
+// surfaced in the UI so a mismatch with the active/funded wallet is obvious.
+metamaskRouter.post('/api/mm/wallets/canonical', requireWallet, async (req: any, res) => {
+  try {
+    const address = validateAddress(req.body?.address);
+    const db = readDatabase();
+    if (db.users[req.userId]) { db.users[req.userId].canonicalWallet = address; writeDatabase(db); }
+    invalidateWallets(req.userId);
+    res.json({ ok: true, address });
+  } catch (e: any) {
+    res.status(400).json({ error: e?.message || 'Could not set canonical wallet.' });
+  }
+});
+
+// ---- Phase 3: guardrails ----
+// Block a REAL action when the active wallet isn't the canonical one. Only bites
+// when a canonical wallet is set AND live execution is on — paper play is never
+// blocked (nothing real moves).
+async function assertCanonicalActive(userId: string): Promise<{ ok: boolean; error?: string }> {
+  const db = readDatabase();
+  const canonical = db.users[userId]?.canonicalWallet;
+  if (!canonical || !liveEnabledFor(userId)) return { ok: true };
+  const active = (await runMmAsFresh(userId, ['wallet', 'address', '--json'])).data?.data?.address;
+  if (active && active.toLowerCase() !== String(canonical).toLowerCase()) {
+    recordDeclined('guard', 'live_action', 'CANONICAL_MISMATCH');
+    return { ok: false, error: `Active wallet ${active.slice(0, 6)}…${active.slice(-4)} is not your canonical wallet ${String(canonical).slice(0, 6)}…${String(canonical).slice(-4)}. Switch wallets before a live action.` };
+  }
+  return { ok: true };
+}
+
+// A compact "who am I acting as" snapshot for guardrail banners.
+metamaskRouter.get('/api/mm/acting-as', requireWallet, async (req: any, res) => {
+  try {
+    const active = (await runMmAsFresh(req.userId, ['wallet', 'address', '--json'])).data?.data?.address || null;
+    const list = (await runMmAsFresh(req.userId, ['wallet', 'list', '--json'])).data?.data?.wallets || [];
+    const name = list.find((w: any) => (w.address || '').toLowerCase() === (active || '').toLowerCase())?.name || null;
+    const db = readDatabase();
+    const canonical = db.users[req.userId]?.canonicalWallet || null;
+    const isCanonical = !!canonical && !!active && canonical.toLowerCase() === active.toLowerCase();
+    res.json({ address: active, name, canonicalAddress: canonical, isCanonical, hasCanonical: !!canonical });
+  } catch (e: any) {
+    res.status(503).json({ error: e?.message });
+  }
+});
+
+// ---- Phase 4: consolidation ----
+// Preview which balances would sweep into the canonical wallet. Read-only.
+async function consolidationPlan(userId: string) {
+  const data = await computeWallets(userId);
+  const canonical = data.canonicalAddress;
+  if (!canonical) return { canonical: null, moves: [], note: 'Set a canonical wallet first.' };
+  const moves: any[] = [];
+  for (const w of data.wallets) {
+    if (w.address.toLowerCase() === canonical.toLowerCase()) continue;
+    for (const ch of w.chains) {
+      for (const t of (ch.tokens || [])) {
+        moves.push({ from: w.address, chainId: ch.chainId, chainName: ch.name, token: t.token, type: t.type, amount: t.amount, usd: t.usd });
+      }
+    }
+  }
+  return { canonical, moves, totalUsd: Number(moves.reduce((s, m) => s + (m.usd || 0), 0).toFixed(2)) };
+}
+
+metamaskRouter.get('/api/mm/wallets/consolidate/preview', requireWallet, async (req: any, res) => {
+  try {
+    res.json(await consolidationPlan(req.userId));
+  } catch (e: any) {
+    res.status(503).json({ error: e?.message || 'Could not build consolidation plan.' });
+  }
+});
+
+// Execute the sweep. Real transfers, so it's gated behind live execution — in
+// paper mode we return the plan as "locked" rather than moving anything. Even
+// when live, the workhorse for real consolidation is scripts/consolidate.mjs
+// (dry-run first); this endpoint is the in-product path.
+metamaskRouter.post('/api/mm/wallets/consolidate', requireWallet, async (req: any, res) => {
+  const plan = await consolidationPlan(req.userId);
+  if (!plan.canonical) return res.status(400).json({ error: plan.note || 'Set a canonical wallet first.' });
+  if (!liveEnabledFor(req.userId)) {
+    return res.json({ locked: true, plan, message: 'Consolidation moves real funds — it unlocks in Live mode. Nothing was moved.' });
+  }
+  // Live: sweep each move. Native tokens keep a gas buffer; ERC-20 need native
+  // gas already present on that chain in the source wallet.
+  const results: any[] = [];
+  for (const m of plan.moves) {
+    try {
+      await withWalletLock(profileHome(req.userId), () => runMmAsFresh(req.userId, ['wallet', 'select', '--address', m.from, '--json']));
+      const chainId = String(m.chainId || '').replace(/^eip155:/, '');
+      const amount = m.type === 'native' ? String(Math.max(0, Number(m.amount) - 0.0002)) : String(m.amount);
+      if (Number(amount) <= 0) { results.push({ ...m, skipped: 'dust/gas buffer' }); continue; }
+      const r = await runMmAsFresh(req.userId, ['transfer', '--to', plan.canonical, '--amount', amount, '--token', m.token, '--chain-id', chainId, '--wait', '--json'], 90_000);
+      results.push({ ...m, ok: isCommandOk(r), detail: r.summary });
+    } catch (e: any) {
+      results.push({ ...m, ok: false, detail: e?.message });
+    }
+  }
+  invalidateWallets(req.userId);
+  res.json({ locked: false, results });
+});
+
+metamaskRouter.get('/api/mm/status', async (req: any, res) => {
+  const auth = await runMmAs(req.userId, ['auth', 'status', '--json']);
+  const authed = isCommandOk(auth) && (auth.data as any)?.data?.authenticated === true;
+  res.json({
+    isAuthenticated: authed,
+    message: authed ? 'Your MetaMask Agent Wallet is connected.' : 'Connect your MetaMask Agent Wallet.',
     command: auth.command
   });
 });
 
-metamaskRouter.post('/api/mm/login-browser', async (req: any, res) => {
-  recordMetaMaskEvent(req, 'METAMASK_READINESS_CHECK', 'Requested MetaMask browser login guidance.');
-  if (!ALLOW_BROWSER_LOGIN) {
-    return res.status(409).json({
-      success: false,
-      command: 'mm login browser',
-      message: 'Run MetaMask browser login locally. This app never accepts or stores wallet secrets.'
-    });
-  }
-
-  const result = await runMm(['login', 'browser'], 120_000);
-  res.status(isCommandOk(result) ? 200 : 503).json({
-    success: isCommandOk(result),
-    command: result.command,
-    message: isCommandOk(result) ? 'MetaMask browser login completed.' : result.summary
-  });
-});
-
-metamaskRouter.post('/api/mm/login', (_req, res) => {
-  res.status(410).json({
-    error: 'Token login removed',
-    message: 'Use MetaMask browser login. MetaEdge never accepts wallet secrets.'
-  });
-});
-
-metamaskRouter.get('/api/mm/address', async (_req, res) => {
-  const result = await runMm(['wallet', 'address']);
+metamaskRouter.get('/api/mm/address', requireWallet, async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['wallet', 'address']);
   res.status(isCommandOk(result) ? 200 : 503).json({
     address: isCommandOk(result) ? extractText(result).trim() : null,
     message: isCommandOk(result) ? 'Wallet address available.' : result.summary
   });
 });
 
-metamaskRouter.get('/api/mm/balance', async (req, res) => {
+metamaskRouter.get('/api/mm/balance', requireWallet, async (req: any, res) => {
   try {
     const chainId = validateChain(req.query.chain, '8453');
-    const result = await runMm(['wallet', 'balance', '--chain', chainId, '--json']);
+    const result = await runMmAs(req.userId, ['wallet', 'balance', '--chain', chainId, '--json']);
     res.status(isCommandOk(result) ? 200 : 503).json({
       balance: result.data,
       message: isCommandOk(result) ? 'Balance check completed.' : result.summary
@@ -354,20 +935,27 @@ metamaskRouter.get('/api/mm/balance', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/transfer', requireLiveExecution, async (req, res) => {
+metamaskRouter.post('/api/mm/transfer', requireWallet, async (req: any, res) => {
   try {
     const to = validateAddress(req.body.to);
     const amount = validatePositiveAmount(req.body.amount, 'Amount');
     const token = req.body.token ? validateSymbol(req.body.token, 'Token') : 'native';
     const chainId = validateChain(req.body.chainId, '8453');
-    const result = await runMm(['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
+    if (!liveEnabledFor(req.userId)) {
+      return res.json(paperFill(req, 'transfer', `${amount} ${token} -> ${to.slice(0, 6)}…${to.slice(-4)}`, {
+        to, amount, token, chainId, status: 'paper_filled'
+      }));
+    }
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) return res.status(409).json({ error: guard.error });
+    const result = await runMmAs(req.userId, ['transfer', '--to', to, '--amount', amount, '--token', token, '--chain-id', chainId, '--wait', '--json'], 60_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/swap/quote', async (req: any, res) => {
   try {
     const from = validateSymbol(req.body.from, 'Source token');
     const to = validateSymbol(req.body.to, 'Destination token');
@@ -377,10 +965,10 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
     if (req.body.toChain) args.push('--to-chain', validateChain(req.body.toChain, fromChain));
     if (req.body.slippage) args.push('--slippage', validatePositiveAmount(req.body.slippage, 'Slippage'));
     if (req.body.refuel === true) args.push('--refuel');
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      executeLocked: !LIVE_EXECUTION_ENABLED,
+      executeLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Swap preview ready.' : result.summary
     });
   } catch (error: any) {
@@ -388,25 +976,47 @@ metamaskRouter.post('/api/mm/swap/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/swap/execute', requireLiveExecution, async (req, res) => {
+metamaskRouter.post('/api/mm/swap/execute', requireWallet, async (req: any, res) => {
   try {
+    if (!liveEnabledFor(req.userId)) {
+      // Build the paper fill from a real quote so the numbers are honest.
+      const from = validateSymbol(req.body.from, 'Source token');
+      const to = validateSymbol(req.body.to, 'Destination token');
+      const amount = validatePositiveAmount(req.body.amount, 'Amount');
+      const fromChain = validateChain(req.body.fromChain, '8453');
+      const q = await runMmFor(req, ['swap', 'quote', '--from', from, '--to', to, '--amount', amount, '--from-chain', fromChain, '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      const inner = quote.quote || {};
+      const dec = Number(inner?.destAsset?.decimals);
+      const rawOut = inner?.destAssetAmount;
+      const expectedOut = rawOut != null && Number.isFinite(dec) ? Number((Number(rawOut) / 10 ** dec).toFixed(8)) : null;
+      // Score it as a long on the destination asset in the arena price universe.
+      const arena = expectedOut ? recordArenaPosition(req.userId, { assetSymbol: to, side: 'buy', size: expectedOut, tradeType: 'token' }) : null;
+      return res.json(paperFill(req, 'swap', `${amount} ${from} -> ${to}`, {
+        quoteId: quote.quoteId ?? null, bridge: inner.bridgeId ?? null,
+        tokenIn: from, tokenOut: to, amountIn: amount, expectedOut, status: 'paper_filled',
+        arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
+      }));
+    }
     const quoteId = validateQuoteId(req.body.quoteId);
-    const result = await runMm(['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) return res.status(409).json({ error: guard.error });
+    const result = await runMmAs(req.userId, ['swap', 'execute', '--quote-id', quoteId, '--json'], 120_000);
     res.status(isCommandOk(result) ? 200 : 502).json(result.data);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-metamaskRouter.get('/api/mm/perps/balance', async (_req, res) => {
-  const result = await runMm(['perps', 'balance', '--venue', 'hyperliquid', '--json']);
+metamaskRouter.get('/api/mm/perps/balance', requireWallet, async (req: any, res) => {
+  const result = await runMmAs(req.userId, ['perps', 'balance', '--venue', 'hyperliquid', '--json']);
   res.status(isCommandOk(result) ? 200 : 503).json({
     balance: result.data,
     message: isCommandOk(result) ? 'Perps balance check completed.' : result.summary
   });
 });
 
-metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/perps/quote', async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
@@ -416,10 +1026,10 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
     const type = req.body.type === 'limit' ? 'limit' : 'market';
     const args = ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', type, '--json'];
     if (type === 'limit') args.push('--limit-px', validatePositiveAmount(req.body.limitPx, 'Limit price'));
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      openLocked: !LIVE_EXECUTION_ENABLED,
+      openLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Perps preview ready.' : result.summary
     });
   } catch (error: any) {
@@ -427,30 +1037,237 @@ metamaskRouter.post('/api/mm/perps/quote', async (req, res) => {
   }
 });
 
-metamaskRouter.post('/api/mm/perps/open', requireLiveExecution, async (req, res) => {
+// Strategy-to-wallet bridge. This is deliberately separate from ordinary
+// manual paper trading: only a contract that has passed funded paper into
+// live_review can prepare an exact, expiring packet for the real execution
+// path. Preparing and approving never move funds.
+metamaskRouter.post('/api/mm/live-review/perps/prepare', requireWallet, async (req: any, res) => {
+  try {
+    const contractId = asString(req.body.contractId).trim();
+    if (!/^paper_contract_[a-f0-9]{20}$/.test(contractId)) throw new Error('Live-review contract is not valid.');
+    const economics = new EconomicOperationStore();
+    const contract = economics.readContracts().find((row) => row.id === contractId);
+    if (!contract) return res.status(404).json({ error: 'LIVE_REVIEW_CONTRACT_NOT_FOUND' });
+    const currentContract = economics.snapshot().current.find((row) => row.contract.id === contractId);
+    if (!currentContract) return res.status(409).json({ error: 'LIVE_REVIEW_CONTRACT_SUPERSEDED' });
+    if (currentContract?.killed) return res.status(409).json({ error: 'LIVE_REVIEW_KILL_RULE_TRIGGERED' });
+    const promotion = economics.readLifecycleEvents().filter((row) => row.contractId === contractId
+      && row.to === 'live_review' && row.passed).sort((left, right) => right.evaluatedAt - left.evaluatedAt)[0];
+    if (!promotion) return res.status(409).json({ error: 'LIVE_REVIEW_PROMOTION_EVIDENCE_NOT_FOUND' });
+    const decisionId = asString(req.body.decisionId).trim();
+    const decision = economics.readShadowDecisions().find((row) => row.id === decisionId && row.contractId === contractId);
+    if (!decision) return res.status(404).json({ error: 'LIVE_REVIEW_FRESH_SIGNAL_NOT_FOUND' });
+    const symbol = validateSymbol(req.body.symbol, 'Symbol');
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
+    const size = Number(validatePositiveAmount(req.body.size, 'Size'));
+    const leverage = Number(validatePositiveAmount(req.body.leverage || 1, 'Leverage'));
+    const trade: LiveReviewTradeRequest = { symbol, side, size, leverage, orderType: 'market' };
+    const quotedAt = Date.now();
+    const quoteResult = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--type', 'market', '--json'], 30_000);
+    const quoteLatencyMs = Date.now() - quotedAt;
+    if (!isCommandOk(quoteResult)) return res.status(503).json({ error: 'LIVE_REVIEW_QUOTE_FAILED', message: quoteResult.summary });
+    const quote = unwrap(quoteResult) || {};
+    const readiness = await computeReadiness(req.userId);
+    const packet = buildLiveReviewPreparation({
+      contract,
+      lifecycleState: economics.currentState(contract.id),
+      userId: req.userId,
+      trade,
+      signal: { decisionId: decision.id, evidenceMode: decision.evidenceMode, decidedAt: decision.decidedAt, expiresAt: decision.expiresAt,
+        sourceEventIds: decision.sourceSignalEventIds, symbol: decision.symbol, side: decision.side },
+      promotionEvidence: promotion.evidence,
+      quote: {
+        quoteReference: String(quote.quoteId || quote.id || `mm_quote_${generateId().slice(0, 16)}`),
+        quotedAt,
+        quoteLatencyMs,
+        notionalUsd: Number(quote.notional ?? quote.notionalUsd ?? quote.quote?.notional ?? Number.NaN),
+        entryPrice: Number.isFinite(Number(quote.entryPrice)) ? Number(quote.entryPrice) : null,
+        estimatedFeeUsd: Number.isFinite(Number(quote.estimatedFee)) ? Number(quote.estimatedFee) : null,
+        estimatedLiquidationPrice: Number.isFinite(Number(quote.estimatedLiquidationPrice))
+          ? Number(quote.estimatedLiquidationPrice) : null,
+      },
+      readinessChecks: readiness.checks,
+    });
+    liveReviewStore.appendPreparation(packet);
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_PREPARED',
+      `Prepared reviewed ${side} ${size} ${symbol}; blockers=${packet.blockers.join(',') || 'none'}.`);
+    res.json({ packet: { ...packet, userId: 'current_session' },
+      requiredConfirmation: LIVE_REVIEW_CONFIRMATION,
+      next: packet.executableAfterHumanApproval ? '/api/mm/live-review/perps/approve' : null,
+      fundsMoved: false });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/live-review/perps/approve', requireWallet, async (req: any, res) => {
+  try {
+    const authorization = liveReviewStore.authorize({
+      preparationId: asString(req.body.preparationId).trim(),
+      packetDigest: asString(req.body.packetDigest).trim(),
+      userId: req.userId,
+      confirmation: asString(req.body.confirmation),
+    });
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_AUTHORIZED',
+      `Authorized one reviewed ${authorization.trade.side} ${authorization.trade.size} ${authorization.trade.symbol} trade until ${authorization.expiresAt}.`);
+    res.json({ authorization: { ...authorization, userId: 'current_session', confirmation: 'explicit_confirmation_recorded' },
+      next: '/api/mm/live-review/perps/open', fundsMoved: false });
+  } catch (error: any) {
+    res.status(409).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/live-review/perps/open', requireWallet, requireLiveExecution, async (req: any, res) => {
+  let reservedAuthorizationId: string | null = null;
+  try {
+    const symbol = validateSymbol(req.body.symbol, 'Symbol');
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
+    const size = Number(validatePositiveAmount(req.body.size, 'Size'));
+    const leverage = Number(validatePositiveAmount(req.body.leverage, 'Leverage'));
+    const trade: LiveReviewTradeRequest = { symbol, side, size, leverage, orderType: 'market' };
+    const reservation = liveReviewStore.reserveForExecution({
+      authorizationId: asString(req.body.authorizationId).trim(),
+      packetDigest: asString(req.body.packetDigest).trim(),
+      userId: req.userId,
+      trade,
+    });
+    reservedAuthorizationId = reservation.authorizationId;
+    const authorization = liveReviewStore.validateForConsumption({ authorizationId: reservation.authorizationId,
+      packetDigest: asString(req.body.packetDigest).trim(), userId: req.userId, trade });
+    const economics = new EconomicOperationStore();
+    const current = economics.snapshot().current.find((row) => row.contract.id === authorization.contractId);
+    if (!current || current.currentState !== 'live_review' || current.killed) {
+      liveReviewStore.failReservation(authorization.id, 'CONTRACT_NO_LONGER_ELIGIBLE'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_CONTRACT_NO_LONGER_ELIGIBLE' });
+    }
+    const readiness = await computeReadiness(req.userId);
+    const readinessBlockers = readiness.checks.filter((check: MmCheck) => check.status !== 'ready').map((check: MmCheck) => check.id);
+    if (readinessBlockers.length) { liveReviewStore.failReservation(authorization.id, 'METAMASK_READINESS_BLOCKED');
+      reservedAuthorizationId = null; return res.status(409).json({ error: 'METAMASK_READINESS_BLOCKED', blockers: readinessBlockers }); }
+    const guard = await assertCanonicalActive(req.userId);
+    if (!guard.ok) { liveReviewStore.failReservation(authorization.id, guard.error || 'CANONICAL_WALLET_BLOCKED');
+      reservedAuthorizationId = null; return res.status(409).json({ error: guard.error }); }
+    const preparation = liveReviewStore.readPreparations().find((row) => row.id === authorization.preparationId);
+    if (!preparation || preparation.signal.expiresAt <= Date.now()) {
+      liveReviewStore.failReservation(authorization.id, 'SIGNAL_EXPIRED'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_SIGNAL_EXPIRED' });
+    }
+    const freshQuoteResult = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--type', 'market', '--json'], 30_000);
+    if (!isCommandOk(freshQuoteResult)) { liveReviewStore.failReservation(authorization.id, 'QUOTE_REFRESH_FAILED');
+      reservedAuthorizationId = null; return res.status(503).json({ error: 'LIVE_REVIEW_QUOTE_REFRESH_FAILED' }); }
+    const freshQuote = unwrap(freshQuoteResult) || {};
+    const freshNotional = Number(freshQuote.notional ?? freshQuote.notionalUsd ?? freshQuote.quote?.notional);
+    const freshFee = Number(freshQuote.estimatedFee ?? freshQuote.estimatedFeeUsd);
+    const freshEntry = Number(freshQuote.entryPrice);
+    const slippageBps = preparation.executionBounds.referenceEntryPrice && Number.isFinite(freshEntry)
+      ? Math.abs(freshEntry / preparation.executionBounds.referenceEntryPrice - 1) * 10_000 : Number.POSITIVE_INFINITY;
+    if (!(freshNotional > 0 && freshNotional <= preparation.executionBounds.maximumNotionalUsd)
+      || !(freshFee >= 0 && freshFee <= preparation.executionBounds.maximumFeeUsd)
+      || slippageBps > preparation.executionBounds.maximumSlippageBps) {
+      liveReviewStore.failReservation(authorization.id, 'QUOTE_OR_SLIPPAGE_BOUND_EXCEEDED'); reservedAuthorizationId = null;
+      return res.status(409).json({ error: 'LIVE_REVIEW_QUOTE_OR_SLIPPAGE_BOUND_EXCEEDED' });
+    }
+    const result = await runMmAs(req.userId, ['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol,
+      '--side', side, '--size', String(size), '--leverage', String(leverage), '--json'], 120_000);
+    if (!isCommandOk(result)) { liveReviewStore.failReservation(authorization.id, 'WALLET_EXECUTION_FAILED');
+      reservedAuthorizationId = null; return res.status(502).json(result.data); }
+    const payload = unwrap(result) || {};
+    const executionReference = String(payload.orderId || payload.id || payload.txHash || `mm_execution_${generateId().slice(0, 16)}`);
+    const consumption = liveReviewStore.consume(authorization, executionReference, Date.now(), reservation.id);
+    reservedAuthorizationId = null;
+    recordMetaMaskEvent(req, 'METAMASK_LIVE_REVIEW_EXECUTED',
+      `Executed authorized reviewed trade ${authorization.id}; reference=${executionReference}.`);
+    res.json({ mode: 'live', result: payload, authorizationId: authorization.id,
+      contractId: authorization.contractId, consumptionId: consumption.id });
+  } catch (error: any) {
+    if (reservedAuthorizationId) liveReviewStore.failReservation(reservedAuthorizationId, error?.message || 'EXECUTION_FAILED');
+    res.status(409).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/perps/open', requireWallet, async (req: any, res) => {
   try {
     const symbol = validateSymbol(req.body.symbol, 'Symbol');
     const side = asString(req.body.side).trim().toLowerCase();
     if (side !== 'long' && side !== 'short') throw new Error('Side must be long or short.');
     const size = validatePositiveAmount(req.body.size, 'Size');
     const leverage = validatePositiveAmount(req.body.leverage || 1, 'Leverage');
-    const result = await runMm(['perps', 'open', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--json'], 120_000);
-    res.status(isCommandOk(result) ? 200 : 502).json(result.data);
+    if (!liveEnabledFor(req.userId)) {
+      const q = await runMmFor(req, ['perps', 'quote', '--venue', 'hyperliquid', '--symbol', symbol, '--side', side, '--size', size, '--leverage', leverage, '--type', 'market', '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      const arena = recordArenaPosition(req.userId, { assetSymbol: symbol, side, size: Number(size), tradeType: 'perp', leverage: Number(leverage) });
+      return res.json(paperFill(req, 'perps_open', `${side} ${size} ${symbol} @ ${leverage}x`, {
+        venue: 'hyperliquid', symbol, side, size, leverage,
+        entryPx: quote.entryPrice ?? null,
+        liqPx: quote.estimatedLiquidationPrice ?? null,
+        fee: quote.estimatedFee ?? null,
+        notional: quote.notional ?? null,
+        status: 'paper_open',
+        arenaScored: !!arena, arenaSymbol: arena?.symbol ?? null, arenaEntry: arena?.entry ?? null
+      }));
+    }
+    return res.status(403).json({ error: 'REVIEWED_STRATEGY_AUTHORIZATION_REQUIRED',
+      message: 'Generic perps live execution is disabled. Agent strategies must use the reviewed authorization route; manual live trading requires a separate human-only policy.',
+      liveModeGlobalLock: true });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
 
-metamaskRouter.get('/api/mm/predict/markets', async (req, res) => {
-  const query = asString(req.query.query || 'crypto').replace(/[^\w\s-]/g, '').trim().slice(0, 80) || 'crypto';
-  const result = await runMm(['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
-  res.status(isCommandOk(result) ? 200 : 503).json({
-    markets: result.data,
-    message: isCommandOk(result) ? 'Prediction markets loaded.' : result.summary
+// Prediction-market discovery with a resilient source chain: MetaMask's predict
+// service first; if it's unavailable (e.g. regional outage), fall back to
+// Polymarket's public data API directly. The response always says which source
+// answered — never present a fallback as the primary.
+function normalizePolymarket(raw: any[]): any[] {
+  return (raw || []).map((m) => {
+    let prices: number[] = [];
+    try { prices = JSON.parse(m.outcomePrices || '[]').map(Number); } catch { /* no prices */ }
+    return {
+      id: String(m.id),
+      question: m.question,
+      endDate: m.endDate,
+      liquidity: m.liquidity,
+      volume: m.volume,
+      yesPrice: prices[0] ?? null,
+      noPrice: prices[1] ?? null,
+    };
   });
+}
+
+metamaskRouter.get('/api/mm/predict/markets', async (req: any, res) => {
+  const query = asString(req.query.query || 'crypto').replace(/[^\w\s-]/g, '').trim().slice(0, 80) || 'crypto';
+
+  const result = await runMmFor(req, ['predict', 'markets', 'search', query, '--limit', '5', '--json'], 20_000);
+  if (isCommandOk(result)) {
+    res.json({ markets: predictMarkets(result), source: 'metamask', message: 'Prediction markets loaded via MetaMask.' });
+    return;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8_000);
+    const pm = await fetch(
+      `https://gamma-api.polymarket.com/markets?limit=5&active=true&closed=false&order=volume&ascending=false`,
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+    if (pm.ok) {
+      const markets = normalizePolymarket(await pm.json());
+      if (markets.length) {
+        res.json({ markets, source: 'polymarket', message: 'MetaMask predict is unavailable right now — showing Polymarket public data.' });
+        return;
+      }
+    }
+  } catch { /* fall through to honest failure */ }
+
+  res.status(503).json({ markets: null, source: 'none', message: 'Prediction markets are unavailable right now (MetaMask and Polymarket both unreachable).' });
 });
 
-metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
+metamaskRouter.post('/api/mm/predict/quote', async (req: any, res) => {
   try {
     const tokenId = validateTokenId(req.body.tokenId);
     const side = asString(req.body.side).trim().toLowerCase();
@@ -458,11 +1275,36 @@ metamaskRouter.post('/api/mm/predict/quote', async (req, res) => {
     const size = validatePositiveAmount(req.body.size, 'Size');
     const args = ['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'];
     if (req.body.limitPrice) args.push('--limit-price', validatePositiveAmount(req.body.limitPrice, 'Limit price'));
-    const result = await runMm(args, 30_000);
+    const result = await runMmFor(req, args, 30_000);
     res.status(isCommandOk(result) ? 200 : 503).json({
       quote: result.data,
-      placeLocked: !LIVE_EXECUTION_ENABLED,
+      placeLocked: !liveEnabledFor(req.userId),
       message: isCommandOk(result) ? 'Prediction market preview ready.' : result.summary
+    });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+metamaskRouter.post('/api/mm/predict/place', requireWallet, async (req: any, res) => {
+  try {
+    const tokenId = validateTokenId(req.body.tokenId);
+    const side = asString(req.body.side).trim().toLowerCase();
+    if (side !== 'buy' && side !== 'sell') throw new Error('Side must be buy or sell.');
+    const size = validatePositiveAmount(req.body.size, 'Size');
+    if (!liveEnabledFor(req.userId)) {
+      const q = await runMmFor(req, ['predict', 'quote', '--token-id', tokenId, '--side', side, '--size', size, '--json'], 30_000);
+      const quote = unwrap(q) || {};
+      const price = quote.price ?? quote.avgPrice ?? quote.limitPrice ?? null;
+      return res.json(paperFill(req, 'predict_place', `${side} ${size} @ ${tokenId.slice(0, 8)}…`, {
+        tokenId, side, size, price, status: 'paper_placed'
+      }));
+    }
+    // Live placement uses the mm predict order command, which isn't verified in
+    // this environment yet — fail honestly rather than pretend.
+    res.status(501).json({
+      error: 'Live placement not wired',
+      message: 'Live prediction-market placement is not enabled yet. Paper mode simulates it today.'
     });
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -474,8 +1316,11 @@ import { GoogleGenAI } from '@google/genai';
 metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
   try {
     const { intent } = req.body;
-    
-    // Simulate AI parsing or use real Gemini if key exists
+    if (typeof intent !== 'string' || !intent.trim()) {
+      return res.status(400).json({ error: 'Intent text is required.' });
+    }
+
+    // Parse the intent with Gemini when a key is present, else a keyword fallback.
     let parsedSteps = [
       { action: 'ANALYZE', details: 'Scanning token pairs and network state', asset: 'USDC', network: 'Base' }
     ];
@@ -519,16 +1364,21 @@ metamaskRouter.post('/api/mm/intent/solve', async (req, res) => {
     const enrichedSteps = [];
     for (const step of parsedSteps) {
       let data: any = {};
-      let estimatedCost = '~0.0001 ETH';
-      
+      // Honest cost label: gas-only by default; a real fee only when a quote returns one.
+      let estimatedCost = 'gas only (est.)';
+
       try {
+        // Enrichment is best-effort and advisory, so keep timeouts tight — the
+        // plan must return in a few seconds, not block for 30s on a live quote.
         if (step.action === 'SWAP') {
-           const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'WETH', '--amount', '10', '--from-chain', '8453', '--json'], 30_000);
+           const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'WETH', '--amount', '10', '--from-chain', '8453', '--json'], 6_000);
            const quote = quoteResult.data as any;
            data = { quote: quote.estimatedOutput ? `10 USDC -> ${quote.estimatedOutput} WETH` : 'Quote ready' };
+           const feeUsd = quote?.feeData?.metabridge?.usd ?? quote?.fee?.usd;
+           estimatedCost = feeUsd ? `~$${Number(feeUsd).toFixed(2)} fee` : 'swap fee (est.)';
         } else if (step.action === 'PREDICTION') {
-           const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 20_000);
-           const markets = marketsResult.data as any[];
+           const marketsResult = await runMm(['predict', 'markets', 'search', 'politics', '--limit', '1', '--json'], 6_000);
+           const markets = predictMarkets(marketsResult);
            data = { market: markets[0]?.question || 'Market ready' };
         }
       } catch (e) {
@@ -567,9 +1417,9 @@ metamaskRouter.post('/api/mm/chat', async (req, res) => {
       if (process.env.GEMINI_API_KEY && model !== 'llama-3-8b-local') {
         const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
         const prompt = `
-You are the MetaEdge Swarm Copilot, an advanced AI financial assistant helping a user review DeFi actions via a swarm of micro-agents.
-You communicate naturally but your answers are backed by hard data, agentic execution, and strict guardrails.
-Context: MetaMask just launched the "Money Account" which offers ~4% APY, automatic earning, no lockups, and a single balance for trading/sending/spending.
+You are the MetaEdge Swarm Copilot, an AI assistant helping a user review DeFi actions.
+HONESTY RULES (critical): You do NOT have a live market-data feed, price oracle, or contract-audit source wired up. Therefore you must NEVER claim to have "verified" a contract's safety, "checked" audit scores, or fetched a "current" APY/price. Do not invent specific figures (e.g. "12.5% APY") as if they were live facts. When you don't have data to back a claim, say so plainly and frame suggestions as directions to research, not verified advice. MetaEdge is paper-mode: you cannot move real funds, so describe actions as proposals for the user to review, not things you've done.
+Context you MAY reference as real: MetaMask offers a "Money Account" (~4% APY, no lockups) — see metamask.io/money.
 User Message: "${message}"
 
 Respond ONLY with a raw JSON object (no markdown, no quotes) with the following structure:
@@ -594,33 +1444,35 @@ Respond ONLY with a raw JSON object (no markdown, no quotes) with the following 
         text = text.replace(/```json/g, '').replace(/```/g, '').trim();
         responseData = JSON.parse(text);
       } else {
-        // Fallback simulated parsing
+        // No live model wired up. Be HONEST: no invented yields, no claims of
+        // having "verified" anything, no fake portfolio facts. Offer directions
+        // to research, clearly flagged as advisory.
         if (message.toLowerCase().includes('money account')) {
           responseData = {
-            thoughtProcess: ['Analyzing MetaMask Money Account specs', 'Checking idle USDC balance'],
-            response: 'MetaMask just launched their new Money Account providing a seamless ~4% APY with no lockups. I can instantly route your idle USDC into this single-balance earning account so it never stops earning while you use it.',
+            thoughtProcess: ['No live model connected — answering from known facts', 'MetaEdge is paper-mode, so this is advisory'],
+            response: "MetaMask offers a Money Account with ~4% APY on idle balances (metamask.io/money) — a real option for parking idle USDC when you go Live. I can't move real funds from here (everything in MetaEdge is paper), so treat this as a suggestion to action yourself in MetaMask.",
             proposal: {
-              description: 'Deploy idle USDC to MetaMask Money Account',
-              actions: ['Approve USDC for MetaMask Money Router', 'Deposit Idle USDC into Money Account'],
-              estimatedCost: '$0.85',
+              description: 'MetaMask Money Account for idle USDC (advisory only)',
+              actions: ['Review the terms at metamask.io/money', 'Move funds yourself in MetaMask when you go Live'],
+              estimatedCost: '—',
               riskLevel: 'Low'
             }
           };
         } else if (message.toLowerCase().includes('yield') || message.toLowerCase().includes('stablecoin') || message.toLowerCase().includes('park')) {
           responseData = {
-            thoughtProcess: ['Scanning cross-chain L2 stablecoin vaults', 'Evaluating Aave vs Morpho on Base'],
-            response: 'The highest risk-adjusted yield for USDC right now is on Base via Morpho Optimizers, currently yielding 12.5% APY. I have verified the smart contract safety scores.',
+            thoughtProcess: ["No live market-data feed connected", "Can't quote a current APY or vouch for any contract"],
+            response: "Parking idle USDC in an L2 lending market (e.g. Aave or Morpho on Base) is a common approach — but I don't have a live yield feed or contract-audit source wired up, so I can't quote a real APY or verify any contract's safety. Treat this as a direction to research yourself, not verified advice.",
             proposal: {
-              description: 'Deploy USDC to Morpho on Base',
-              actions: ['Bridge USDC to Base via Across', 'Deposit into Morpho Vault'],
-              estimatedCost: '$0.45',
-              riskLevel: 'Low'
+              description: 'Research USDC yield options on Base (advisory only)',
+              actions: ['Compare current APYs on Aave / Morpho yourself', "Check each vault's audits before depositing"],
+              estimatedCost: 'varies',
+              riskLevel: 'Do your own review'
             }
           };
         } else {
           responseData = {
-            thoughtProcess: ['Parsing intent syntax', 'Checking portfolio balance'],
-            response: 'I am monitoring the markets and your swarm is idle. Your portfolio is delta-neutral. What would you like to execute?',
+            thoughtProcess: ['No live model connected', 'Keeping any real action behind review'],
+            response: "Your swarm is idle. Tell me what you'd like to explore — a trade idea, a yield question, or a plan to review. I'll flag when I don't have live data to back a claim, and I keep any real action behind your approval.",
             proposal: null
           };
         }
@@ -643,48 +1495,68 @@ Respond ONLY with a raw JSON object (no markdown, no quotes) with the following 
   }
 });
 
-metamaskRouter.post('/api/mm/autopilot/execute', async (req, res) => {
+// Autopilot is a PLANNER / SIMULATION in this version: it fetches real quotes and
+// composes a plan, but never executes a real trade. Safety-first — the leash (hard
+// cap + simulation-only enforcement) exists *before* any live capability is added.
+const AUTOPILOT_MAX_BUDGET_USD = 1_000_000;
+const AUTOPILOT_RISK_PROFILES = ['low', 'medium', 'high'];
+
+metamaskRouter.post('/api/mm/autopilot/execute', async (req: any, res) => {
   try {
-    const { budget, riskProfile } = req.body;
-    
-    // Simulate real AI planning and query Agent Wallet previews where possible.
+    // MetaEdge-side hard limits, enforced independent of Guard.
+    const budget = Number(req.body?.budget);
+    if (!Number.isFinite(budget) || budget <= 0) {
+      return res.status(400).json({ error: 'Budget must be a positive number.' });
+    }
+    if (budget > AUTOPILOT_MAX_BUDGET_USD) {
+      return res.status(400).json({ error: `Budget exceeds the autopilot cap of $${AUTOPILOT_MAX_BUDGET_USD.toLocaleString()}.` });
+    }
+    const riskProfile = AUTOPILOT_RISK_PROFILES.includes(String(req.body?.riskProfile))
+      ? String(req.body.riskProfile)
+      : 'medium';
+
+    // Read-only calls only (quotes / market search). Nothing here executes.
     let realDataFound = false;
     let fallbackUsed = false;
-    
-    // Step 1: Get market prediction (Polymarket)
-    let marketName = "ETH > $4000 by July";
+
+    let marketName = 'ETH > $4000 by July';
     try {
       const marketsResult = await runMm(['predict', 'markets', 'search', 'ethereum', '--limit', '1', '--json'], 20_000);
-      const markets = marketsResult.data as any[];
-      if (markets && markets.length > 0) {
-        marketName = markets[0].question || marketName;
-        realDataFound = true;
-      }
-    } catch (e) { fallbackUsed = true; }
+      const markets = predictMarkets(marketsResult);
+      if (markets && markets.length > 0) { marketName = markets[0].question || marketName; realDataFound = true; }
+    } catch { fallbackUsed = true; }
 
-    // Step 2: Get a Swap Quote for hedging
-    let quoteAmount = "0.0028";
+    let quoteAmount = '0.0028';
     try {
       const quoteResult = await runMm(['swap', 'quote', '--from', 'USDC', '--to', 'ETH', '--amount', '10', '--from-chain', '8453', '--json'], 30_000);
       const quote = quoteResult.data as any;
-      if (quote && quote.estimatedOutput) {
-        quoteAmount = quote.estimatedOutput;
-        realDataFound = true;
-      }
-    } catch (e) { fallbackUsed = true; }
+      if (quote && quote.estimatedOutput) { quoteAmount = quote.estimatedOutput; realDataFound = true; }
+    } catch { fallbackUsed = true; }
 
     const time = () => new Date().toLocaleTimeString();
-
+    // Honest logs: real reads are labelled real; planned actions are labelled SIMULATED.
     const logs = [
-      { time: time(), message: `[Engine] Autopilot sequence initiated. Budget: $${budget}, Risk: ${riskProfile.toUpperCase()}`, type: 'info' },
-      { time: time(), message: `[X402 Micro-Tx] Paid 0.005 ETH to @QuantOracleAgent for momentum models.`, type: 'x402' },
-      { time: time(), message: `[Polymarket] Executed YES position on "${marketName}" based on oracle data.`, type: 'trade' },
-      { time: time(), message: `[Swap Quote] Fetched live hedge quote: 10 USDC -> ${quoteAmount} ETH.`, type: 'info' },
-      { time: time(), message: `[Hyperliquid] Opened Short ETH-PERP 2x to delta-hedge prediction market exposure.`, type: 'trade' },
-      { time: time(), message: `[Yield] Strategy locked. Estimated APY: 24.5%. Monitoring for rebalance...`, type: 'yield' },
+      { time: time(), message: `[Engine] Autopilot PLAN (simulation) — budget $${budget.toLocaleString()}, risk ${riskProfile.toUpperCase()}. No funds move.`, type: 'info' },
+      { time: time(), message: `[x402] Would pay a micro-fee to a data-provider agent for signals (simulated).`, type: 'x402' },
+      { time: time(), message: `[Predict] Live market found: "${marketName}".`, type: 'info' },
+      { time: time(), message: `[Plan] Would open a YES position on that market (simulated — not executed).`, type: 'trade' },
+      { time: time(), message: `[Swap] Live hedge quote (read-only): 10 USDC → ${quoteAmount} ETH.`, type: 'info' },
+      { time: time(), message: `[Plan] Would open a delta-hedge ETH-PERP short to balance exposure (simulated).`, type: 'trade' },
+      { time: time(), message: `[Plan] Would lock the yield leg and monitor for rebalance (simulated).`, type: 'yield' },
+      { time: time(), message: `[Safety] Live execution ${liveEnabledFor(req.userId) ? 'is unlocked globally, but autopilot stays simulation-only' : 'is locked'}. Real autopilot requires per-run caps + your approval.`, type: 'info' },
     ];
 
-    res.json({ success: true, logs, realDataFound, fallbackUsed });
+    res.json({
+      success: true,
+      mode: 'simulation',
+      liveExecution: false,
+      budgetUsd: budget,
+      budgetCapUsd: AUTOPILOT_MAX_BUDGET_USD,
+      riskProfile,
+      logs,
+      realDataFound,
+      fallbackUsed,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

@@ -20,16 +20,24 @@ export interface OrderIntent {
 
 const seenNonces = new Set<string>();
 const orderIntents = new Map<string, OrderIntent>();
+// Bound the anti-replay set so it can't grow unbounded over a long uptime.
+const MAX_NONCES = 100_000;
 
 export function createOrderIntent(
-  userId: string, 
+  userId: string,
   intentData: Omit<OrderIntent, 'intentId' | 'status' | 'createdAt' | 'userId'>
 ): OrderIntent {
-  
+
   if (seenNonces.has(intentData.nonce)) {
     throw new Error('REPLAY_DETECTED: Duplicate intent nonce.');
   }
 
+  // Evict the oldest nonces (insertion order) once over the cap.
+  if (seenNonces.size >= MAX_NONCES) {
+    const drop = seenNonces.size - MAX_NONCES + 1;
+    let i = 0;
+    for (const n of seenNonces) { if (i++ >= drop) break; seenNonces.delete(n); }
+  }
   seenNonces.add(intentData.nonce);
 
   const intent: OrderIntent = {

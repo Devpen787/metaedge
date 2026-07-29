@@ -1,0 +1,5 @@
+
+> react-example@0.0.0 discovery:reference
+> python3 scripts/reference/opportunity_math.py tests/fixtures/opportunity_math_golden.json
+
+reference parity ok: 4 vectors

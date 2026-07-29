@@ -1,0 +1,53 @@
+
+=== GOLDEN-CROSS TRUTH-FREEZE ROBUSTNESS (134 trades, docs/research/gc-truth-freeze/trades.jsonl) ===
+IN-SAMPLE parameter-selected result under stress. NOT out-of-sample. Net = gross - 0.4% round-trip.
+
+ALL TRADES                     n= 134  medianNet=   0.69%  meanNet=  17.66%  win= 52%
+  95% CI  medianNet=[-1.49, 4.48]%   meanNet=[9.97, 27.41]%   (bootstrap, ignores date-clustering below)
+
+-- chronological folds (equal trade counts, by entry time) --
+  fold 1 (2024-08-05..2024-11-27) n=  33  medianNet=   5.38%  meanNet=  15.36%  win= 67%
+  fold 2 (2024-11-28..2024-12-07) n=  34  medianNet=  -2.85%  meanNet=   3.61%  win= 29%
+  fold 3 (2024-12-08..2025-09-26) n=  33  medianNet=   2.33%  meanNet=  12.47%  win= 55%
+  fold 4 (2025-09-30..2026-07-18) n=  34  medianNet=   4.36%  meanNet=  38.96%  win= 59%
+-- early vs late (50/50 by time) --
+  early half                     n=  67  medianNet=  -0.38%  meanNet=   9.40%  win= 48%
+  late half                      n=  67  medianNet=   3.29%  meanNet=  25.91%  win= 57%
+
+-- venue mix + leave-one-venue-out (venue = re-derived at run time, NOT persisted at fetch) --
+  only binance                   n=  82  medianNet=  -0.60%  meanNet=  13.89%  win= 48%
+  only gate                      n=  50  medianNet=   3.87%  meanNet=  24.23%  win= 60%
+  only mexc                      n=   2  medianNet=   7.77%  meanNet=   7.77%  win= 50%
+  drop binance                   n=  52  medianNet=   3.87%  meanNet=  23.60%  win= 60%
+  drop gate                      n=  84  medianNet=  -0.60%  meanNet=  13.74%  win= 48%
+  drop mexc                      n= 132  medianNet=   0.69%  meanNet=  17.81%  win= 52%
+
+-- turnover cohorts (24h quote turnover at entry) --
+  $1-5M                          n=  30  medianNet=   1.97%  meanNet=  11.53%  win= 53%
+  $5-50M                         n=  66  medianNet=   0.62%  meanNet=  24.54%  win= 53%
+  >$50M                          n=  38  medianNet=   1.03%  meanNet=  10.53%  win= 50%
+
+-- volume-multiple cohorts --
+  3-5x                           n=  81  medianNet=  -0.86%  meanNet=  12.97%  win= 46%
+  5-10x                          n=  37  medianNet=   0.48%  meanNet=  18.98%  win= 51%
+  >=10x                          n=  16  medianNet=  20.79%  meanNet=  38.30%  win= 88%
+
+-- instrument exclusion: remove leveraged/stable/wrapped/tokenized-equity --
+  flagged non-spot (best-effort): 9 → WIF5S, BTC3S, PEPE3L, DOGE3L, AMZNON, HYPE3S, ETH3S, BCH5L, DOGE5L
+  real-spot-only (junk removed)  n= 125  medianNet=   0.48%  meanNet=  16.74%  win= 51%
+
+-- date clustering (independence check) --
+  134 trades on 92 distinct entry dates; 19 dates carry >1 trade
+  day-level (one obs per date = that date's mean): n=92  medianNet=4.86%  meanNet=23.44%  win=63%
+  most-clustered date: 2024-12-02 with 8 simultaneous entries
+
+-- performance concentration (net %, summed) --
+  total summed net across all 134: 2365.8%
+  top  1 trades = 462.1% (20% of total)  |  remove them → n= 133  medianNet=   0.63%  meanNet=  14.31%  win= 52%
+  top  5 trades = 1070.7% (45% of total)  |  remove them → n= 129  medianNet=   0.31%  meanNet=  10.04%  win= 50%
+  top 10 trades = 1565.8% (66% of total)  |  remove them → n= 124  medianNet=  -0.40%  meanNet=   6.45%  win= 48%
+
+-- closed-trade equity (1/5 sized, exit-ordered) --
+  total 6041%   closed-trade maxDD -16.9%   [NOT mark-to-market concurrency — see blockers]
+
+-- exit-reason mix -- trail:134

@@ -57,7 +57,7 @@ function client() {
       connectionString,
       port: port1,
       poolMax: Math.max(1, Math.min(4, Number(process.env.METAEDGE_POSTGRES_POOL_MAX) || 2)),
-      statementTimeoutMs: Math.max(1_000, Number(process.env.METAEDGE_POSTGRES_STATEMENT_TIMEOUT_MS) || 15_000),
+      statementTimeoutMs: Math.max(1_000, Number(process.env.METAEDGE_POSTGRES_STATEMENT_TIMEOUT_MS) || 60_000),
       idleTimeoutMs: Math.max(1_000, Number(process.env.METAEDGE_POSTGRES_IDLE_TIMEOUT_MS) || 30_000),
     },
     transferList: [port1],

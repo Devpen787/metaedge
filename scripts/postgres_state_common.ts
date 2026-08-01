@@ -29,6 +29,7 @@ export function requiredAdminUrl(): string {
 export async function withAdminClient<T>(operation: (client: Client) => Promise<T>): Promise<T> {
   const client = new Client({ connectionString: requiredAdminUrl(), application_name: 'metaedge-v5-admin' });
   await client.connect();
+  await client.query("set statement_timeout = '60s'");
   try { return await operation(client); }
   finally { await client.end(); }
 }

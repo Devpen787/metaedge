@@ -53,7 +53,7 @@ select format('create role %I login password %L nosuperuser nocreatedb nocreater
   :'app_role', :'app_password')
 where not exists (select 1 from pg_roles where rolname = :'app_role') \gexec
 select format('alter role %I password %L connection limit 4', :'app_role', :'app_password') \gexec
-select format('alter role %I set statement_timeout = %L', :'app_role', '15s') \gexec
+select format('alter role %I set statement_timeout = %L', :'app_role', '60s') \gexec
 select format('alter role %I set lock_timeout = %L', :'app_role', '5s') \gexec
 select format('alter role %I set idle_in_transaction_session_timeout = %L', :'app_role', '30s') \gexec
 select format('create database %I owner postgres', :'app_db')

@@ -14,7 +14,7 @@ const pool = new Pool({
   max: Number(workerData.poolMax) || 2,
   idleTimeoutMillis: Number(workerData.idleTimeoutMs) || 30_000,
   connectionTimeoutMillis: 10_000,
-  statement_timeout: Number(workerData.statementTimeoutMs) || 15_000,
+  statement_timeout: Number(workerData.statementTimeoutMs) || 60_000,
   application_name: 'metaedge-v5-state-worker',
 });
 
@@ -54,6 +54,7 @@ async function handle(message: RequestMessage): Promise<unknown> {
 
   if (message.command === 'read') {
     return withTransaction('isolation level repeatable read read only', async (client) => {
+      await client.query("set local statement_timeout = '60s'");
       const meta = await client.query(
         'select revision, schema_version, state_hash from metaedge.state_meta where id = 1',
       );
@@ -84,6 +85,7 @@ async function handle(message: RequestMessage): Promise<unknown> {
   if (message.command === 'write') {
     const input = message.payload;
     return withTransaction('', async (client) => {
+      await client.query("set local statement_timeout = '15s'");
       const meta = await client.query('select revision from metaedge.state_meta where id = 1 for update');
       if (meta.rowCount !== 1) throw new Error('POSTGRES_STATE_NOT_INITIALIZED');
       const currentRevision = Number(meta.rows[0].revision);

@@ -1,4 +1,4 @@
-import { readPostgresState, sha256, withAdminClient } from './postgres_state_common.js';
+import { readPostgresState, semanticHash, withAdminClient } from './postgres_state_common.js';
 
 const report = await withAdminClient(async (client) => {
   const meta = await client.query(`
@@ -13,7 +13,7 @@ const report = await withAdminClient(async (client) => {
     schemaVersion: Number(meta.rows[0].schema_version),
     revision: Number(meta.rows[0].revision),
     storedStateHash: meta.rows[0].state_hash,
-    semanticHash: sha256(JSON.stringify(state)),
+    semanticHash: semanticHash(state),
     stateBytes: Number(meta.rows[0].state_bytes),
     segmentCount: Number(meta.rows[0].segment_count),
     commitCount: Number(meta.rows[0].commit_count),

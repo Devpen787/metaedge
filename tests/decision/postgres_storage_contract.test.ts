@@ -4,6 +4,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { canonicalJson } from '../../server/canonical_json.js';
+
+test('canonical state hashing is independent of JSONB object-key order', () => {
+  assert.equal(
+    canonicalJson({ z: 1, nested: { b: 2, a: 1 }, rows: [{ y: 2, x: 1 }] }),
+    canonicalJson({ rows: [{ x: 1, y: 2 }], nested: { a: 1, b: 2 }, z: 1 }),
+  );
+});
 
 test('production refuses file-backed canonical state unless an isolated smoke explicitly opts in', () => {
   const databaseUrl = path.join(os.tmpdir(), `metaedge-production-file-${process.pid}.json`);

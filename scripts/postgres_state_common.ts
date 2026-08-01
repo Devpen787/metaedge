@@ -2,16 +2,21 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from 'pg';
+import { canonicalJson } from '../server/canonical_json.js';
 
 export function sha256(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
+}
+
+export function semanticHash(value: unknown): string {
+  return sha256(canonicalJson(value));
 }
 
 export function stateSegments(state: Record<string, unknown>) {
   return Object.keys(state).sort().map((key) => {
     const json = JSON.stringify(state[key]);
     if (json === undefined) throw new Error(`UNSERIALIZABLE_STATE_SEGMENT:${key}`);
-    return { key, value: state[key], valueHash: sha256(json), valueBytes: Buffer.byteLength(json) };
+    return { key, value: state[key], valueHash: semanticHash(state[key]), valueBytes: Buffer.byteLength(json) };
   });
 }
 

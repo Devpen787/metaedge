@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { readPostgresState, sha256, withAdminClient } from './postgres_state_common.js';
+import { readPostgresState, semanticHash, withAdminClient } from './postgres_state_common.js';
 
 const destination = path.resolve(process.argv[2] || '');
 if (!destination) throw new Error('POSTGRES_EXPORT_DESTINATION_REQUIRED');
@@ -15,7 +15,7 @@ fs.writeFileSync(destination, payload, { flag: 'wx', mode: 0o600 });
 console.log(JSON.stringify({
   destination,
   bytes: Buffer.byteLength(payload),
-  semanticHash: sha256(JSON.stringify(state)),
+  semanticHash: semanticHash(state),
   users: Object.keys((state.users || {}) as object).length,
   trades: Array.isArray(state.trades) ? state.trades.length : 0,
   liveExecution: 'locked',

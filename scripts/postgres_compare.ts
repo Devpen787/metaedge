@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sha256 } from './postgres_state_common.js';
+import { semanticHash } from './postgres_state_common.js';
 
 const sourcePath = path.resolve(process.argv[2] || '');
 const exportedPath = path.resolve(process.argv[3] || '');
@@ -14,8 +14,8 @@ console.log(JSON.stringify({
   equal: true,
   source: sourcePath,
   exported: exportedPath,
-  sourceSemanticHash: sha256(JSON.stringify(source)),
-  exportedSemanticHash: sha256(JSON.stringify(exported)),
+  sourceSemanticHash: semanticHash(source),
+  exportedSemanticHash: semanticHash(exported),
   users: Object.keys(source.users || {}).length,
   trades: Array.isArray(source.trades) ? source.trades.length : 0,
   liveExecution: 'locked',

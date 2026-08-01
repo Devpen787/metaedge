@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
 import { readPostgresState, writePostgresState, type PostgresStateSegment } from './postgres_sync.js';
+import { canonicalJson } from './canonical_json.js';
 
 const configuredDatabaseUrl = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
 export const DATABASE_BACKEND = /^postgres(?:ql)?:\/\//i.test(configuredDatabaseUrl) ? 'postgres' : 'file';
@@ -46,13 +47,11 @@ export class DatabaseWriteError extends Error {
 }
 
 function valueHash(value: unknown): string {
-  const serialized = JSON.stringify(value);
-  if (serialized === undefined) throw new Error('DATABASE_SEGMENT_UNSERIALIZABLE');
-  return crypto.createHash('sha256').update(serialized).digest('hex');
+  return crypto.createHash('sha256').update(canonicalJson(value)).digest('hex');
 }
 
 function stateHash(state: DatabaseState): string {
-  return crypto.createHash('sha256').update(JSON.stringify(state)).digest('hex');
+  return crypto.createHash('sha256').update(canonicalJson(state)).digest('hex');
 }
 
 export function readDatabase(): DatabaseState {
@@ -274,7 +273,7 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
     }
     const serialized = JSON.stringify(state);
     const bytes = Buffer.byteLength(serialized);
-    const nextStateHash = crypto.createHash('sha256').update(serialized).digest('hex');
+    const nextStateHash = stateHash(state);
     const currentKeys = Object.keys(state).sort();
     const currentKeySet = new Set(currentKeys);
     const changedSegments: PostgresStateSegment[] = [];

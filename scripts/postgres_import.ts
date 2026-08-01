@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { sha256, stateSegments, withAdminClient } from './postgres_state_common.js';
+import { semanticHash, stateSegments, withAdminClient } from './postgres_state_common.js';
 
 const source = path.resolve(process.argv[2] || '');
 if (!source || !fs.existsSync(source)) throw new Error('POSTGRES_IMPORT_SOURCE_FILE_REQUIRED');
@@ -10,7 +10,7 @@ const state = JSON.parse(raw) as Record<string, unknown>;
 assert.equal(Array.isArray(state.trades), true, 'source is not a MetaEdge state document');
 assert.equal(typeof state.users, 'object', 'source is not a MetaEdge state document');
 const segments = stateSegments(state);
-const stateHash = sha256(JSON.stringify(state));
+const stateHash = semanticHash(state);
 const stateBytes = Buffer.byteLength(JSON.stringify(state));
 
 const imported = await withAdminClient(async (client) => {

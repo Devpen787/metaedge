@@ -40,7 +40,14 @@ export PUPPETEER_SKIP_DOWNLOAD=true
 npm ci
 npm run build
 
-# 5) Production env (created once; COOKIE_SECRET generated, live trading OFF)
+# 5) PostgreSQL canonical state (local persistent disk, least-privilege app role)
+METAEDGE_REPO_DIR="$APP_DIR" bash "$APP_DIR/scripts/gcp_postgres_provision.sh"
+# shellcheck disable=SC1090
+source "$HOME/.config/metaedge/postgres.env"
+DATABASE_URL="$APP_DIR/data/db.json" npm run postgres:bootstrap-file
+METAEDGE_POSTGRES_ADMIN_URL="$DATABASE_URL" npm run postgres:import -- "$APP_DIR/data/db.json"
+
+# 6) Production env (created once; COOKIE_SECRET generated, live trading OFF)
 ENV_FILE="$APP_DIR/.env.production"
 if [ ! -f "$ENV_FILE" ]; then
   {
@@ -48,15 +55,19 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "PORT=3000"
     echo "LIVE_EXECUTION_ENABLED=false"
     echo "COOKIE_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')"
+    echo "DATABASE_URL=$DATABASE_URL"
+    echo "METAEDGE_POSTGRES_POOL_MAX=2"
+    echo "METAEDGE_POSTGRES_WORKER_PATH=$APP_DIR/dist/postgres_worker.cjs"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 fi
 
-# 6) systemd service — always on, restarts on crash and on reboot
+# 7) systemd service — always on, restarts on crash and on reboot
 sudo tee /etc/systemd/system/metaedge.service >/dev/null <<UNIT
 [Unit]
 Description=MetaEdge
-After=network.target
+After=network.target postgresql.service
+Requires=postgresql.service
 
 [Service]
 User=$USER
@@ -78,7 +89,7 @@ sudo systemctl enable metaedge
 sudo systemctl restart metaedge || true
 echo "-- app service: $(systemctl is-active metaedge)"
 
-# 7) HTTPS via Caddy on a free sslip.io hostname (real cert, no domain needed).
+# 8) HTTPS via Caddy on a free sslip.io hostname (real cert, no domain needed).
 # IP from GCP's metadata server (always reachable), external lookup as fallback.
 echo "-- configuring HTTPS"
 IP=$(curl -s -H "Metadata-Flavor: Google" "http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/access-configs/0/external-ip" || true)
@@ -92,9 +103,9 @@ $HOST {
 CAD
 sudo systemctl reload caddy
 
-# 8) Daily db backup (7-day rotation), 3am
+# 9) Daily logical PostgreSQL backup, 3am
 (crontab -l 2>/dev/null | grep -v metaedge-backup; \
- echo "0 3 * * * cp $APP_DIR/data/db.json $APP_DIR/data/db-backup-\$(date +\%u).json 2>/dev/null # metaedge-backup") | crontab -
+ echo "0 3 * * * METAEDGE_RELEASE_DIR=$APP_DIR bash $APP_DIR/scripts/gcp_postgres_backup.sh >> $APP_DIR/postgres-backup.log 2>&1 # metaedge-backup") | crontab -
 
 sleep 2
 STATUS=$(systemctl is-active metaedge)

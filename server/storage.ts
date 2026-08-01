@@ -2,9 +2,23 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
+import { readPostgresState, writePostgresState, type PostgresStateSegment } from './postgres_sync.js';
 
-export const DB_FILE = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
+const configuredDatabaseUrl = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
+export const DATABASE_BACKEND = /^postgres(?:ql)?:\/\//i.test(configuredDatabaseUrl) ? 'postgres' : 'file';
+export const DB_FILE = DATABASE_BACKEND === 'file' ? configuredDatabaseUrl : '';
+if (process.env.NODE_ENV === 'production' && DATABASE_BACKEND !== 'postgres'
+  && process.env.METAEDGE_ALLOW_PRODUCTION_SQLITE !== 'true') {
+  throw new Error('PRODUCTION_POSTGRES_REQUIRED');
+}
 let databaseCache: { mtimeMs: number; size: number; state: DatabaseState } | null = null;
+let postgresCache: {
+  revision: number;
+  stateHash: string;
+  state: DatabaseState;
+  segmentHashes: Record<string, string>;
+} | null = null;
+const postgresStateRevision = new WeakMap<object, number>();
 
 export type DatabaseCommitState = 'not_committed' | 'possibly_committed';
 
@@ -13,7 +27,9 @@ export interface DatabaseCommitReceipt {
   bytes: number;
   mtimeMs: number;
   committedAt: number;
-  durability: 'file_and_directory_synced';
+  durability: 'file_and_directory_synced' | 'postgres_transaction_committed';
+  backend?: 'file' | 'postgres';
+  revision?: number;
 }
 
 export class DatabaseWriteError extends Error {
@@ -27,6 +43,16 @@ export class DatabaseWriteError extends Error {
     super(message);
     this.name = 'DatabaseWriteError';
   }
+}
+
+function valueHash(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new Error('DATABASE_SEGMENT_UNSERIALIZABLE');
+  return crypto.createHash('sha256').update(serialized).digest('hex');
+}
+
+function stateHash(state: DatabaseState): string {
+  return crypto.createHash('sha256').update(JSON.stringify(state)).digest('hex');
 }
 
 export function readDatabase(): DatabaseState {
@@ -78,43 +104,59 @@ export function readDatabase(): DatabaseState {
       "lg_predict": { id: "lg_predict", name: "Prediction Market Masters", creatorId: "system", creatorName: "MetaEdge", startBalance: 10000, durationDays: 30, createdAt: now, endsAt: now + 30 * DAY_MS, risk: "Medium" as const, prize: "Winner Takes All", status: "active" as const },
     };
 
-    if (!fs.existsSync(DB_FILE)) {
-      const initialState: DatabaseState = {
-        users: {},
-        sessions: {},
-        rooms: {},
-        agents: {},
-        strategies: {},
-        trades: [],
-        vaultClubs: {},
-        auditEvents: [],
-        graphEvents: [],
-        predictionMarkets: defaultPredictions,
-        predictionBetEvents: [],
-        arenaLeagues: defaultLeagues,
-        arenaMembers: [],
-        arenaBadges: [],
-        arenaRankSnapshots: {},
-        trailingState: {},
-        cooldowns: {},
-        orderIntentsV5: {},
-        orderNonceIndexV5: {},
-        orderEventsV5: [],
-        paperFillsV5: [],
-        experimentsV5: { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] },
-        marketDataV5: { universeVersions: {}, coverageHistory: [] },
-        decisionRuntime: {
-          strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
-        }
-      };
-      
-      writeDatabase(initialState);
-      return initialState;
+    let parsed: any;
+    let fileStat: fs.Stats | null = null;
+    let postgresRead: ReturnType<typeof readPostgresState> | null = null;
+    if (DATABASE_BACKEND === 'postgres') {
+      postgresRead = readPostgresState(postgresCache?.revision);
+      if (postgresRead.missing) throw new Error('POSTGRES_STATE_NOT_INITIALIZED');
+      if (postgresRead.unchanged) {
+        if (!postgresCache) throw new Error('POSTGRES_CACHE_PROTOCOL_ERROR');
+        return postgresCache.state;
+      }
+      if (!postgresRead.revision || postgresRead.schemaVersion !== 5 || !postgresRead.segments) {
+        throw new Error('POSTGRES_STATE_INVALID');
+      }
+      parsed = Object.fromEntries(postgresRead.segments.map((segment) => [segment.key, segment.value]));
+    } else {
+      if (!fs.existsSync(DB_FILE)) {
+        const initialState: DatabaseState = {
+          users: {},
+          sessions: {},
+          rooms: {},
+          agents: {},
+          strategies: {},
+          trades: [],
+          vaultClubs: {},
+          auditEvents: [],
+          graphEvents: [],
+          predictionMarkets: defaultPredictions,
+          predictionBetEvents: [],
+          arenaLeagues: defaultLeagues,
+          arenaMembers: [],
+          arenaBadges: [],
+          arenaRankSnapshots: {},
+          trailingState: {},
+          cooldowns: {},
+          orderIntentsV5: {},
+          orderNonceIndexV5: {},
+          orderEventsV5: [],
+          paperFillsV5: [],
+          experimentsV5: { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] },
+          marketDataV5: { universeVersions: {}, coverageHistory: [] },
+          decisionRuntime: {
+            strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
+          }
+        };
+
+        writeDatabase(initialState);
+        return initialState;
+      }
+      fileStat = fs.statSync(DB_FILE);
+      if (databaseCache && databaseCache.mtimeMs === fileStat.mtimeMs
+        && databaseCache.size === fileStat.size) return databaseCache.state;
+      parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     }
-    const stat = fs.statSync(DB_FILE);
-    if (databaseCache && databaseCache.mtimeMs === stat.mtimeMs && databaseCache.size === stat.size) return databaseCache.state;
-    const data = fs.readFileSync(DB_FILE, 'utf8');
-    const parsed = JSON.parse(data);
     if (!parsed.sessions) {
       parsed.sessions = {};
     }
@@ -171,11 +213,20 @@ export function readDatabase(): DatabaseState {
     if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
     if (!parsed.decisionRuntime.cycleDiagnostics) parsed.decisionRuntime.cycleDiagnostics = [];
     if (!parsed.decisionRuntime.forwardCheckpoints) parsed.decisionRuntime.forwardCheckpoints = [];
-    databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: parsed };
+    if (DATABASE_BACKEND === 'postgres') {
+      const revision = postgresRead!.revision!;
+      const segmentHashes = Object.fromEntries(postgresRead!.segments!.map((segment) => [segment.key, segment.valueHash]));
+      postgresCache = { revision, stateHash: postgresRead!.stateHash || stateHash(parsed), state: parsed, segmentHashes };
+      postgresStateRevision.set(parsed, revision);
+    } else {
+      databaseCache = { mtimeMs: fileStat!.mtimeMs, size: fileStat!.size, state: parsed };
+    }
     return parsed;
   } catch (error) {
     databaseCache = null;
+    postgresCache = null;
     console.error('Error reading database:', error);
+    if (DATABASE_BACKEND === 'postgres') throw error;
     // Failure to create the canonical store is a write failure, not an empty
     // product. Returning an in-memory default here would make later mutations
     // look accepted even though no durable database exists.
@@ -214,7 +265,66 @@ export function readDatabase(): DatabaseState {
   }
 }
 
+function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
+  let commitState: DatabaseCommitState = 'not_committed';
+  try {
+    const expectedRevision = postgresStateRevision.get(state);
+    if (expectedRevision == null || !postgresCache || postgresCache.revision !== expectedRevision) {
+      throw new Error('POSTGRES_WRITE_REQUIRES_CURRENT_READ_STATE');
+    }
+    const serialized = JSON.stringify(state);
+    const bytes = Buffer.byteLength(serialized);
+    const nextStateHash = crypto.createHash('sha256').update(serialized).digest('hex');
+    const currentKeys = Object.keys(state).sort();
+    const currentKeySet = new Set(currentKeys);
+    const changedSegments: PostgresStateSegment[] = [];
+    const nextSegmentHashes: Record<string, string> = {};
+    for (const key of currentKeys) {
+      const hash = valueHash((state as any)[key]);
+      nextSegmentHashes[key] = hash;
+      if (postgresCache.segmentHashes[key] !== hash) {
+        changedSegments.push({ key, value: (state as any)[key], valueHash: hash });
+      }
+    }
+    const deletedKeys = Object.keys(postgresCache.segmentHashes).filter((key) => !currentKeySet.has(key));
+    const result = writePostgresState({
+      expectedRevision,
+      changedSegments,
+      deletedKeys,
+      stateHash: nextStateHash,
+      stateBytes: bytes,
+      writerId: `${process.env.GIT_COMMIT || 'dev'}:${process.pid}`,
+    });
+    commitState = 'possibly_committed';
+    postgresCache = {
+      revision: result.revision,
+      stateHash: nextStateHash,
+      state,
+      segmentHashes: nextSegmentHashes,
+    };
+    postgresStateRevision.set(state, result.revision);
+    return {
+      file: 'postgres:metaedge.state_segments',
+      bytes,
+      mtimeMs: result.committedAt,
+      committedAt: result.committedAt,
+      durability: 'postgres_transaction_committed',
+      backend: 'postgres',
+      revision: result.revision,
+    };
+  } catch (error: any) {
+    postgresCache = null;
+    const reportedState = error?.commitState as DatabaseCommitState | undefined;
+    throw new DatabaseWriteError(
+      `Canonical PostgreSQL write failed (${reportedState || commitState})`,
+      reportedState || commitState,
+      error,
+    );
+  }
+}
+
 export function writeDatabase(state: DatabaseState): DatabaseCommitReceipt {
+  if (DATABASE_BACKEND === 'postgres') return writePostgresDatabase(state);
   const dir = path.dirname(DB_FILE);
   let tmp: string | null = null;
   let renamed = false;
@@ -253,6 +363,7 @@ export function writeDatabase(state: DatabaseState): DatabaseCommitReceipt {
       mtimeMs: stat.mtimeMs,
       committedAt: Date.now(),
       durability: 'file_and_directory_synced',
+      backend: 'file',
     };
   } catch (error) {
     // A caller may have mutated the cached object before attempting this
@@ -275,6 +386,22 @@ export function writeDatabase(state: DatabaseState): DatabaseCommitReceipt {
       error,
     );
   }
+}
+
+export function databaseStatus() {
+  return DATABASE_BACKEND === 'postgres'
+    ? {
+      backend: 'postgres' as const,
+      schemaVersion: 5,
+      revision: postgresCache?.revision ?? null,
+      durability: 'postgres_transaction_committed' as const,
+    }
+    : {
+      backend: 'file' as const,
+      schemaVersion: 5,
+      revision: null,
+      durability: 'file_and_directory_synced' as const,
+    };
 }
 
 // Generate random unguessable IDs/tokens

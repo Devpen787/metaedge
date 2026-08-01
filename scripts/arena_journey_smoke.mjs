@@ -92,6 +92,7 @@ const child = spawn('node', ['dist/server.cjs'], {
     COOKIE_SECRET: 'arena-journey-smoke-not-production',
     LIVE_EXECUTION_ENABLED: 'false',
     NODE_ENV: 'production',
+    METAEDGE_ALLOW_PRODUCTION_SQLITE: 'true',
     GIT_COMMIT: expectedCommit,
     AUTOTRADER_DISABLED: 'true',
     RECORDER_DISABLED: 'true',

@@ -126,6 +126,7 @@ const child = spawn('node', ['dist/server.cjs'], {
   cwd: process.cwd(),
   env: { ...process.env, PORT: serverPort, DATABASE_URL: dbPath, COOKIE_SECRET: 'all-tabs-smoke',
     LIVE_EXECUTION_ENABLED: 'false', NODE_ENV: 'production', GIT_COMMIT: expectedCommit,
+    METAEDGE_ALLOW_PRODUCTION_SQLITE: 'true',
     AUTOTRADER_DISABLED: 'true', RECORDER_DISABLED: 'true', PREDICTION_SCOUT_DISABLED: 'true',
     DECISION_RUNTIME_DISABLED: 'true', OPPORTUNITY_FACTORY_DISABLED: 'true' },
   stdio: ['ignore', 'ignore', 'ignore'],

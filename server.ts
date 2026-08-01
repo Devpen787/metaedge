@@ -10,7 +10,7 @@ import cookieParser from 'cookie-parser';
 // so production never touches it.
 
 import { authRouter, sessionMiddleware, persistEphemeralOnMutation } from './server/auth.js';
-import { readDatabase } from './server/storage.js';
+import { databaseStatus, readDatabase } from './server/storage.js';
 import { pricesRouter } from './server/prices.js';
 import { historyRouter } from './server/history.js';
 import { roomsRouter } from './server/rooms.js';
@@ -126,6 +126,7 @@ app.get('/api/health', (_req, res) => {
     commit: process.env.GIT_COMMIT || 'dev',
     uptimeSec: Math.round((Date.now() - START_TIME) / 1000),
     dbConnectivity: dbOk,
+    storage: databaseStatus(),
     users,
     liveModeGlobalLock: process.env.LIVE_EXECUTION_ENABLED !== 'true'
   });

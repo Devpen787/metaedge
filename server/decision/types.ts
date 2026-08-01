@@ -16,7 +16,9 @@ export interface FeatureSource {
   dataset: string;
   venue?: string;
   observedAt: number;
+  receivedAt?: number;
   retrievedAt: number;
+  observationHash?: string;
 }
 
 export interface VersionedFeature {
@@ -75,6 +77,8 @@ export interface StrategySignal {
 }
 
 export interface StrategyPlugin<Params extends Record<string, unknown> = Record<string, unknown>> {
+  authorityVersion: 5;
+  schema: 'strategy-plugin.v5';
   id: string;
   version: string;
   mechanism: string;
@@ -89,8 +93,11 @@ export interface StrategyPlugin<Params extends Record<string, unknown> = Record<
 }
 
 export type ValidationStatus = 'unvalidated' | 'rejected' | 'inconclusive' | 'forward_paper_candidate';
+export type PaperPermissionV5 = 'observe_only' | 'paper_discovery' | 'paper_confirmed';
 
 export interface FrozenStrategySpec {
+  authorityVersion: 5;
+  schema: 'frozen-strategy-spec.v5';
   id: string;
   hash: string;
   pluginId: string;
@@ -143,6 +150,8 @@ export interface ValidationRecord {
 }
 
 export interface LayeredDecision {
+  authorityVersion: 5;
+  schema: 'layered-decision.v5';
   id: string;
   cycleId: string;
   evaluatedAt: number;
@@ -156,6 +165,7 @@ export interface LayeredDecision {
   signal: StrategySignal | null;
   featureEvidence: VersionedFeature[];
   validationStatus: ValidationStatus;
+  paperPermission: PaperPermissionV5;
   queueStatus: 'not_queued' | 'queued' | 'routed' | 'expired';
   routedTradeId?: string;
   ownerId?: string;

@@ -38,6 +38,8 @@ export function evaluateLayeredDecision(
 
   const idSource = `${context.cycleId}|${context.symbol}|${spec.hash}|${context.evaluatedAt}`;
   return {
+    authorityVersion: 5,
+    schema: 'layered-decision.v5',
     id: `decision_${crypto.createHash('sha256').update(idSource).digest('hex').slice(0, 20)}`,
     cycleId: context.cycleId,
     evaluatedAt: context.evaluatedAt,
@@ -51,6 +53,11 @@ export function evaluateLayeredDecision(
     signal,
     featureEvidence: Object.values(context.features),
     validationStatus,
+    paperPermission: validationStatus === 'forward_paper_candidate'
+      ? 'paper_confirmed'
+      : validationStatus === 'rejected'
+        ? 'observe_only'
+        : 'paper_discovery',
     queueStatus: outcome === 'paper_trade_candidate' ? 'queued' : 'not_queued',
     ownerId: context.routing?.ownerId,
     agentId: context.routing?.agentId,

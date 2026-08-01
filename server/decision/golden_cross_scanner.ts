@@ -5,6 +5,7 @@ import { placePaperTrade, agentPosition } from '../trades.js';
 import { getBroadTick, listBroadSymbols, broadFeedState } from '../broad_feed.js';
 import { dailyIndicators, DailyIndicators } from './daily_features.js';
 import { isRealSpot } from './instrument_eligibility.js';
+import { legacyWritersEnabled } from '../v5/authority.js';
 
 // Append-only scan trail (scanner is the sole writer → no cross-process lost-update risk).
 const SCAN_LOG = process.env.GC_SCAN_LOG || path.join(process.cwd(), 'data', 'market', 'golden-cross', 'scans.jsonl');
@@ -23,6 +24,10 @@ const START_BALANCE = Number(process.env.GC_START_BALANCE) || 100_000;
 const SCAN_MS = Math.max(600_000, Number(process.env.GC_SCAN_MS) || 6 * 3_600_000); // ~4x/day; the signal is daily
 const MODE = process.env.GC_ENTRY_MODE || 'participate';           // 'strict' = frozen forward-test signal only; 'participate' = any bull-regime + volume-confirmed coin
 const COOLDOWN_MS = Math.max(0, Number(process.env.GC_COOLDOWN_HOURS ?? '72')) * 3_600_000; // no re-entry into a symbol for N hours after an exit
+
+function assertLegacyEntryWriterEnabled(): void {
+  if (!legacyWritersEnabled()) throw new Error('LEGACY_WRITER_DISABLED:GOLDEN_CROSS_DIRECT_ENTRY');
+}
 
 // Entry rule. 'strict' = the frozen forward-test signal (fresh cross + vol + liquidity). 'participate'
 // = wider reach for the paper opportunity book (any BULL-REGIME coin that is volume-confirmed + liquid).
@@ -77,17 +82,28 @@ export function enrichCandidate(base: string, price: number, ind: DailyIndicator
 
 // Ensure the paper "book" (a system user + one multi-symbol golden-cross agent) exists.
 export function ensureGoldenCrossBook(): { ownerId: string; agentId: string } {
+  assertLegacyEntryWriterEnabled();
   const db = readDatabase();
   const ownerId = 'gc_book_user', agentId = 'gc_book';
   let changed = false;
   if (!db.users[ownerId]) { db.users[ownerId] = { id: ownerId, username: 'Golden Cross Book', profile: {}, createdAt: Date.now(), lastActiveAt: Date.now(), paperBalance: START_BALANCE, faucetClaimedCount: 0 } as any; changed = true; }
-  if (!db.agents[agentId]) { db.agents[agentId] = { id: agentId, name: 'Golden Cross Book', description: 'Volume-confirmed 50/200 golden cross, 15% trailing stop (paper)', ownerId, roomId: null, assetSymbol: 'MULTI', tradeType: 'spot', strategyType: 'golden_cross', leverage: 1, status: 'active', autopilot: true, createdAt: Date.now(), lastTradeAt: 0 } as any; changed = true; }
+  if (!db.agents[agentId]) {
+    db.agents[agentId] = {
+      authorityVersion: 5, schema: 'trading-agent.v5',
+      id: agentId, name: 'Golden Cross Book',
+      description: 'Volume-confirmed 50/200 golden cross, 15% trailing stop (paper)',
+      ownerId, assetSymbol: 'MULTI', tradeType: 'token', strategyType: 'golden_cross',
+      leverage: 1, status: 'active', autopilot: true, createdAt: Date.now(), lastTradeAt: 0,
+    };
+    changed = true;
+  }
   if (changed) writeDatabase(db);
   return { ownerId, agentId };
 }
 
 // Open a paper long and tag it with a trailing stop, recording the full entry context. Exported for the probe.
 export function openGoldenCrossPosition(ownerId: string, agentId: string, base: string, price: number, ctx?: GcEnriched): boolean {
+  assertLegacyEntryWriterEnabled();
   if (!(price > 0)) return false;
   const res = placePaperTrade(
     ownerId,
@@ -95,7 +111,7 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
       nonce: `gc_${agentId.slice(0, 6)}_${base}_${Date.now()}_${generateId().slice(0, 6)}`,
       thesis: {
         strategy: 'golden_cross', signalFamily: 'golden_cross',
-        cardId: 'volume-confirmed-golden-cross-v1',
+        cardId: 'volume-confirmed-golden-cross-v5',
         setup: '50/200 daily golden cross',
         trigger: ctx ? `vol ${ctx.volMultiple.toFixed(1)}x 50d-avg, $${(ctx.turnover24hUsd / 1e6).toFixed(1)}M turnover, 50d ${ctx.distAboveCrossPct.toFixed(1)}% above 200d` : 'vol>=3x50d + $1M turnover',
         invalidation: `${TRAIL_PCT}% trailing stop from the persisted high-water mark`,
@@ -118,6 +134,7 @@ export function openGoldenCrossPosition(ownerId: string, agentId: string, base: 
 // One scan pass over the liquid universe. Gathers ALL qualifying crosses, ranks them by quality
 // score, and opens the BEST ones up to the remaining capacity (not first-come). Exported for the probe.
 export function scanOnce(): { scanned: number; evaluated: number; qualified: number; entries: GcEnriched[]; record: Record<string, unknown> } {
+  assertLegacyEntryWriterEnabled();
   const { ownerId, agentId } = ensureGoldenCrossBook();
   const db = readDatabase();
   const held = new Set(Object.keys(db.trailingState || {}).filter((k) => k.startsWith(`${agentId}:`)).map((k) => k.slice(agentId.length + 1)));
@@ -158,6 +175,10 @@ export function scanOnce(): { scanned: number; evaluated: number; qualified: num
 }
 
 export function startGoldenCrossScanner() {
+  if (!legacyWritersEnabled()) {
+    console.log('[golden-cross] legacy direct-entry writer disabled by v5 authority');
+    return;
+  }
   if (process.env.GC_SCANNER_DISABLED === 'true') { console.log('[golden-cross] scanner disabled via GC_SCANNER_DISABLED'); return; }
   setTimeout(() => { try { scanOnce(); } catch (e: any) { console.warn('[golden-cross] scan failed:', e?.message); } }, 60_000); // let the feed warm up
   setInterval(() => { try { scanOnce(); } catch (e: any) { console.warn('[golden-cross] scan failed:', e?.message); } }, SCAN_MS).unref();

@@ -11,7 +11,7 @@
  *    killguard is hourly + disable-only. So the exposure window was up to ~5 minutes.
  *
  * Proof structure:
- *  A) The exit is INSTANT when evaluated — real rsiMeanReversionV1.generateSignal returns
+ *  A) The exit is INSTANT when evaluated — real rsiMeanReversionV5.generateSignal returns
  *     'sell'/'stop loss' on a breach, 'hold' otherwise. Latency is only in WHEN it runs.
  *  B) Cadence coupling — with the real plugin + real CYCLE_MS, a breach just after a cycle is
  *     not signalled until the next cycle: exposure = CYCLE_MS.
@@ -24,7 +24,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { rsiMeanReversionV1 } from '../server/decision/plugins.js';
+import { rsiMeanReversionV5 } from '../server/decision/plugins.js';
 import { FEATURE_VERSIONS } from '../server/decision/features.js';
 
 const EXPECT_CLOSED = process.argv.includes('--expect-closed');
@@ -44,14 +44,14 @@ function ctx(price: number, rsi: number, evaluatedAt: number) {
 
 (async () => {
   // A) exit is instantaneous WHEN evaluated
-  const breachSig = rsiMeanReversionV1.generateSignal(ctx(96, 40, Date.now())); // 96 <= 100*0.97=97
-  const holdSig = rsiMeanReversionV1.generateSignal(ctx(99, 40, Date.now()));   // 99 > 97 → hold
+  const breachSig = rsiMeanReversionV5.generateSignal(ctx(96, 40, Date.now())); // 96 <= 100*0.97=97
+  const holdSig = rsiMeanReversionV5.generateSignal(ctx(99, 40, Date.now()));   // 99 > 97 → hold
   const exitsInstantly = breachSig.action === 'sell' && breachSig.trigger === 'stop loss';
   const controlHolds = holdSig.action === 'hold';
 
   // B) cadence coupling — the exposure window is CYCLE_MS
-  const atCycle = rsiMeanReversionV1.generateSignal(ctx(100, 40, 0));
-  const atNextCycle = rsiMeanReversionV1.generateSignal(ctx(96, 40, CYCLE_MS));
+  const atCycle = rsiMeanReversionV5.generateSignal(ctx(100, 40, 0));
+  const atNextCycle = rsiMeanReversionV5.generateSignal(ctx(96, 40, CYCLE_MS));
   const exposureMs = CYCLE_MS - 3_000;
   const cadenceCoupling = atCycle.action === 'hold' && atNextCycle.action === 'sell' && exposureMs > 60_000;
 

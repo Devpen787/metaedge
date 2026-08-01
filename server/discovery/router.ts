@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { Router } from 'express';
 import { readFactoryStatus, readOpportunityCards, readRelationships } from './store.js';
 import { FlywheelLedger } from './flywheel_store.js';
@@ -10,9 +12,7 @@ import { CouncilStore } from './council_store.js';
 import { ValidationStore } from './validation_store.js';
 import { PortfolioOperationStore } from './portfolio_operation_store.js';
 import { ForwardLearningStore } from './forward_learning_store.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { V3OperatorSummaryStore } from './operator_snapshot.js';
+import { LegacyV3OperatorSummaryStore, V5OperatorSummaryStore } from './operator_snapshot.js';
 import { EconomicOperationStore } from './economic_store.js';
 import { FastPerpEvidenceStore } from './fast_perp_store.js';
 import { fastPerpRecorderStatus } from './fast_perp_recorder.js';
@@ -21,9 +21,11 @@ import { FAST_PERP_CLOCKS, enabledFastPerpClocks, evaluateFastPerpClockHeartbeat
   recorderEvidenceIsOperational } from './fast_perp_scheduler.js';
 import { FastPerpResearchBridge } from './fast_perp_research_bridge.js';
 import type { OperatorHealth } from './fast_perp_types.js';
+import { adaptLegacyArtifact } from '../v5/authority.js';
 
 export const discoveryRouter = Router();
-const operatorSummary = new V3OperatorSummaryStore();
+const operatorSummary = new V5OperatorSummaryStore();
+const legacyV3OperatorSummary = new LegacyV3OperatorSummaryStore();
 
 discoveryRouter.get('/api/opportunity-factory/status', (_req, res) => res.json(readFactoryStatus()));
 discoveryRouter.get('/api/opportunity-factory/cards', (req, res) => {
@@ -63,11 +65,17 @@ discoveryRouter.get('/api/opportunity-factory/fast-perps/evidence/:kind', (req, 
     count: rows.length, rows, liveExecution: 'locked' });
 });
 discoveryRouter.get('/api/opportunity-factory/live-review', (_req, res) => res.json(new MetaMaskLiveReviewStore().snapshot()));
-discoveryRouter.get('/api/opportunity-factory/v3', (_req, res) => {
+discoveryRouter.get('/api/opportunity-factory/v5', (_req, res) => {
   const cached = operatorSummary.read();
   if (cached.snapshot.generatedAt == null) { res.status(503).json({ error: 'OPERATOR_SUMMARY_NOT_MATERIALIZED',
     stale: true, liveExecution: 'locked' }); return; }
   res.json({ ...cached.snapshot, stale: cached.stale, operatorSummaryAgeMs: cached.ageMs });
+});
+discoveryRouter.get('/api/opportunity-factory/v3', (_req, res) => {
+  const legacy = legacyV3OperatorSummary.read();
+  if (!legacy) { res.status(404).json({ error: 'LEGACY_V3_SNAPSHOT_NOT_FOUND', readOnly: true,
+    routable: false, liveExecution: 'locked' }); return; }
+  res.json(adaptLegacyArtifact(legacy, 'v3'));
 });
 discoveryRouter.get('/api/opportunity-factory/health', (_req, res) => {
   const now = Date.now(); const cached = operatorSummary.read(now); const enabled = new Set(enabledFastPerpClocks());

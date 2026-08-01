@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { serverPrices } from './prices.js';
+import { getPriceObservation } from './prices.js';
+import { activeUniverseVersionV5, verifyMarketObservationV5 } from './market_data_v5.js';
+import type { MarketObservationV5, UniverseVersionV5 } from '../src/types';
 
 // Market-data recorder — the evidence foundation. Strategies and research
 // cards can only test hypotheses against data we actually captured, so this
@@ -23,27 +25,31 @@ import { serverPrices } from './prices.js';
 // break trading — all failures are swallowed, and the criterion is NOT fetched
 // here (that would put CoinGecko on the recorder's hot path).
 
-const DIR = path.join(process.cwd(), 'data', 'market');
+const DIR = process.env.MARKET_DATA_DIR || path.join(process.cwd(), 'data', 'market');
 const KEEP_DAYS = 30;
 const TICK_MS = 60_000;
+const OBSERVATION_STALE_MS = 10 * 60_000;
+let captureUniverse: UniverseVersionV5 | undefined;
+const lastRecordedHash = new Map<string, string>();
 
 function dayFile(prefix: string) {
   return path.join(DIR, `${prefix}-${new Date().toISOString().slice(0, 10)}.jsonl`);
 }
 
-function appendLines(file: string, lines: string[]) {
+function appendLines(file: string, lines: string[]): boolean {
   try {
     fs.mkdirSync(DIR, { recursive: true });
     fs.appendFileSync(file, lines.join('\n') + '\n');
-  } catch { /* recording never breaks trading */ }
+    return true;
+  } catch {
+    // Recording failure must not stop paper trading, but callers may not count
+    // an in-memory row as persisted evidence.
+    return false;
+  }
 }
 
-function recordPrices() {
-  const t = Date.now();
-  const lines = Object.entries(serverPrices).map(([sym, p]) =>
-    JSON.stringify({ t, sym, px: p.price, chg24h: p.change24h, vol24h: p.volume24h, hi24h: p.high24h, lo24h: p.low24h })
-  );
-  appendLines(dayFile('ticks'), lines);
+export function configureRecorderUniverseV5(version: UniverseVersionV5): void {
+  captureUniverse = version;
 }
 
 async function recordFunding() {
@@ -112,9 +118,25 @@ const HOURLY_MAX = 400;
 // on exchange klines will trigger stops/targets this feed can miss. Any strategy
 // using high/low must be judged on FORWARD paper from THIS feed — never assume
 // kline-backtest fills are reproducible here.
-const hourly: Record<string, { hour: number; open: number; high: number; low: number; close: number }[]> = {};
+type HourlyEvidenceV5 = {
+  hour: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  observationHash?: string;
+  provider?: string;
+  venue?: string;
+  receivedAt?: number;
+};
+const hourly: Record<string, HourlyEvidenceV5[]> = {};
 
-function pushHourly(sym: string, t: number, px: number) {
+function pushHourly(
+  sym: string,
+  t: number,
+  px: number,
+  evidence: Pick<MarketObservationV5, 'observationHash' | 'provider' | 'venue' | 'receivedAt'> | undefined = undefined,
+) {
   const hour = Math.floor(t / 3_600_000);
   const arr = (hourly[sym] ||= []);
   const last = arr[arr.length - 1];
@@ -122,8 +144,9 @@ function pushHourly(sym: string, t: number, px: number) {
     last.close = px;
     if (px > last.high) last.high = px;
     if (px < last.low) last.low = px;
+    if (evidence) Object.assign(last, evidence);
   } else {
-    arr.push({ hour, open: px, high: px, low: px, close: px });
+    arr.push({ hour, open: px, high: px, low: px, close: px, ...evidence });
     if (arr.length > HOURLY_MAX) arr.splice(0, arr.length - HOURLY_MAX);
   }
 }
@@ -134,12 +157,34 @@ function loadHourlyFromFiles() {
     for (const f of files) {
       for (const line of fs.readFileSync(path.join(DIR, f), 'utf8').split('\n')) {
         if (!line) continue;
-        try { const e = JSON.parse(line); pushHourly(e.sym, e.t, e.px); } catch { /* skip bad line */ }
+        try {
+          const e = JSON.parse(line);
+          const observedAt = Number(e.observedAt ?? e.t);
+          const price = Number(e.price ?? e.px);
+          const isV5 = e.schema === 'market-observation.v5';
+          if (isV5 && !verifyMarketObservationV5(e as MarketObservationV5)) continue;
+          if (e.sym && observedAt > 0 && price > 0) {
+            pushHourly(e.sym, observedAt, price, isV5 ? {
+              observationHash: e.observationHash,
+              provider: e.provider,
+              venue: e.venue,
+              receivedAt: e.receivedAt,
+            } : undefined);
+            if (typeof e.observationHash === 'string') lastRecordedHash.set(e.sym, e.observationHash);
+          }
+        } catch { /* skip bad line */ }
       }
     }
     const eth = hourly['ETH']?.length || 0;
     console.log(`[recorder] hourly history loaded: ${eth} hourly closes (need 15 for RSI, 201 for SMA200)`);
   } catch { /* no history yet — strategies will decline until it exists */ }
+}
+
+export function __reloadRecorderEvidenceV5ForTest(): void {
+  for (const symbol of Object.keys(hourly)) delete hourly[symbol];
+  for (const symbol of Object.keys(ring)) delete ring[symbol];
+  lastRecordedHash.clear();
+  loadHourlyFromFiles();
 }
 
 // Chronological hourly closes for a symbol (empty until recorded history exists).
@@ -152,6 +197,24 @@ export function getHourlyCloses(sym: string): number[] {
 // gap before the recorder started.
 export function getHourlySeries(sym: string): { t: number; close: number }[] {
   return (hourly[sym] || []).map((h) => ({ t: h.hour * 3_600_000, close: h.close }));
+}
+
+export function getHourlyEvidenceState(sym: string): {
+  observedAt: number;
+  receivedAt: number;
+  provider: string;
+  venue: string;
+  observationHash?: string;
+} | null {
+  const latest = (hourly[sym] || []).at(-1);
+  if (!latest) return null;
+  return {
+    observedAt: latest.hour * 3_600_000,
+    receivedAt: latest.receivedAt || latest.hour * 3_600_000,
+    provider: latest.provider || 'metaedge',
+    venue: latest.venue || 'recorded-spot',
+    observationHash: latest.observationHash,
+  };
 }
 
 // Full sampled OHLC bars — required by any strategy that references highs, lows,
@@ -168,13 +231,112 @@ export function getHourlyBars(sym: string): { t: number; o: number; h: number; l
 const ring: Record<string, { t: number; px: number }[]> = {};
 const RING_MAX = 24 * 60; // 24h of minutes
 
-function updateRing() {
-  const t = Date.now();
-  for (const [sym, p] of Object.entries(serverPrices)) {
-    (ring[sym] ||= []).push({ t, px: p.price });
+function updateRing(observations: MarketObservationV5[]) {
+  for (const observation of observations) {
+    const { symbol: sym, observedAt: t, price: px } = observation;
+    (ring[sym] ||= []).push({ t, px });
     if (ring[sym].length > RING_MAX) ring[sym].splice(0, ring[sym].length - RING_MAX);
-    pushHourly(sym, t, p.price);
+    pushHourly(sym, t, px, {
+      observationHash: observation.observationHash,
+      provider: observation.provider,
+      venue: observation.venue,
+      receivedAt: observation.receivedAt,
+    });
   }
+}
+
+export interface RecorderCaptureResultV5 {
+  universeId: string | null;
+  requested: number;
+  recorded: number;
+  unchanged: number;
+  gaps: number;
+  writeFailed: boolean;
+  observations: MarketObservationV5[];
+}
+
+/**
+ * Captures only the active UniverseVersionV5. Every row is the canonical
+ * observation object used by price lookup, including source, venue, timestamps,
+ * and hash. Missing/stale observations become explicit gap rows.
+ */
+export function captureMarketObservationsOnce(
+  now = Date.now(),
+  resolveObservation: (symbol: string) => MarketObservationV5 | null = getPriceObservation,
+): RecorderCaptureResultV5 {
+  const version = captureUniverse;
+  if (!version) {
+    return {
+      universeId: null,
+      requested: 0,
+      recorded: 0,
+      unchanged: 0,
+      gaps: 0,
+      writeFailed: false,
+      observations: [],
+    };
+  }
+
+  const observations: MarketObservationV5[] = [];
+  const gapLines: string[] = [];
+  let unchanged = 0;
+  for (const symbol of version.symbols) {
+    const observation = resolveObservation(symbol);
+    const stale = !observation
+      || observation.provenance !== 'observed'
+      || now - observation.observedAt > OBSERVATION_STALE_MS;
+    if (stale) {
+      gapLines.push(JSON.stringify({
+        authorityVersion: 5,
+        schema: 'market-gap.v5',
+        universeId: version.universeId,
+        symbol,
+        detectedAt: now,
+        reason: !observation ? 'OBSERVATION_MISSING'
+          : observation.provenance !== 'observed' ? 'SEED_IS_NOT_EVIDENCE'
+            : 'OBSERVATION_STALE',
+        gapPolicy: version.gapPolicy,
+      }));
+      continue;
+    }
+    if (lastRecordedHash.get(symbol) === observation.observationHash) {
+      unchanged += 1;
+      continue;
+    }
+    observations.push(observation);
+  }
+
+  let tickWriteSucceeded = true;
+  if (observations.length) {
+    tickWriteSucceeded = appendLines(dayFile('ticks'), observations.map((observation) => JSON.stringify({
+      ...observation,
+      universeId: version.universeId,
+      t: observation.observedAt,
+      sym: observation.symbol,
+      px: observation.price,
+      chg24h: observation.change24hPct,
+      vol24h: observation.volume24hUsd,
+      hi24h: observation.high24h,
+      lo24h: observation.low24h,
+    })));
+    if (tickWriteSucceeded) {
+      for (const observation of observations) {
+        lastRecordedHash.set(observation.symbol, observation.observationHash);
+      }
+      updateRing(observations);
+    }
+  }
+  const gapWriteSucceeded = !gapLines.length || appendLines(dayFile('gaps'), gapLines);
+
+  return {
+    universeId: version.universeId,
+    requested: version.symbols.length,
+    recorded: tickWriteSucceeded ? observations.length : 0,
+    unchanged,
+    gaps: gapLines.length,
+    writeFailed: !tickWriteSucceeded || !gapWriteSucceeded,
+    observations: tickWriteSucceeded ? observations : [],
+  };
 }
 
 // Change over the last `windowMs`, in percent — null until enough history has
@@ -194,11 +356,16 @@ export function startRecorder() {
     console.log('[recorder] disabled via RECORDER_DISABLED');
     return;
   }
+  captureUniverse = activeUniverseVersionV5();
   loadHourlyFromFiles();
-  setInterval(() => { recordPrices(); updateRing(); }, TICK_MS).unref();
+  setInterval(() => { captureMarketObservationsOnce(); }, TICK_MS).unref();
   setInterval(recordFunding, 60 * 60 * 1000).unref();
   setInterval(rotate, 6 * 60 * 60 * 1000).unref();
   recordFunding();
   rotate();
-  console.log(`[recorder] capturing ${Object.keys(serverPrices).length} product symbols every ${TICK_MS / 1000}s + hourly funding for the FULL Hyperliquid perp universe → data/market/ (${KEEP_DAYS}d retention)`);
+  console.log(
+    `[recorder-v5] capturing active universe=${captureUniverse?.universeId || 'awaiting-authority'}`
+    + ` symbols=${captureUniverse?.symbols.length || 0} every ${TICK_MS / 1000}s`
+    + ` + hourly funding for the FULL Hyperliquid perp universe → ${DIR}/ (${KEEP_DAYS}d retention)`,
+  );
 }

@@ -11,7 +11,7 @@ interface TradingHubProps {
   currentUser: User;
   agents: TradingAgent[];
   trades: PaperTrade[];
-  onPlaceSimulatedTrade: (payload: any) => Promise<void>;
+  onPlaceSimulatedTrade: (payload: any) => Promise<any>;
   onDeleteTrade?: (id: string) => Promise<void>;
   onClearAllTrades?: () => Promise<void>;
 }
@@ -171,7 +171,7 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
     setSubmitting(true);
     try {
       const hasNotes = thesisSetup.trim() || thesisTrigger.trim() || thesisInvalidation.trim();
-      await onPlaceSimulatedTrade({
+      const result = await onPlaceSimulatedTrade({
         agentId: selectedAgentId,
         assetSymbol,
         side,
@@ -181,7 +181,9 @@ export default function TradingHub({ currentUser, agents, trades, onPlaceSimulat
         nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
         ...(hasNotes ? { thesis: { signalFamily: 'manual', setup: thesisSetup.trim(), trigger: thesisTrigger.trim(), invalidation: thesisInvalidation.trim() } } : {})
       });
-      setSuccess(`Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
+      setSuccess(result?.pending
+        ? `Paper order accepted: ${side.toUpperCase()} ${positionSize} ${assetSymbol}. Waiting for the next fresh market observation.`
+        : `Simulated order filled successfully: ${side.toUpperCase()} ${positionSize} ${assetSymbol} at $${currentPrice.toLocaleString()}`);
       // Every fill earns a tactile spark from the button — long/buy runs
       // emerald, short/sell runs rose, matching the order's own semantics.
       spark({

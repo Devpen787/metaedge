@@ -3,6 +3,7 @@ import { placePaperTrade, agentPosition } from './trades.js';
 import { getSpotPrice, serverPrices, arenaSymbol } from './prices.js';
 import { recordDeclined } from './declined.js';
 import { getHourlyCloses } from './recorder.js';
+import { legacyWritersEnabled } from './v5/authority.js';
 
 // Wilder-smoothed RSI over hourly closes (needs period+1 closes minimum).
 function rsiFromCloses(closes: number[], period = 14): number | null {
@@ -196,6 +197,10 @@ async function tick() {
 }
 
 export function startAutotrader() {
+  if (!legacyWritersEnabled()) {
+    console.log('[autotrader] legacy writer disabled by v5 authority');
+    return;
+  }
   if (LAYERED_RUNTIME_ENABLED) {
     console.log('[autotrader] legacy execution disabled — all agent strategies route through layered decision runtime');
     return;

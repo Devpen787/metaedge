@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { getBroadPrice } from './broad_feed.js';
+import { getBroadObservation } from './broad_feed.js';
+import { createMarketObservationV5 } from './market_data_v5.js';
+import type { MarketObservationV5 } from '../src/types';
 
 export const pricesRouter = Router();
 
@@ -20,6 +22,30 @@ export const serverPrices: Record<string, { price: number; change24h: number; hi
   DOT: { price: 0.8617, change24h: -0.74, high24h: 0.88, low24h: 0.85, volume24h: 100000000, marketCap: 1300000000, supply: '1.4B', name: 'Polkadot', description: "An open-source sharded multichain protocol that connects and secures a network of specialized blockchains." },
   MATIC: { price: 0.20, change24h: -0.5, high24h: 0.21, low24h: 0.19, volume24h: 100000000, marketCap: 2000000000, supply: '9.8B', name: 'Polygon', description: "The first well-structured, easy-to-use platform for Ethereum scaling and infrastructure development." },
 };
+
+type ProductPrice = typeof serverPrices[string];
+const primaryObservations = new Map<string, MarketObservationV5>();
+const researchObservations = new Map<string, MarketObservationV5>();
+const displayPrices: Record<string, ProductPrice> = {};
+
+for (const [symbol, price] of Object.entries(serverPrices)) {
+  primaryObservations.set(symbol, createMarketObservationV5({
+    symbol,
+    price: price.price,
+    change24hPct: price.change24h,
+    volume24hUsd: price.volume24h,
+    high24h: price.high24h,
+    low24h: price.low24h,
+    marketCapUsd: price.marketCap,
+    provider: 'metaedge',
+    venue: 'static-seed',
+    dataset: 'product_seed',
+    observedAt: 0,
+    receivedAt: 0,
+    provenance: 'seed',
+  }));
+  displayPrices[symbol] = { ...price };
+}
 
 // Symbol → source ids. Two independent feeds so a single one failing or blipping
 // can't break or mislead the whole portal.
@@ -44,8 +70,17 @@ let lastSource = 'seed';
 const OUTLIER_CONFIRM_POLLS = Number(process.env.PRICE_OUTLIER_CONFIRM_POLLS) || 3;
 const pendingOutlier: Record<string, { dir: number; count: number }> = {};
 
-export function getPriceFeedState() {
-  return { source: lastSource, observedAt: lastGoodFetch, stale: !lastGoodFetch || Date.now() - lastGoodFetch > 120_000 };
+export function getPriceFeedState(symbol?: string) {
+  const observation = symbol ? getPriceObservation(symbol) : null;
+  const observedAt = observation?.observedAt || lastGoodFetch;
+  return {
+    source: observation?.provider || lastSource,
+    venue: observation?.venue,
+    observedAt,
+    receivedAt: observation?.receivedAt || lastGoodFetch,
+    observationHash: observation?.observationHash,
+    stale: !observedAt || Date.now() - observedAt > 120_000,
+  };
 }
 
 // Apply a price update behind an OUTLIER GUARD: after we have a real baseline, a single
@@ -53,7 +88,12 @@ export function getPriceFeedState() {
 // held. But a jump that PERSISTS in the same direction for OUTLIER_CONFIRM_POLLS consecutive
 // polls is a real move (breakout / cascade), not a blip, and is accepted — so the feed can
 // never freeze indefinitely against reality the way the static clamp did.
-function applyPrice(sym: string, price: unknown, extras?: Partial<typeof serverPrices[string]>): boolean {
+function applyPrice(
+  sym: string,
+  price: unknown,
+  extras: Partial<ProductPrice> | undefined,
+  provenance: { provider: string; venue: string; dataset: string; observedAt: number; receivedAt: number },
+): boolean {
   const p = serverPrices[sym];
   if (!p || typeof price !== 'number' || !Number.isFinite(price) || price <= 0) return false;
   if (lastGoodFetch > 0 && Math.abs(price - p.price) / p.price > 0.25) {
@@ -78,6 +118,16 @@ function applyPrice(sym: string, price: unknown, extras?: Partial<typeof serverP
     if (typeof extras.volume24h === 'number') p.volume24h = extras.volume24h;
     if (typeof extras.marketCap === 'number') p.marketCap = extras.marketCap;
   }
+  primaryObservations.set(sym, createMarketObservationV5({
+    symbol: sym,
+    price: p.price,
+    change24hPct: p.change24h,
+    volume24hUsd: p.volume24h,
+    high24h: p.high24h,
+    low24h: p.low24h,
+    marketCapUsd: p.marketCap,
+    ...provenance,
+  }));
   return true;
 }
 
@@ -91,10 +141,22 @@ async function refreshFromCoinGecko(): Promise<boolean> {
     const byId: Record<string, string> = {};
     for (const [sym, id] of Object.entries(COINGECKO_IDS)) byId[id] = sym;
     let updated = 0;
+    const receivedAt = Date.now();
     for (const c of data) {
       const sym = byId[c.id];
       if (!sym) continue;
-      if (applyPrice(sym, c.current_price, { change24h: c.price_change_percentage_24h, high24h: c.high_24h, low24h: c.low_24h, volume24h: c.total_volume, marketCap: c.market_cap })) updated++;
+      if (applyPrice(
+        sym,
+        c.current_price,
+        { change24h: c.price_change_percentage_24h, high24h: c.high_24h, low24h: c.low_24h, volume24h: c.total_volume, marketCap: c.market_cap },
+        {
+          provider: 'coingecko',
+          venue: 'coingecko-aggregated',
+          dataset: 'coins_markets',
+          observedAt: receivedAt,
+          receivedAt,
+        },
+      )) updated++;
     }
     if (updated > 0) { lastGoodFetch = Date.now(); lastSource = 'coingecko'; return true; }
     return false;
@@ -106,12 +168,24 @@ async function refreshFromCoinGecko(): Promise<boolean> {
 async function refreshFromCoinbase(): Promise<boolean> {
   try {
     let updated = 0;
+    const receivedAt = Date.now();
     await Promise.all(Object.entries(COINBASE_PRODUCTS).map(async ([sym, product]) => {
       try {
         const r = await fetch(`https://api.coinbase.com/v2/prices/${product}/spot`, { headers: { accept: 'application/json' } });
         if (!r.ok) return;
         const j = await r.json();
-        if (applyPrice(sym, Number(j?.data?.amount))) updated++;
+        if (applyPrice(
+          sym,
+          Number(j?.data?.amount),
+          undefined,
+          {
+            provider: 'coinbase',
+            venue: 'coinbase',
+            dataset: 'spot_price',
+            observedAt: receivedAt,
+            receivedAt,
+          },
+        )) updated++;
       } catch { /* skip this symbol */ }
     }));
     if (updated > 0) { lastGoodFetch = Date.now(); lastSource = 'coinbase'; return true; }
@@ -119,9 +193,9 @@ async function refreshFromCoinbase(): Promise<boolean> {
   } catch { return false; }
 }
 
-// Real prices ~every 12s: CoinGecko primary, Coinbase fallback. Between fetches,
-// a tiny CENTERED (mean-0) jitter for a live feel — re-anchored every fetch, so
-// prices can never wander far from reality the way the old biased walk did.
+// Real prices ~every 12s: CoinGecko primary, Coinbase fallback. The product may
+// animate a separate display projection between fetches, but canonical prices
+// and observations are never mutated by that projection.
 (async () => { if (!(await refreshFromCoinGecko())) await refreshFromCoinbase(); })();
 setInterval(async () => {
   const now = Date.now();
@@ -133,9 +207,13 @@ setInterval(async () => {
     const jitter = (Math.random() - 0.5) * 0.0006; // ±0.03%, unbiased
     const decimals = symbol === 'DOGE' || symbol === 'ADA' || symbol === 'MATIC' ? 4 : symbol === 'XRP' ? 4 : 2;
     const next = Number((serverPrices[symbol].price * (1 + jitter)).toFixed(decimals));
-    serverPrices[symbol].price = next;
-    serverPrices[symbol].high24h = Math.max(serverPrices[symbol].high24h, next);
-    serverPrices[symbol].low24h = Math.min(serverPrices[symbol].low24h, next);
+    displayPrices[symbol] = {
+      ...serverPrices[symbol],
+      price: next,
+      // Display-only range motion is never written back to canonical evidence.
+      high24h: Math.max(serverPrices[symbol].high24h, next),
+      low24h: Math.min(serverPrices[symbol].low24h, next),
+    };
   }
 }, 3000).unref();
 
@@ -151,13 +229,83 @@ export function arenaSymbol(sym: string): string {
   return SYMBOL_ALIAS[s] || s;
 }
 
+export function registerResearchObservation(input: {
+  symbol: string;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  high24h: number;
+  low24h: number;
+  marketCap: number;
+}, observedAt: number, receivedAt = Date.now()): MarketObservationV5 {
+  const observation = createMarketObservationV5({
+    symbol: input.symbol,
+    price: input.price,
+    change24hPct: input.change24h,
+    volume24hUsd: input.volume24h,
+    high24h: input.high24h,
+    low24h: input.low24h,
+    marketCapUsd: input.marketCap,
+    provider: 'coingecko',
+    venue: 'coingecko-aggregated',
+    dataset: 'volume_desc_universe',
+    observedAt,
+    receivedAt,
+  });
+  researchObservations.set(observation.symbol, observation);
+  return observation;
+}
+
+export function getPriceObservation(sym: string): MarketObservationV5 | null {
+  const symbol = arenaSymbol(sym);
+  const candidates = [
+    primaryObservations.get(symbol),
+    researchObservations.get(symbol),
+    getBroadObservation(symbol),
+  ].filter((item): item is MarketObservationV5 => Boolean(item));
+  if (!candidates.length) return null;
+  return candidates.sort((left, right) => {
+    if (left.provenance !== right.provenance) return left.provenance === 'observed' ? -1 : 1;
+    return right.observedAt - left.observedAt;
+  })[0];
+}
+
 // The single, consistent price universe the Agent Arena marks positions against.
 // Returns null for tokens we don't price (so they simply aren't scored).
 export function getSpotPrice(sym: string): number | null {
-  const s = arenaSymbol(sym);
-  const entry = serverPrices[s];
-  if (entry) return entry.price;
-  return getBroadPrice(s);   // long-tail fallback: live price from the broad multi-exchange feed
+  return getPriceObservation(sym)?.price ?? null;
+}
+
+export function getDisplayPricesSnapshot(): Record<string, ProductPrice> {
+  return Object.fromEntries(Object.entries(displayPrices).map(([symbol, price]) => [symbol, { ...price }]));
+}
+
+// Test hook for proving canonical-vs-display separation.
+export function __applyCanonicalPriceForTest(
+  symbol: string,
+  price: number,
+  observedAt: number,
+  provider = 'test-feed',
+  venue = 'test-venue',
+): boolean {
+  return applyPrice(symbol.toUpperCase(), price, undefined, {
+    provider,
+    venue,
+    dataset: 'test_tick',
+    observedAt,
+    receivedAt: observedAt,
+  });
+}
+
+export function __projectDisplayPriceForTest(symbol: string, price: number): void {
+  const canonical = serverPrices[symbol.toUpperCase()];
+  if (!canonical) throw new Error(`Unknown product symbol: ${symbol}`);
+  displayPrices[symbol.toUpperCase()] = {
+    ...canonical,
+    price,
+    high24h: Math.max(canonical.high24h, price),
+    low24h: Math.min(canonical.low24h, price),
+  };
 }
 
 // --- PRICES ENDPOINT ---
@@ -165,7 +313,7 @@ pricesRouter.get('/api/prices', (req, res) => {
   const ageSec = lastGoodFetch ? Math.round((Date.now() - lastGoodFetch) / 1000) : null;
   res.json({
     success: true,
-    prices: serverPrices,
+    prices: getDisplayPricesSnapshot(),
     feed: { source: lastSource, ageSec, stale: ageSec == null || ageSec > 120 }
   });
 });

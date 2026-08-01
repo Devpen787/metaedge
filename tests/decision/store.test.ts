@@ -11,22 +11,26 @@ test('strategy, validation, decision, and execution state survive a database rer
   const { readDatabase } = await import('../../server/storage.js');
   const { persistStrategySpec, persistValidation, persistDecision, persistDecisions, markDecisionRouted, decisionRuntimeSnapshot } = await import('../../server/decision/store.js');
   const { compileFrozenStrategy } = await import('../../server/decision/specs.js');
-  const { rsiMeanReversionV1 } = await import('../../server/decision/plugins.js');
-  const spec = persistStrategySpec(compileFrozenStrategy(rsiMeanReversionV1, 100));
+  const { rsiMeanReversionV5 } = await import('../../server/decision/plugins.js');
+  const spec = persistStrategySpec(compileFrozenStrategy(rsiMeanReversionV5, 100));
   persistValidation({
     id: 'validation_test', strategyHash: spec.hash, status: 'forward_paper_candidate',
     datasetId: 'fixture', datasetHash: 'hash', codeCommit: 'commit', folds: 3,
     costBpsPerSide: 10, benchmark: spec.benchmark, reasons: ['passed fixture'], validatedAt: 200, symbols: ['DOT'],
   });
   persistDecision({
+    authorityVersion: 5, schema: 'layered-decision.v5',
     id: 'decision_test', cycleId: 'cycle', evaluatedAt: 300, symbol: 'DOT', instrument: 'spot',
     strategyHash: spec.hash, pluginId: spec.pluginId, outcome: 'paper_trade_candidate', reason: 'VALIDATED_SIGNAL',
-    gates: [], signal: null, featureEvidence: [], validationStatus: 'forward_paper_candidate', queueStatus: 'queued',
+    gates: [], signal: null, featureEvidence: [], validationStatus: 'forward_paper_candidate',
+    paperPermission: 'paper_confirmed', queueStatus: 'queued',
   });
   persistDecisions(['A', 'B'].map((symbol) => ({
+    authorityVersion: 5 as const, schema: 'layered-decision.v5' as const,
     id: `decision_batch_${symbol}`, cycleId: 'cycle_batch', evaluatedAt: 301, symbol, instrument: 'spot' as const,
     strategyHash: spec.hash, pluginId: spec.pluginId, outcome: 'decline' as const, reason: 'NO_SIGNAL',
-    gates: [], signal: null, featureEvidence: [], validationStatus: 'unvalidated' as const, queueStatus: 'not_queued' as const,
+    gates: [], signal: null, featureEvidence: [], validationStatus: 'unvalidated' as const,
+    paperPermission: 'paper_discovery' as const, queueStatus: 'not_queued' as const,
   })));
   markDecisionRouted('decision_test', 'trade_test');
   const db = readDatabase();

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { FrozenStrategySpec, StrategyPlugin } from './types.js';
+import { assertAuthorityV5Contract } from '../v5/authority.js';
 
 function stable(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stable);
@@ -12,7 +13,10 @@ function stable(value: unknown): unknown {
 }
 
 export function compileFrozenStrategy(plugin: StrategyPlugin, createdAt = Date.now()): FrozenStrategySpec {
+  assertAuthorityV5Contract(plugin);
   const body = {
+    authorityVersion: 5 as const,
+    schema: 'frozen-strategy-spec.v5' as const,
     pluginId: plugin.id,
     pluginVersion: plugin.version,
     mechanism: plugin.mechanism,
@@ -26,4 +30,3 @@ export function compileFrozenStrategy(plugin: StrategyPlugin, createdAt = Date.n
   const hash = crypto.createHash('sha256').update(JSON.stringify(stable(body))).digest('hex');
   return { id: `strategy_${hash.slice(0, 16)}`, hash, ...body, createdAt };
 }
-

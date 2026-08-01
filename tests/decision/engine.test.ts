@@ -3,7 +3,7 @@ import test from 'node:test';
 import { buildVersionedFeatures } from '../../server/decision/features.js';
 import { DECISION_LAYER_ORDER } from '../../server/decision/gates.js';
 import { evaluateLayeredDecision } from '../../server/decision/engine.js';
-import { rsiMeanReversionV1 } from '../../server/decision/plugins.js';
+import { rsiMeanReversionV5 } from '../../server/decision/plugins.js';
 import { compileFrozenStrategy } from '../../server/decision/specs.js';
 import type { DecisionContext, ValidationRecord } from '../../server/decision/types.js';
 
@@ -51,49 +51,52 @@ function validation(hash: string, status: ValidationRecord['status']): Validatio
 }
 
 test('strategy compilation is content-addressed and independent of creation time', () => {
-  const a = compileFrozenStrategy(rsiMeanReversionV1, now);
-  const b = compileFrozenStrategy(rsiMeanReversionV1, now + 1000);
+  const a = compileFrozenStrategy(rsiMeanReversionV5, now);
+  const b = compileFrozenStrategy(rsiMeanReversionV5, now + 1000);
   assert.equal(a.hash, b.hash);
   assert.equal(a.id, b.id);
 });
 
 test('all decision layers are recorded in stable order and portfolio can veto a signal', () => {
-  const spec = compileFrozenStrategy(rsiMeanReversionV1, now);
+  const spec = compileFrozenStrategy(rsiMeanReversionV5, now);
   const base = context();
   const capped = context({ limits: { ...base.limits, portfolioOpenNotionalUsd: 2_500 } });
-  const decision = evaluateLayeredDecision(capped, rsiMeanReversionV1, spec, validation(spec.hash, 'forward_paper_candidate'));
+  const decision = evaluateLayeredDecision(capped, rsiMeanReversionV5, spec, validation(spec.hash, 'forward_paper_candidate'));
   assert.deepEqual(decision.gates.map((gate) => gate.layer), DECISION_LAYER_ORDER);
   assert.equal(decision.outcome, 'decline');
   assert.equal(decision.reason, 'POSITION_CAP');
 });
 
 test('an unvalidated signal becomes a research hypothesis, never a paper candidate', () => {
-  const spec = compileFrozenStrategy(rsiMeanReversionV1, now);
-  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV1, spec);
+  const spec = compileFrozenStrategy(rsiMeanReversionV5, now);
+  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV5, spec);
   assert.equal(decision.signal?.action, 'buy');
   assert.equal(decision.outcome, 'research_hypothesis');
+  assert.equal(decision.paperPermission, 'paper_discovery');
   assert.equal(decision.queueStatus, 'not_queued');
 });
 
 test('only a matching forward-paper validation promotes the signal to the candidate queue', () => {
-  const spec = compileFrozenStrategy(rsiMeanReversionV1, now);
-  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV1, spec, validation(spec.hash, 'forward_paper_candidate'));
+  const spec = compileFrozenStrategy(rsiMeanReversionV5, now);
+  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV5, spec, validation(spec.hash, 'forward_paper_candidate'));
   assert.equal(decision.outcome, 'paper_trade_candidate');
+  assert.equal(decision.paperPermission, 'paper_confirmed');
   assert.equal(decision.queueStatus, 'queued');
 });
 
 test('a rejected strategy remains declined even when market conditions trigger', () => {
-  const spec = compileFrozenStrategy(rsiMeanReversionV1, now);
-  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV1, spec, validation(spec.hash, 'rejected'));
+  const spec = compileFrozenStrategy(rsiMeanReversionV5, now);
+  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV5, spec, validation(spec.hash, 'rejected'));
   assert.equal(decision.outcome, 'decline');
   assert.equal(decision.reason, 'VALIDATION_REJECTED');
+  assert.equal(decision.paperPermission, 'observe_only');
 });
 
 test('a passing validation cannot authorize a symbol outside its recorded scope', () => {
-  const spec = compileFrozenStrategy(rsiMeanReversionV1, now);
+  const spec = compileFrozenStrategy(rsiMeanReversionV5, now);
   const scoped = validation(spec.hash, 'forward_paper_candidate');
   scoped.symbols = ['BTC'];
-  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV1, spec, scoped);
+  const decision = evaluateLayeredDecision(context(), rsiMeanReversionV5, spec, scoped);
   assert.equal(decision.outcome, 'research_hypothesis');
   assert.equal(decision.reason, 'VALIDATION_SCOPE_MISMATCH');
   assert.equal(decision.queueStatus, 'not_queued');

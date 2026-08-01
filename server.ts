@@ -15,7 +15,7 @@ import { pricesRouter } from './server/prices.js';
 import { historyRouter } from './server/history.js';
 import { roomsRouter } from './server/rooms.js';
 import { agentsRouter } from './server/agents.js';
-import { tradesRouter } from './server/trades.js';
+import { startPaperBroker, tradesRouter } from './server/trades.js';
 import { vaultsRouter } from './server/vaults.js';
 import { predictionsRouter } from './server/predictions.js';
 import { graphRouter } from './server/graph.js';
@@ -39,6 +39,12 @@ import { startOpportunityFactory } from './server/discovery/runtime.js';
 import { startFastPerpRecorder } from './server/discovery/fast_perp_recorder.js';
 import { startFastPerpOperation, startFastPerpOperatorSummary } from './server/discovery/fast_perp_scheduler.js';
 import { mutationLimiter } from './server/ratelimit.js';
+import { reconcileOrderIntents } from './src/secure-core/trading/intents.js';
+import { initializeV5Authority } from './server/v5/authority.js';
+import { v5Router } from './server/v5/router.js';
+import { startExperimentOutcomeReconcilerV5 } from './server/v5/outcomes.js';
+import { startPortfolioAllocatorReconcilerV5 } from './server/v5/portfolio.js';
+import { startPopulationOperationSupervisorV5 } from './server/v5/population.js';
 
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -168,6 +174,7 @@ app.use(arenaRouter);
 app.use(platformRouter);
 app.use(researchRouter);
 app.use(discoveryRouter);
+app.use(v5Router);
 
 // --- VITE MIDDLEWARE SETUP FOR DEV/PROD ---
 import fs from 'fs';
@@ -212,14 +219,37 @@ async function startServer() {
     if (!res.headersSent) res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });
 
+  // Establish the immutable pre-v5 cutoff and migrate current mutable agents
+  // before any writer or reconciliation path can run.
+  const authority = initializeV5Authority();
+  console.log(
+    `[authority-v5] active cutoff=${authority.cutoffAt}`
+    + ` legacy_agents=${authority.legacyAgentIds.length}`
+    + ` legacy_specs=${authority.legacyStrategySpecIds.length}`,
+  );
+
+  // Resolve interrupted V5 paper-order state before any autonomous loop can
+  // submit another intent. Failure is fatal: trading must not start from
+  // unexamined canonical state.
+  const reconciliation = reconcileOrderIntents();
+  console.log(
+    `[order-v5] startup reconciliation inspected=${reconciliation.inspected}`
+    + ` recovered=${reconciliation.recoveredExecuted}`
+    + ` unresolved=${reconciliation.markedUnresolved}`,
+  );
+
   const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[MetaEdge V1 Server] running on http://0.0.0.0:${PORT}`);
+    console.log(`[MetaEdge V5 Server] running on http://0.0.0.0:${PORT}`);
     startAutotrader();
     startRecorder();
     startPredictionScout();
     startBroadFeed();  // live price + 24h volume for the long-tail universe (feeds getSpotPrice + the gates)
     startDailyRoll();  // keep the daily 50/200 series current from the broad feed (once per UTC day)
+    startPaperBroker();
+    startPortfolioAllocatorReconcilerV5();
+    startExperimentOutcomeReconcilerV5();
     startDecisionRuntime();
+    startPopulationOperationSupervisorV5();
     startRiskLoop();   // event-driven hard-stop + trailing-stop defense between the runtime's slow cycles
     startGoldenCrossScanner();  // volume-confirmed 50/200 entries → paper positions with a 15% trailing stop
     startOpportunityFactory();

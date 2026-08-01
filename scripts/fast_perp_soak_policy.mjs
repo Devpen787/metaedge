@@ -1,11 +1,11 @@
-export function automaticPauseReason({ stage, sample, recent, intervalMs, projectedTotalKbPerDay, v3p95Ms }) {
-  if (sample.health.currentLiveLock === false || sample.v3.liveExecution !== 'locked'
-    || (sample.v3.criticalFailures ?? 0) > 0) return 'INTEGRITY_FAILED';
+export function automaticPauseReason({ stage, sample, recent, intervalMs, projectedTotalKbPerDay, v5p95Ms }) {
+  if (sample.health.currentLiveLock === false || sample.v5.liveExecution !== 'locked'
+    || (sample.v5.criticalFailures ?? 0) > 0) return 'INTEGRITY_FAILED';
   if (sample.health.operational !== true) return 'OPERATIONAL_HEALTH_DEGRADED';
   if (stage === 'final' && sample.health.eventAgeMs != null && sample.health.eventAgeMs > 30_000) {
     return 'EVENT_LAG_EXCEEDED_30S';
   }
-  if (recent.length * intervalMs >= 5 * 60_000 && v3p95Ms != null && v3p95Ms > 500) {
+  if (recent.length * intervalMs >= 5 * 60_000 && v5p95Ms != null && v5p95Ms > 500) {
     return 'API_P95_EXCEEDED_500MS_FOR_5M';
   }
   if ((sample.health.clocks || []).some((clock) => Number(clock.queueDepth) > 10_000)) {

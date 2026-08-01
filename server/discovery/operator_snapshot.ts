@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { controlPlaneSnapshot } from './control_cycle.js';
 import { FlywheelControlStore } from './control_store.js';
 import { CouncilStore } from './council_store.js';
@@ -14,10 +16,10 @@ import { SignalResearchStore } from './signal_store.js';
 import { ValidationStore } from './validation_store.js';
 import { WorldStore } from './world_store.js';
 
-export class V3OperatorSummaryStore {
+export class V5OperatorSummaryStore {
   readonly file: string;
-  constructor(readonly root = path.join(process.cwd(), 'data', 'opportunity-factory-v3', 'operator')) {
-    this.file = path.join(root, 'v3-summary.json');
+  constructor(readonly root = path.join(process.cwd(), 'data', 'opportunity-factory-v5', 'operator')) {
+    this.file = path.join(root, 'v5-summary.json');
   }
   write(snapshot: Record<string, any>): void {
     fs.mkdirSync(this.root, { recursive: true });
@@ -30,16 +32,28 @@ export class V3OperatorSummaryStore {
       const ageMs = Math.max(0, now - Number(snapshot.generatedAt));
       return { snapshot, ageMs, stale: !Number.isFinite(ageMs) || ageMs > maximumAgeMs };
     } catch {
-      return { snapshot: { schemaVersion: 1, generatedAt: null, mode: 'Paper research',
+      return { snapshot: { authorityVersion: 5, schema: 'opportunity-factory-operator.v5', schemaVersion: 5,
+        generatedAt: null, mode: 'Paper research',
         verdict: { operationStatus: 'degraded', economicResult: 'no_promoted_alpha', capitalStatus: 'live_locked',
           conclusion: 'Operator summary is not available yet; fast-perp operation remains disabled or degraded.' },
-        stale: true, liveExecution: 'locked' }, ageMs: null, stale: true };
+        stale: true, legacyComponentsReadOnly: true, liveExecution: 'locked' }, ageMs: null, stale: true };
     }
   }
 }
 
-export function materializeV3OperatorSnapshot(options: Parameters<typeof buildV3OperatorSnapshot>[0] = {}) {
-  const snapshot = buildV3OperatorSnapshot(options); new V3OperatorSummaryStore().write(snapshot); return snapshot;
+export class LegacyV3OperatorSummaryStore {
+  readonly file: string;
+  constructor(readonly root = path.join(process.cwd(), 'data', 'opportunity-factory-v3', 'operator')) {
+    this.file = path.join(root, 'v3-summary.json');
+  }
+  read(): Record<string, any> | null {
+    try { return JSON.parse(fs.readFileSync(this.file, 'utf8')) as Record<string, any>; }
+    catch { return null; }
+  }
+}
+
+export function materializeV5OperatorSnapshot(options: Parameters<typeof buildV5OperatorSnapshot>[0] = {}) {
+  const snapshot = buildV5OperatorSnapshot(options); new V5OperatorSummaryStore().write(snapshot); return snapshot;
 }
 
 function integrityReport(name: string, integrity: Record<string, unknown>) {
@@ -53,7 +67,7 @@ function integrityReport(name: string, integrity: Record<string, unknown>) {
   return { failures, warnings };
 }
 
-export function buildV3OperatorSnapshot(options: {
+export function buildV5OperatorSnapshot(options: {
   control?: FlywheelControlStore; dataWorld?: DataWorldStore; world?: WorldStore; signals?: SignalResearchStore;
   lanes?: LaneSignalStore; council?: CouncilStore; validation?: ValidationStore; portfolio?: PortfolioOperationStore;
   forward?: ForwardLearningStore; economics?: EconomicOperationStore; fastPerps?: FastPerpEvidenceStore;
@@ -98,7 +112,9 @@ export function buildV3OperatorSnapshot(options: {
   const activeValidation = validation.currentPolicy;
   const economicEdgeProven = activeValidation.forwardCandidates > 0 && council.operatorSummary.paperObserve > 0
     && (portfolio.latest?.status === 'operational') && forward.operatorSummary.eligibleForReview > 0;
-  return { schemaVersion: 1, generatedAt: options.now ?? Date.now(), mode: 'Paper research',
+  return { authorityVersion: 5 as const, schema: 'opportunity-factory-operator.v5' as const,
+    schemaVersion: 5, generatedAt: options.now ?? Date.now(), mode: 'Paper research',
+    legacyComponentsReadOnly: true,
     verdict: { operationStatus: operationOperational ? 'operational' : 'degraded',
       economicResult: economicEdgeProven ? 'forward_edge_eligible_for_paper_review' : 'no_promoted_alpha',
       capitalStatus: liveReview.liveExecution === 'locked' ? 'live_locked' : 'live_enabled',
@@ -176,5 +192,3 @@ export function buildV3OperatorSnapshot(options: {
       allLiveExecutionLocked: Object.values(stageIntegrity).every((integrity) => integrity.allLiveExecutionLocked === true) },
     liveExecution: liveReview.liveExecution };
 }
-import fs from 'node:fs';
-import path from 'node:path';

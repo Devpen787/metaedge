@@ -12,7 +12,7 @@ import { FlywheelLedger } from '../../server/discovery/flywheel_store.js';
 import { ForwardLearningStore } from '../../server/discovery/forward_learning_store.js';
 import { LaneSignalStore } from '../../server/discovery/lane_signal_store.js';
 import { MetaMaskLiveReviewStore } from '../../server/discovery/metamask_live_review.js';
-import { buildV3OperatorSnapshot } from '../../server/discovery/operator_snapshot.js';
+import { buildV5OperatorSnapshot } from '../../server/discovery/operator_snapshot.js';
 import { PortfolioOperationStore } from '../../server/discovery/portfolio_operation_store.js';
 import { SignalResearchStore } from '../../server/discovery/signal_store.js';
 import { ValidationStore } from '../../server/discovery/validation_store.js';
@@ -31,10 +31,14 @@ function emptyOperatorStores(root: string) {
     flywheel: new FlywheelLedger(path.join(root, 'flywheel')) };
 }
 
-test('unified v3 operator snapshot never confuses an empty paper operation with proven alpha', () => {
+test('unified v5 operator snapshot never confuses an empty paper operation with proven alpha', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'metaedge-operator-'));
   try {
-    const snapshot = buildV3OperatorSnapshot({ ...emptyOperatorStores(root), now: Date.UTC(2026, 6, 15) });
+    const snapshot = buildV5OperatorSnapshot({ ...emptyOperatorStores(root), now: Date.UTC(2026, 6, 15) });
+    assert.equal(snapshot.authorityVersion, 5);
+    assert.equal(snapshot.schema, 'opportunity-factory-operator.v5');
+    assert.equal(snapshot.schemaVersion, 5);
+    assert.equal(snapshot.legacyComponentsReadOnly, true);
     assert.equal(snapshot.verdict.operationStatus, 'degraded');
     assert.equal(snapshot.verdict.economicResult, 'no_promoted_alpha');
     assert.equal(snapshot.verdict.capitalStatus, 'live_locked');
@@ -50,7 +54,7 @@ test('operator snapshot exposes an enabled two-key runtime instead of painting t
   process.env.LIVE_EXECUTION_ENABLED = 'true';
   process.env.LIVE_REVIEW_EXECUTION_CERTIFIED = 'true';
   try {
-    const snapshot = buildV3OperatorSnapshot({ ...emptyOperatorStores(root), now: Date.UTC(2026, 6, 15) });
+    const snapshot = buildV5OperatorSnapshot({ ...emptyOperatorStores(root), now: Date.UTC(2026, 6, 15) });
     assert.equal(snapshot.verdict.capitalStatus, 'live_enabled');
     assert.equal(snapshot.metaMaskLiveReview.liveExecution, 'enabled');
     assert.equal(snapshot.integrity.allLiveExecutionLocked, false);

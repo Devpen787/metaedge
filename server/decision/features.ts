@@ -3,15 +3,21 @@ import { realizedVolPctPerHour, simpleMovingAverageSeries, wilderRsiSeries } fro
 import type { FeatureQuality, FeatureSource, VersionedFeature } from './types.js';
 
 export const FEATURE_VERSIONS = {
-  price: 'price.v1',
-  change24h: 'change_24h_pct.v1',
-  volume24h: 'volume_24h_usd.v1',
-  rangeAtr: 'range_atr_pct.v1',
-  realizedVol: 'realized_vol_pct_per_hour.v1',
-  fundingApr: 'funding_apr_pct.v1',
-  openInterest: 'open_interest_usd.v1',
-  rsi14: 'rsi_wilder_14.v1',
-  sma200: 'sma_200.v1',
+  price: 'price.v5',
+  change24h: 'change_24h_pct.v5',
+  volume24h: 'volume_24h_usd.v5',
+  rangeAtr: 'range_atr_pct.v5',
+  realizedVol: 'realized_vol_pct_per_hour.v5',
+  fundingApr: 'funding_apr_pct.v5',
+  openInterest: 'open_interest_usd.v5',
+  rsi14: 'rsi_wilder_14.v5',
+  sma200: 'sma_200.v5',
+  dailySma50: 'daily_sma_50.v5',
+  dailySma200: 'daily_sma_200.v5',
+  dailySma50Previous: 'daily_sma_50_previous.v5',
+  dailySma200Previous: 'daily_sma_200_previous.v5',
+  dailyVolume50Average: 'daily_volume_50_average_usd.v5',
+  return30d: 'return_30d_pct.v5',
 } as const;
 
 export interface FeatureInput {
@@ -24,6 +30,16 @@ export interface FeatureInput {
   hourlyCloses: number[];
   fundingHourly: number | null;
   openInterestUsd: number | null;
+  daily?: {
+    sma50: number | null;
+    sma200: number | null;
+    sma50Previous: number | null;
+    sma200Previous: number | null;
+    volume50AverageUsd: number | null;
+    return30dPct: number | null;
+    source: FeatureSource;
+    staleBudgetMs: number;
+  };
   sources: {
     market: FeatureSource;
     history: FeatureSource;
@@ -88,6 +104,12 @@ export function buildVersionedFeatures(input: FeatureInput): Record<string, Vers
     [FEATURE_VERSIONS.openInterest, input.openInterestUsd, 'USD notional', input.sources.funding, input.staleBudgets.funding],
     [FEATURE_VERSIONS.rsi14, input.precomputed?.rsi14 ?? calculateWilderRsi(input.hourlyCloses, 14), 'index', input.sources.history, input.staleBudgets.history],
     [FEATURE_VERSIONS.sma200, input.precomputed?.sma200 ?? calculateSimpleMovingAverage(input.hourlyCloses, 200), 'USD', input.sources.history, input.staleBudgets.history],
+    [FEATURE_VERSIONS.dailySma50, input.daily?.sma50 ?? null, 'USD', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
+    [FEATURE_VERSIONS.dailySma200, input.daily?.sma200 ?? null, 'USD', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
+    [FEATURE_VERSIONS.dailySma50Previous, input.daily?.sma50Previous ?? null, 'USD', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
+    [FEATURE_VERSIONS.dailySma200Previous, input.daily?.sma200Previous ?? null, 'USD', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
+    [FEATURE_VERSIONS.dailyVolume50Average, input.daily?.volume50AverageUsd ?? null, 'USD/day', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
+    [FEATURE_VERSIONS.return30d, input.daily?.return30dPct ?? null, 'percent', input.daily?.source ?? input.sources.history, input.daily?.staleBudgetMs ?? input.staleBudgets.history],
   ];
   return Object.fromEntries(values.map(([id, value, unit, source, staleBudget]) => [id, feature(id, value, unit, source, staleBudget)]));
 }

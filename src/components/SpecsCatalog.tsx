@@ -35,7 +35,7 @@ export default function SpecsCatalog() {
       <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6">
         <h3 className="text-sm font-bold text-white font-mono flex items-center gap-2 mb-2">
           <Award className="w-5 h-5 text-indigo-400" />
-          MetaEdge V1 Operational Specification Hub
+          MetaEdge V5 Operational Specification Hub
         </h3>
         <p className="text-xs text-slate-400 font-mono leading-relaxed mb-6">
           System blueprint catalog displaying interactive design tokens, integrated tools alignment, and real-time user story status tracking.

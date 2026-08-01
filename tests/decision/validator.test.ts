@@ -7,6 +7,7 @@ import type { StrategyPlugin } from '../../server/decision/types.js';
 import { validateFrozenStrategy, type HistoricalDataset } from '../../server/decision/validator.js';
 
 const plugin: StrategyPlugin = {
+  authorityVersion: 5, schema: 'strategy-plugin.v5',
   id: 'fixture_next_bar', version: '1.0.0', mechanism: 'test next-bar causality', instrument: 'spot',
   requiredFeatures: [FEATURE_VERSIONS.price], parameters: {}, benchmark: 'fixture',
   falsifier: 'fixture turns negative', expectedFailureRegimes: [],

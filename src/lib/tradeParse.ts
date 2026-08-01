@@ -51,6 +51,12 @@ export async function executeTrade(
     });
     const data = await safeJson(res);
     if (!res.ok) return { ok: false, message: data.error || 'Trade failed.' };
+    if (data.pending && data.intent?.intentId) {
+      return {
+        ok: true,
+        message: `Paper order accepted: ${action.side.toUpperCase()} ${action.assetSymbol}. Waiting for the next fresh market observation; no fill or balance change has been claimed yet.`,
+      };
+    }
     // Display the LEDGER fill price (cost-adjusted), never pre-cost spot.
     // If the server sends neither field, Number(undefined) is NaN and the user is
     // told they filled at "$NaN". Report the gap rather than render nonsense.

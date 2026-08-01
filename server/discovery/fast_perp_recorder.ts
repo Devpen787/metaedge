@@ -1,5 +1,6 @@
 import { contentHash } from './store.js';
 import { FastPerpEvidenceStore } from './fast_perp_store.js';
+import { legacyWritersEnabled } from '../v5/authority.js';
 import type {
   FastPerpBookEvent,
   FastPerpBookLevel,
@@ -225,6 +226,10 @@ export function startFastPerpRecorder(): FastPerpRecorder {
   if (!singleton) singleton = new FastPerpRecorder();
   if (process.env.FAST_PERP_RECORDER_ENABLED !== 'true') {
     console.log('[fast-perps] recorder disabled by default; set FAST_PERP_RECORDER_ENABLED=true after recovery checks');
+    return singleton;
+  }
+  if (!legacyWritersEnabled()) {
+    console.log('[fast-perps] legacy recorder writer disabled by v5 authority');
     return singleton;
   }
   void singleton.start(); return singleton;

@@ -14,7 +14,7 @@ interface AgentWorkshopProps {
   onAgentStatusChanged: (id: string, status: 'active' | 'paused' | 'revoked') => Promise<void>;
   onAgentDeleted?: (id: string) => Promise<void>;
   onCopyStrategy: (strategyId: string) => Promise<void>;
-  onPlaceSimulatedTrade: (payload: any) => Promise<void>;
+  onPlaceSimulatedTrade: (payload: any) => Promise<any>;
 }
 
 export default function AgentWorkshop({
@@ -114,7 +114,7 @@ export default function AgentWorkshop({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simAgentId, simSymbol, pricesLoaded]);
 
-  // Auto-select an active bot for the fill simulator, so "Simulate Fill" isn't
+  // Auto-select an active bot for paper-broker submission, so the action isn't
   // dead-disabled until the user manually picks the only bot they just created.
   useEffect(() => {
     const active = agents.filter(a => a.status === 'active');
@@ -177,7 +177,7 @@ export default function AgentWorkshop({
     setTradeLoading(true);
     setMsg({ text: '', type: '' });
     try {
-      await onPlaceSimulatedTrade({
+      const result = await onPlaceSimulatedTrade({
         agentId: simAgentId,
         assetSymbol: agents.find(a => a.id === simAgentId)?.assetSymbol || 'BTC',
         side: simSide,
@@ -185,7 +185,9 @@ export default function AgentWorkshop({
         price: px,
         nonce: `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`
       });
-      setMsg({ text: 'Paper fill executed successfully. Balances deducted server-side.', type: 'success' });
+      setMsg({ text: result?.pending
+        ? 'Paper order accepted. It will fill only on a later fresh market observation; no balance has changed yet.'
+        : 'Paper fill executed successfully. Balances deducted server-side.', type: 'success' });
     } catch (err: any) {
       setMsg({ text: err.message || 'Execution error', type: 'error' });
     } finally {
@@ -438,7 +440,7 @@ export default function AgentWorkshop({
             <div className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6">
               <h3 className="text-xs font-mono text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
                 <Info className="w-4 h-4 text-emerald-400" />
-                Trigger Paper Fill Simulator
+                Submit V5 Paper-Broker Order
               </h3>
 
               <form onSubmit={handleTriggerTrade} className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono items-end">
@@ -471,7 +473,7 @@ export default function AgentWorkshop({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 mb-1">Size / Fills Price</label>
+                  <label className="block text-slate-400 mb-1">Size / Reference Price</label>
                   <div className="flex gap-1">
                     <input
                       type="number"
@@ -494,20 +496,20 @@ export default function AgentWorkshop({
                   </div>
                   {feedStale && (
                     <div className="mt-1 text-[10px] text-amber-400">
-                      Price feed is stale — this fill would book at an old price.
+                      Price feed is stale — the broker will reject the order rather than claim a fill.
                     </div>
                   )}
                 </div>
 
                 <button
                   type="submit"
-                  // Locked until a real price exists: this books a paper fill at
-                  // whatever is in the field, and it scores in the Arena.
+                  // The field is only a display/reference gate. Canonical fills
+                  // come from a later server-side market observation.
                   disabled={tradeLoading || !simAgentId || !(Number(simPrice) > 0)}
                   title={!(Number(simPrice) > 0) ? 'Waiting for a live price for this asset' : undefined}
                   className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium py-1.5 px-4 rounded-xl shadow-lg transition-all cursor-pointer text-center"
                 >
-                  {tradeLoading ? 'Fills...' : 'Simulate Fill'}
+                  {tradeLoading ? 'Submitting...' : 'Submit Paper Order'}
                 </button>
               </form>
             </div>
@@ -560,7 +562,7 @@ export default function AgentWorkshop({
 
             {trades.length === 0 ? (
               <div className="text-center py-8 text-xs text-slate-500 font-mono bg-slate-950/20 rounded-xl border border-slate-900/40">
-                No simulated fills recorded. Create an agent and trigger a Paper Fill Simulator to begin co-trading.
+                No paper-broker fills recorded. Create an agent and submit a paper order to begin co-trading.
               </div>
             ) : (
               <div className="overflow-x-auto">

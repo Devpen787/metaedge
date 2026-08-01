@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { serverPrices } from '../prices.js';
+import { registerResearchObservation, serverPrices } from '../prices.js';
 import { fetchResearchUniverse, readCachedResearchUniverse, SCANNER_DIR, type FeedRow } from './feed.js';
 import type { Tier, UniverseMember } from './types.js';
 
@@ -55,6 +55,12 @@ export async function resolveUniverse(tier: Tier, options: { allowStaleForDeclin
     const feed = await fetchResearchUniverse() || (options.allowStaleForDeclines ? readCachedResearchUniverse() : null);
     // Feed unavailable → EMPTY, never a silent fallback to the product catalog.
     if (!feed) return { members: [], rows: [], observedAt: 0, stale: false };
+
+    // The exact values used to select Tier 1 are also registered as immutable
+    // provenance-bearing observations. Decision features can therefore cite
+    // the same source row that admitted the symbol, rather than a product
+    // catalog value or uncited long-tail fallback.
+    for (const row of feed.included) registerResearchObservation(row, feed.t);
 
     const members: UniverseMember[] = [
       ...feed.included.map((r) => ({

@@ -1,20 +1,26 @@
 import crypto from 'node:crypto';
 import { readDatabase } from '../storage.js';
-import { getHourlySeries } from '../recorder.js';
+import {
+  captureMarketObservationsOnce,
+  configureRecorderUniverseV5,
+  getHourlyEvidenceState,
+  getHourlySeries,
+} from '../recorder.js';
 import { resolveUniverse } from '../opportunity/universe.js';
 import { readLatestFunding } from '../opportunity/snapshot.js';
 import { agentPosition } from '../trades.js';
-import { getPriceFeedState, getSpotPrice } from '../prices.js';
+import { getPriceObservation, registerResearchObservation } from '../prices.js';
 import { placePaperTrade } from '../trades.js';
 import { buildVersionedFeatures } from './features.js';
+import { dailyIndicators } from './daily_features.js';
 import { evaluateLayeredDecision } from './engine.js';
 import { compileFrozenStrategy } from './specs.js';
 import {
   STRATEGY_PLUGINS,
-  gridDeviationV1,
-  meanReversion24hV1,
-  momentum24hV1,
-  rsiMeanReversionV1,
+  gridDeviationV5,
+  meanReversion24hV5,
+  momentum24hV5,
+  rsiMeanReversionV5,
 } from './plugins.js';
 import {
   decisionWasExecuted,
@@ -28,6 +34,23 @@ import {
 import type { DecisionContext, FrozenStrategySpec, LayeredDecision, StrategyPlugin, ValidationRecord } from './types.js';
 import type { FeedRow } from '../opportunity/feed.js';
 import type { TradingAgent } from '../../src/types.js';
+import {
+  activateUniverseVersionV5,
+  coverageEntryV5,
+  createUniverseVersionV5,
+  persistCoverageMatrixV5,
+} from '../market_data_v5.js';
+import type { MarketCoverageEntryV5, MarketObservationV5 } from '../../src/types.js';
+import { v5AuthorityFlags } from '../v5/authority.js';
+import {
+  buildOpportunityObservationV5,
+  ensureExperimentPopulationV5,
+  persistOpportunityObservationsV5,
+  reconcileExperimentEligibilityV5,
+  routeExperimentObservationV5,
+  type RegisteredExperimentV5,
+} from '../v5/experiments.js';
+import { ensureExperimentTrialsV5 } from '../v5/outcomes.js';
 
 const CYCLE_MS = Math.max(60_000, Number(process.env.DECISION_RUNTIME_INTERVAL_MS) || 5 * 60_000);
 const STALE_BUDGET_MS = 5 * 60_000;
@@ -36,16 +59,31 @@ const PAPER_NOTIONAL_USD = 250;
 // which was removed for trading a blended score. An agent with no honest
 // mechanism routes nothing rather than trading theatre.
 export const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'], StrategyPlugin>> = {
-  rsi_meanrev: rsiMeanReversionV1,
-  momentum: momentum24hV1,
-  mean_reversion: meanReversion24hV1,
-  grid: gridDeviationV1,
+  rsi_meanrev: rsiMeanReversionV5,
+  momentum: momentum24hV5,
+  mean_reversion: meanReversion24hV5,
+  grid: gridDeviationV5,
 };
 
 let running = false;
 
-function source(provider: string, dataset: string, observedAt: number, retrievedAt: number, venue?: string) {
-  return { provider, dataset, observedAt, retrievedAt, venue };
+function source(
+  provider: string,
+  dataset: string,
+  observedAt: number,
+  retrievedAt: number,
+  venue?: string,
+  observation?: MarketObservationV5,
+) {
+  return {
+    provider,
+    dataset,
+    observedAt,
+    receivedAt: observation?.receivedAt,
+    retrievedAt,
+    venue,
+    observationHash: observation?.observationHash,
+  };
 }
 
 function buildContext(
@@ -58,10 +96,16 @@ function buildContext(
 ): DecisionContext {
   const evaluatedAt = Date.now();
   const hourly = getHourlySeries(row.symbol);
+  const hourlyEvidence = getHourlyEvidenceState(row.symbol);
   const funding = readLatestFunding(row.symbol);
-  const priceFeed = getPriceFeedState();
-  const livePrice = getSpotPrice(row.symbol);
-  const price = livePrice ?? row.price;
+  // Use one coherent source row for price/change/volume/range. A fresher venue
+  // price may be used later by the broker, but it must not silently overwrite
+  // only one field inside this research feature packet.
+  const marketObservation = registerResearchObservation(row, observedAt, evaluatedAt);
+  const price = marketObservation.price;
+  const daily = plugin.instrument === 'spot'
+    ? dailyIndicators(row.symbol, price, row.volume24h)
+    : null;
   const position = routing
     ? agentPosition(routing.ownerId, routing.agent.id, row.symbol)
     : { size: 0, avgEntry: 0 };
@@ -70,7 +114,6 @@ function buildContext(
   // Research-only evaluations do not need user state. Reading the entire flat
   // database for every symbol/plugin pair pinned the event loop for ~1 minute.
   const ownerBalance = routing ? readDatabase().users[routing.ownerId]?.paperBalance || 0 : PAPER_NOTIONAL_USD;
-  const marketObservedAt = livePrice != null && priceFeed.observedAt ? priceFeed.observedAt : observedAt;
   const features = buildVersionedFeatures({
     symbol: row.symbol,
     price,
@@ -81,9 +124,42 @@ function buildContext(
     hourlyCloses: hourly.map((point) => point.close),
     fundingHourly: funding.fundingHourly,
     openInterestUsd: funding.openInterestUsd,
+    daily: daily ? {
+      sma50: daily.sma50,
+      sma200: daily.sma200,
+      sma50Previous: daily.sma50Prev,
+      sma200Previous: daily.sma200Prev,
+      volume50AverageUsd: daily.vol50dAvg,
+      return30dPct: daily.return30dPct,
+      source: source(
+        'metaedge',
+        'daily_series_v5_with_named_bootstrap',
+        daily.lastSettledAt,
+        evaluatedAt,
+        'recorded-spot',
+      ),
+      staleBudgetMs: 48 * 60 * 60_000,
+    } : undefined,
     sources: {
-      market: source(livePrice != null ? priceFeed.source : 'coingecko', 'market_snapshot', marketObservedAt, evaluatedAt, 'spot'),
-      history: source('metaedge', 'recorder_hourly_closes', hourly.at(-1)?.t || 0, evaluatedAt, 'spot'),
+      market: source(
+        marketObservation.provider,
+        marketObservation.dataset,
+        marketObservation.observedAt,
+        evaluatedAt,
+        marketObservation.venue,
+        marketObservation,
+      ),
+      history: {
+        ...source(
+          hourlyEvidence?.provider || 'metaedge',
+          'recorder_hourly_closes',
+          hourlyEvidence?.observedAt || hourly.at(-1)?.t || 0,
+          evaluatedAt,
+          hourlyEvidence?.venue || 'recorded-spot',
+        ),
+        receivedAt: hourlyEvidence?.receivedAt,
+        observationHash: hourlyEvidence?.observationHash,
+      },
       funding: source('hyperliquid', 'metaAndAssetCtxs', funding.fundingHourly == null ? 0 : funding.t, evaluatedAt, 'perp'),
     },
     staleBudgets: { market: STALE_BUDGET_MS, history: 90 * 60_000, funding: 90 * 60_000 },
@@ -133,7 +209,7 @@ export function routePaperDecision(decision: LayeredDecision, context: DecisionC
   const agent = db.agents[context.routing.agentId];
   if (!agent || agent.ownerId !== context.routing.ownerId || !agent.autopilot || agent.status !== 'active') return false;
   if (decision.signal.action !== 'buy' && decision.signal.action !== 'sell') return false;
-  const price = Number(context.features['price.v1']?.value);
+  const price = Number(context.features['price.v5']?.value);
   if (!(price > 0)) return false;
   const position = agentPosition(agent.ownerId, agent.id, decision.symbol);
   const size = decision.signal.action === 'sell'
@@ -160,8 +236,8 @@ export function routePaperDecision(decision: LayeredDecision, context: DecisionC
       holdingWindow: 'plugin-defined',
     },
   }, { action: 'LAYERED_PAPER_TRADE', detailsPrefix: `Layered decision ${decision.id} executed paper` });
-  if (!result.ok || !result.trade) return false;
-  markDecisionRouted(decision.id, result.trade.id);
+  if (!result.ok || (!result.trade && !result.intent)) return false;
+  markDecisionRouted(decision.id, result.trade?.id ?? result.intent!.intentId);
   return true;
 }
 
@@ -178,14 +254,60 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
   try {
     const resolved = await resolveUniverse(1, { allowStaleForDeclines: true });
     if (resolved.rows.length === 0) throw new Error('UNIVERSE_UNAVAILABLE');
+    const universeVersion = activateUniverseVersionV5(
+      createUniverseVersionV5(resolved.rows.map((row) => row.symbol), resolved.observedAt),
+    );
+    configureRecorderUniverseV5(universeVersion);
+    // Capture immediately instead of waiting up to one minute after a new
+    // universe becomes authoritative.
+    captureMarketObservationsOnce();
     const rowsBySymbol = new Map(resolved.rows.map((row) => [row.symbol, row]));
     const researchDecisions: LayeredDecision[] = [];
-    for (const plugin of STRATEGY_PLUGINS) {
-      const spec = persistStrategySpec(compileFrozenStrategy(plugin));
+    const opportunityObservations: ReturnType<typeof buildOpportunityObservationV5>[] = [];
+    const experimentRoutes: Array<{
+      registered: RegisteredExperimentV5;
+      observation: ReturnType<typeof buildOpportunityObservationV5>;
+      decision: LayeredDecision;
+      context: DecisionContext;
+    }> = [];
+    const coverageByStrategySymbol = new Map<string, MarketCoverageEntryV5>();
+    const experimentEntries = STRATEGY_PLUGINS.map((plugin) => ({
+      plugin,
+      strategy: persistStrategySpec(compileFrozenStrategy(plugin)),
+    }));
+    const registeredExperiments = ensureExperimentPopulationV5(experimentEntries);
+    // Trial controls and the forward evidence cutoff must exist before any
+    // observation can be admitted to the broker in this cycle.
+    ensureExperimentTrialsV5(Date.now());
+    const experimentByPlugin = new Map(registeredExperiments.map((item) => [item.spec.pluginId, item]));
+    for (const { plugin, strategy: spec } of experimentEntries) {
+      const registered = experimentByPlugin.get(plugin.id);
+      if (!registered) throw new Error(`EXPERIMENT_REGISTRATION_MISSING:${plugin.id}`);
       const validation = latestValidation(spec.hash);
       for (const row of resolved.rows) {
-        const decision = evaluate(buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale), plugin, spec, validation);
+        const context = buildContext(
+          cycleId,
+          row,
+          resolved.observedAt,
+          plugin,
+          resolved.stale,
+          registered.execution,
+        );
+        const coverage = coverageEntryV5({
+          strategyHash: spec.hash,
+          pluginId: plugin.id,
+          symbol: row.symbol,
+          requiredFeatures: plugin.requiredFeatures,
+          features: context.features,
+        });
+        coverageByStrategySymbol.set(`${spec.hash}:${row.symbol}`, coverage);
+        const decision = evaluate(context, plugin, spec, validation);
+        const observation = buildOpportunityObservationV5(registered, decision, plugin, context);
         researchDecisions.push(decision);
+        opportunityObservations.push(observation);
+        if (decision.signal && decision.signal.action !== 'hold') {
+          experimentRoutes.push({ registered, observation, decision, context });
+        }
         evaluated++;
         if (decision.outcome === 'decline') declines++;
         else if (decision.outcome === 'research_hypothesis') hypotheses++;
@@ -193,6 +315,31 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       }
     }
     persistDecisions(researchDecisions);
+    persistOpportunityObservationsV5(opportunityObservations);
+    reconcileExperimentEligibilityV5(opportunityObservations, Date.now());
+    persistCoverageMatrixV5(universeVersion.universeId, [...coverageByStrategySymbol.values()]);
+    // Free shared exposure first. A valid reduction is never queued behind a
+    // new entry that could consume the capacity the reduction is releasing.
+    experimentRoutes.sort((left, right) => {
+      const rank = (candidate: typeof left) => {
+        const position = agentPosition(
+          candidate.registered.execution.ownerId,
+          candidate.registered.execution.agent.id,
+          candidate.decision.symbol,
+        );
+        const action = candidate.decision.signal?.action;
+        const sign = action === 'buy' || action === 'long' ? 1 : -1;
+        return position.signedSize !== 0 && Math.sign(position.signedSize) !== sign ? 0 : 1;
+      };
+      return rank(left) - rank(right);
+    });
+    for (const candidate of experimentRoutes) {
+      const result = routeExperimentObservationV5(candidate);
+      if (result.routed && result.intentId) {
+        markDecisionRouted(candidate.decision.id, result.intentId);
+        routed++;
+      }
+    }
 
     const db = readDatabase();
     const agents = Object.values(db.agents).filter((agent) => agent.autopilot && agent.status === 'active');
@@ -201,6 +348,11 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       const row = rowsBySymbol.get(agent.assetSymbol.toUpperCase());
       if (!plugin || !row) continue;
       const spec = persistStrategySpec(compileFrozenStrategy(plugin));
+      const coverage = coverageByStrategySymbol.get(`${spec.hash}:${row.symbol}`);
+      // Missing/stale evidence is a visible unarmed state in the coverage
+      // matrix. It does not throw, poison cycle health, or endlessly request
+      // features from a recorder that never captured this symbol.
+      if (!coverage?.armed) continue;
       const context = buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale, { ownerId: agent.ownerId, agent });
       const decision = persistDecision(evaluate(context, plugin, spec, latestValidation(spec.hash)));
       evaluated++;
@@ -225,6 +377,10 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
 }
 
 export function startDecisionRuntime() {
+  if (!v5AuthorityFlags().decisionWriterEnabled) {
+    console.log('[decision-runtime-v5] canonical writer disabled via V5_DECISION_WRITER_ENABLED');
+    return;
+  }
   if (process.env.DECISION_RUNTIME_DISABLED === 'true') {
     console.log('[decision-runtime] disabled via DECISION_RUNTIME_DISABLED');
     return;

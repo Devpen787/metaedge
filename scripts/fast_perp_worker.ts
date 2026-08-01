@@ -4,9 +4,11 @@ import { EconomicOperationStore } from '../server/discovery/economic_store.js';
 import { runFastLifecycleCycle } from '../server/discovery/fast_lifecycle_runtime.js';
 import { FastPerpEvidenceStore } from '../server/discovery/fast_perp_store.js';
 import { commitFastForwardDecisions, resolveFastForwardOutcomes } from '../server/discovery/fast_shadow_runtime.js';
-import { materializeV3OperatorSnapshot } from '../server/discovery/operator_snapshot.js';
+import { materializeV5OperatorSnapshot } from '../server/discovery/operator_snapshot.js';
+import { legacyWritersEnabled } from '../server/v5/authority.js';
 
 const clock = process.argv[2]; const now = Date.now();
+if (!legacyWritersEnabled()) throw new Error('LEGACY_WRITER_DISABLED:FAST_PERP_V3');
 const globalPause = path.join(process.cwd(), 'data', 'opportunity-factory-v3', 'operator', 'pauses', 'global.json');
 const clockPause = path.join(process.cwd(), 'data', 'opportunity-factory-v3', 'operator', 'pauses', `${clock}.json`);
 if (fs.existsSync(globalPause) || fs.existsSync(clockPause)) {
@@ -31,7 +33,7 @@ if (clock === 'signal_evaluator') {
   throw new Error(`UNKNOWN_FAST_PERP_CLOCK:${clock}`);
 }
 evidenceStore.close();
-if (clock !== 'signal_evaluator') materializeV3OperatorSnapshot({ now: Date.now() });
+if (clock !== 'signal_evaluator') materializeV5OperatorSnapshot({ now: Date.now() });
 const heartbeat = { schemaVersion: 1, clock, pid: process.pid, startedAt: now, completedAt: Date.now(),
   durationMs: Date.now() - now, queueDepth: 0, status: 'healthy', items, liveExecution: 'locked', detail };
 const directory = path.join(process.cwd(), 'data', 'opportunity-factory-v3', 'operator', 'heartbeats');

@@ -348,6 +348,7 @@ export default function App() {
         setCurrentUser({ ...currentUser, paperBalance: data.balance });
       }
       fetchEntities();
+      return data;
     } else {
       throw new Error(data.error || 'Execution fill failed.');
     }
@@ -529,7 +530,7 @@ export default function App() {
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-tight flex items-center gap-1.5">
-              MetaEdge <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V1</span>
+              MetaEdge <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 px-1.5 py-0.5 rounded text-indigo-400 font-mono font-bold uppercase">V5</span>
             </h1>
             <span className="text-[9px] text-slate-500 font-mono block">Autonomous Social Trade</span>
           </div>
@@ -933,7 +934,7 @@ export default function App() {
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-[11px]">
               <CheckCircle className="w-3.5 h-3.5 text-indigo-400" />
-              MetaEdge V1 Paper Room Active
+              MetaEdge V5 Paper Room Active
             </span>
             <span className="text-[10px]">
               No custody or guaranteed returns. Handled entirely via simulated paper accounts and local MetaMask readiness scopes.

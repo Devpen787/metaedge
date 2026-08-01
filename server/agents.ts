@@ -36,6 +36,8 @@ agentsRouter.post('/api/agents', (req: any, res) => {
   const agentId = 'agt_' + generateId();
 
   const newAgent: TradingAgent = {
+    authorityVersion: 5,
+    schema: 'trading-agent.v5',
     id: agentId,
     name: agentName,
     description: sanitizeText(description || '', 150),
@@ -267,6 +269,8 @@ agentsRouter.post('/api/strategies/copy', (req: any, res) => {
   // Create a copied agent
   const agentId = 'agt_' + generateId();
   const newAgent: TradingAgent = {
+    authorityVersion: 5,
+    schema: 'trading-agent.v5',
     id: agentId,
     name: `${sourceStrategy.name} (Copy)`,
     description: `Copied from ${db.users[sourceStrategy.authorId]?.profile.displayName || 'another trader'}.`,

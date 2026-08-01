@@ -7,10 +7,19 @@
 // So watching the whole universe is a light poll, decoupled from the decision engine, vCPU-safe.
 //
 // Keyed by BASE asset (uppercase). getSpotPrice() falls back here for non-major symbols.
+import { createMarketObservationV5 } from './market_data_v5.js';
+import type { MarketObservationV5 } from '../src/types';
+
 const BROAD_FEED_MS = Math.max(10_000, Number(process.env.BROAD_FEED_MS) || 30_000);
 
-type Tick = { price: number; vol24hUsd: number; venue: string; ts: number };
-const feed = new Map<string, Tick>();
+export type BroadTickV5 = {
+  price: number;
+  vol24hUsd: number;
+  venue: string;
+  ts: number;
+  observation: MarketObservationV5;
+};
+const feed = new Map<string, BroadTickV5>();
 let lastRefreshAt = 0;
 
 async function getJson(url: string): Promise<unknown> {
@@ -24,7 +33,24 @@ async function getJson(url: string): Promise<unknown> {
 function upsert(base: string, price: number, vol24hUsd: number, venue: string, ts: number) {
   if (!base || !(price > 0)) return;
   const prev = feed.get(base);
-  if (!prev || vol24hUsd >= prev.vol24hUsd) feed.set(base, { price, vol24hUsd, venue, ts });
+  if (!prev || vol24hUsd >= prev.vol24hUsd) {
+    feed.set(base, {
+      price,
+      vol24hUsd,
+      venue,
+      ts,
+      observation: createMarketObservationV5({
+        symbol: base,
+        price,
+        volume24hUsd: vol24hUsd,
+        provider: venue,
+        venue,
+        dataset: 'spot_ticker_24h',
+        observedAt: ts,
+        receivedAt: ts,
+      }),
+    });
+  }
 }
 
 export async function refreshBroadFeed(): Promise<{ symbols: number; venues: string[] }> {
@@ -47,8 +73,11 @@ export async function refreshBroadFeed(): Promise<{ symbols: number; venues: str
 }
 
 // Live price + 24h USD volume for a base asset (uppercase), or null if the feed hasn't seen it.
-export function getBroadTick(base: string): Tick | null {
+export function getBroadTick(base: string): BroadTickV5 | null {
   return feed.get((base || '').toUpperCase()) || null;
+}
+export function getBroadObservation(base: string): MarketObservationV5 | null {
+  return getBroadTick(base)?.observation || null;
 }
 export function getBroadPrice(base: string): number | null {
   const t = getBroadTick(base);
@@ -58,6 +87,18 @@ export function getBroadPrice(base: string): number | null {
 export function listBroadSymbols(): string[] { return [...feed.keys()]; }
 export function broadFeedState() {
   return { symbols: feed.size, lastRefreshAt, ageSec: lastRefreshAt ? Math.round((Date.now() - lastRefreshAt) / 1000) : null, stale: !lastRefreshAt || Date.now() - lastRefreshAt > BROAD_FEED_MS * 3 };
+}
+
+// Test hook: injects the same provenance-bearing object produced by venue
+// refreshes without making a network request.
+export function __setBroadTickForTest(
+  base: string,
+  price: number,
+  vol24hUsd: number,
+  venue: string,
+  observedAt: number,
+): void {
+  upsert(base.toUpperCase(), price, vol24hUsd, venue, observedAt);
 }
 
 export function startBroadFeed() {

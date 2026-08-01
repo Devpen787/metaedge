@@ -19,11 +19,11 @@ if (durationMs < 2 * 60 * 60_000) fail('FULL_TWO_HOURS_NOT_MEASURED');
 if (samples.length < 450) fail('INSUFFICIENT_15_SECOND_SAMPLES');
 const utcHours = new Set(samples.map((row) => new Date(row.at).toISOString().slice(0, 13)));
 if (utcHours.size < 3) fail('UTC_PARTITION_BOUNDARIES_NOT_CROSSED');
-if (samples.some((row) => row.session.status !== 200 || row.v3.status !== 200 || row.health.status !== 200)) {
+if (samples.some((row) => row.session.status !== 200 || row.v5.status !== 200 || row.health.status !== 200)) {
   fail('ENDPOINT_FAILURE');
 }
 if (samples.some((row) => row.health.operational !== true || row.health.storageHealthy !== true
-  || row.health.currentLiveLock !== true || row.v3.liveExecution !== 'locked')) fail('OPERATIONAL_OR_LOCK_FAILURE');
+  || row.health.currentLiveLock !== true || row.v5.liveExecution !== 'locked')) fail('OPERATIONAL_OR_LOCK_FAILURE');
 const expectedClocks = ['lifecycle_evaluator', 'outcome_resolver', 'signal_evaluator'];
 if (samples.some((row) => JSON.stringify((row.health.clocks || []).map((clock) => clock.id).sort())
   !== JSON.stringify(expectedClocks))) fail('CONTINUOUS_CLOCK_SET_CHANGED');
@@ -57,7 +57,7 @@ if (finalThirtyRssGrowthFraction == null || finalThirtyRssGrowthFraction > 0.10)
 const averageCpuPercent = samples.reduce((sum, row) => sum + Number(row.process.cpuPercent), 0) / samples.length;
 const p95CpuPercent = percentile(samples.map((row) => row.process.cpuPercent), 0.95);
 if (averageCpuPercent >= 30 || p95CpuPercent >= 70) fail('CPU_GATE_FAILED');
-if (summary.metrics.sessionP95Ms >= 100 || summary.metrics.v3P95Ms >= 250 || summary.metrics.v3P99Ms >= 500) {
+if (summary.metrics.sessionP95Ms >= 100 || summary.metrics.v5P95Ms >= 250 || summary.metrics.v5P99Ms >= 500) {
   fail('LATENCY_GATE_FAILED');
 }
 if (summary.metrics.rawKbPerDay >= 500 * 1024 || summary.metrics.derivedKbPerDay >= 25 * 1024) fail('STORAGE_RATE_GATE_FAILED');

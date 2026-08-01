@@ -1,9 +1,30 @@
 import { Router } from 'express';
-import { readDatabase, writeDatabase, generateId } from './storage.js';
-import type { PaperTrade, TradingAgent, TradeReview } from '../src/types';
-import { createOrderIntent, executeOrderIntent } from '../src/secure-core/trading/intents.js';
+import { DatabaseWriteError, readDatabase, writeDatabase, generateId } from './storage.js';
+import type {
+  MarketObservationV5,
+  OrderIntentV5,
+  PaperBrokerPolicyV5,
+  PaperFillV5,
+  PaperTrade,
+  TradingAgent,
+  TradeReview,
+} from '../src/types';
+import {
+  createOrderIntent,
+  expireBrokerOrderIntent,
+  markOrderIntentRiskAccepted,
+  markOrderIntentUnresolved,
+  recordPaperBrokerFill,
+  rejectBrokerOrderIntent,
+  rejectOrderIntent,
+  submitOrderIntentToBroker,
+} from '../src/secure-core/trading/intents.js';
 import { evaluateOrderRisk } from '../src/secure-core/trading/risk-engine.js';
-import { getSpotPrice, arenaSymbol } from './prices.js';
+import { getPriceObservation, getSpotPrice, arenaSymbol } from './prices.js';
+import {
+  DEFAULT_PAPER_BROKER_POLICY_V5,
+  evaluatePaperBrokerV5,
+} from './v5/paper_broker.js';
 
 export const tradesRouter = Router();
 
@@ -14,6 +35,7 @@ function copilotAgent(db: ReturnType<typeof readDatabase>, userId: string): Trad
   if (!agent) {
     const id = 'agt_' + generateId();
     agent = {
+      authorityVersion: 5, schema: 'trading-agent.v5',
       id, name: 'Swarm Copilot', description: 'Executes your natural-language trades.',
       ownerId: userId, assetSymbol: 'ETH', tradeType: 'token', strategyType: 'custom_ai',
       leverage: 1, status: 'active', createdAt: Date.now(),
@@ -54,29 +76,50 @@ tradesRouter.post('/api/copilot/execute', (req: any, res) => {
     { action: 'COPILOT_TRADE', detailsPrefix: 'Copilot executed' }
   );
   if (!result.ok) { res.status(result.status || 400).json({ error: result.error }); return; }
-  // Report the LEDGER fill price (cost-adjusted), not pre-cost spot — the UI
-  // must never look better than the books.
-  res.json({ success: true, trade: result.trade, balance: result.balance, symbol: sym, price: result.trade?.price ?? price });
+  res.status(result.status || 200).json({
+    success: true,
+    pending: result.pending,
+    intent: result.intent,
+    trade: result.trade,
+    balance: result.balance,
+    symbol: sym,
+  });
 });
 
 // Real cost-basis position from the user's prior fills for this asset+agent.
 // Used to compute honest realized P&L on a close — never a random number.
 function positionBefore(trades: any[], userId: string, agentId: string, asset: string) {
-  let size = 0;
-  let cost = 0;
+  let signedSize = 0;
+  let avgEntry = 0;
+  let openedAt = 0;
   for (const t of trades) {
     if (t.userId !== userId || t.agentId !== agentId || t.assetSymbol !== asset) continue;
-    if (t.side === 'buy' || t.side === 'long') {
-      cost += t.size * t.price;
-      size += t.size;
+    const signedFill = (t.side === 'buy' || t.side === 'long' ? 1 : -1) * t.size;
+    if (!signedSize || Math.sign(signedSize) === Math.sign(signedFill)) {
+      const nextSize = signedSize + signedFill;
+      const currentAbs = Math.abs(signedSize);
+      const fillAbs = Math.abs(signedFill);
+      avgEntry = (currentAbs * avgEntry + fillAbs * t.price) / Math.max(Number.EPSILON, currentAbs + fillAbs);
+      openedAt = currentAbs
+        ? (openedAt * currentAbs + Number(t.timestamp) * fillAbs) / (currentAbs + fillAbs)
+        : Number(t.timestamp);
+      signedSize = nextSize;
     } else {
-      const avg = size > 0 ? cost / size : 0;
-      const close = Math.min(t.size, size);
-      cost -= avg * close;
-      size -= close;
+      const nextSize = signedSize + signedFill;
+      if (!nextSize) {
+        signedSize = 0;
+        avgEntry = 0;
+        openedAt = 0;
+      } else if (Math.sign(nextSize) !== Math.sign(signedSize)) {
+        signedSize = nextSize;
+        avgEntry = t.price;
+        openedAt = Number(t.timestamp);
+      } else {
+        signedSize = nextSize;
+      }
     }
   }
-  return { size, avgEntry: size > 0 ? cost / size : 0 };
+  return { size: Math.abs(signedSize), signedSize, avgEntry: signedSize ? avgEntry : 0, openedAt };
 }
 
 // Core paper-trade execution: validation -> intent -> risk -> fill -> honest
@@ -102,140 +145,382 @@ function sanitizeThesis(raw: unknown): { thesis?: PaperTrade['thesis']; tag: 'co
 
 export function placePaperTrade(
   userId: string,
-  input: { agentId: string; assetSymbol: string; side: 'buy' | 'sell' | 'long' | 'short'; size: number; price: number; leverage?: number; roomId?: string; nonce: string; thesis?: unknown },
+  input: {
+    agentId: string;
+    assetSymbol: string;
+    side: 'buy' | 'sell' | 'long' | 'short';
+    size: number;
+    price?: number;
+    leverage?: number;
+    roomId?: string;
+    nonce: string;
+    thesis?: unknown;
+    orderType?: OrderIntentV5['orderType'];
+    limitPrice?: number;
+    stopPrice?: number;
+    timeInForceMs?: number;
+    experimentId?: string;
+    experimentLabel?: string;
+    opportunityObservationId?: string;
+    paperPermission?: OrderIntentV5['paperPermission'];
+    portfolioReservationId?: string;
+  },
   audit: { action: string; detailsPrefix: string } = { action: 'PAPER_TRADE', detailsPrefix: 'Executed simulated' }
-): { ok: boolean; status?: number; error?: string; trade?: PaperTrade; balance?: number } {
-  const { agentId, assetSymbol, side, size, price, leverage, roomId, nonce } = input;
-
-  if (!agentId || !assetSymbol || !side || !size || !price || !nonce) {
-    return { ok: false, status: 400, error: 'Incomplete fill telemetry or missing idempotency nonce' };
+): {
+  ok: boolean;
+  status?: number;
+  error?: string;
+  pending?: boolean;
+  intent?: OrderIntentV5;
+  trade?: PaperTrade;
+  balance?: number;
+} {
+  const { agentId, assetSymbol, side, size, leverage, roomId, nonce } = input;
+  if (!agentId || !assetSymbol || !side || !size || !nonce) {
+    return { ok: false, status: 400, error: 'Incomplete paper order or missing idempotency nonce' };
   }
-  // Non-finite numbers (NaN/Infinity) slip past `<= 0` checks and would corrupt
-  // the ledger — reject them and enforce sane bounds up front.
-  const nSize = Number(size), nPrice = Number(price);
+  const nSize = Number(size);
   if (!Number.isFinite(nSize) || nSize <= 0 || nSize > 1e9) {
     return { ok: false, status: 400, error: 'Size must be a positive, finite number.' };
-  }
-  if (!Number.isFinite(nPrice) || nPrice <= 0 || nPrice > 1e12) {
-    return { ok: false, status: 400, error: 'Price must be a positive, finite number.' };
   }
 
   const db = readDatabase();
   const agent = db.agents[agentId];
-
   if (!agent || agent.ownerId !== userId) {
     return { ok: false, status: 403, error: 'Forbidden or agent missing' };
   }
-
   if (agent.status !== 'active') {
     return { ok: false, status: 400, error: 'Agent is not running and cannot trade.' };
   }
-
-  // Stamp the fill from the SERVER's live price whenever we price this symbol —
-  // never trust the client-sent price for a scored trade (it can be stale or
-  // hand-crafted to game the Arena). Unpriced symbols fall back to the client
-  // value, which was already validated above. This keeps the entry consistent
-  // with how the Arena marks the position (also getSpotPrice).
-  //
-  // COST REALISM (EdgeOps contrarian review): real venues charge spread + fees
-  // (~5-15bps/side; our measured Hyperliquid round trips ran 5-13bps). Free
-  // paper fills systematically flatter expectancy and train false confidence,
-  // so paper fills execute WORSE than spot by PAPER_COST_BPS per side (buys
-  // higher, sells lower) — deliberately conservative vs. the real venue.
-  // Clamped [0,100]: 0 is a legitimate "no cost" setting, and a NEGATIVE value
-  // (fills better than spot) must be impossible.
-  const rawBps = Number(process.env.PAPER_COST_BPS);
-  const PAPER_COST_BPS = Number.isFinite(rawBps) ? Math.min(100, Math.max(0, rawBps)) : 10;
-  const buySide = side === 'buy' || side === 'long';
-  const serverPx = getSpotPrice(assetSymbol);
-  const executionPrice = serverPx != null
-    ? Number((serverPx * (1 + (buySide ? 1 : -1) * PAPER_COST_BPS / 10_000)).toPrecision(8))
-    : Number(price);
-  const tradeSize = Number(size);
-  const tradeLeverage = Number(leverage) || 1;
+  if (agent.authorityVersion !== 5 || agent.schema !== 'trading-agent.v5') {
+    return { ok: false, status: 409, error: 'Legacy pre-v5 agent is read-only and cannot route an active order.' };
+  }
+  const symbol = assetSymbol.toUpperCase();
+  const existing = Object.values(db.orderIntentsV5 || {}).find((intent) =>
+    intent.userId === userId
+    && intent.agentId === agentId
+    && intent.assetSymbol === symbol
+    && intent.side === side
+    && (intent.status === 'PENDING'
+      || intent.status === 'RISK_ACCEPTED'
+      || intent.status === 'BROKER_PENDING'
+      || intent.status === 'PARTIALLY_FILLED'));
+  if (existing) {
+    return { ok: true, status: 202, pending: true, intent: existing, balance: db.users[userId]?.paperBalance };
+  }
 
   const user = db.users[userId];
-
-  let intent;
+  if (!user) return { ok: false, status: 403, error: 'Forbidden or user missing' };
+  const submissionObservation = getPriceObservation(symbol);
+  const tradeSize = nSize;
+  const tradeLeverage = Number(leverage) || 1;
+  const priorPosition = positionBefore(db.trades, userId, agentId, symbol);
+  const signedOrder = side === 'buy' || side === 'long' ? 1 : -1;
+  const positionEffect: 'increase' | 'reduce' = agent.tradeType === 'token'
+    ? side === 'sell' ? 'reduce' : 'increase'
+    : priorPosition.signedSize !== 0 && Math.sign(priorPosition.signedSize) !== signedOrder
+      ? 'reduce'
+      : 'increase';
+  const { thesis, tag } = sanitizeThesis(input.thesis);
+  let intent: OrderIntentV5;
   try {
     intent = createOrderIntent(userId, {
       agentId,
-      assetSymbol: assetSymbol.toUpperCase(),
+      assetSymbol: symbol,
       side,
       size: tradeSize,
       tradeType: agent.tradeType,
       leverage: tradeLeverage,
-      nonce
+      nonce,
+      orderType: input.orderType,
+      limitPrice: input.limitPrice,
+      stopPrice: input.stopPrice,
+      timeInForceMs: input.timeInForceMs,
+      submissionObservationHash: submissionObservation?.observationHash,
+      roomId: roomId || agent.roomId,
+      thesis,
+      edgeops: tag,
+      auditAction: audit.action,
+      auditDetailsPrefix: audit.detailsPrefix,
+      experimentId: input.experimentId,
+      experimentLabel: input.experimentLabel,
+      opportunityObservationId: input.opportunityObservationId,
+      paperPermission: input.paperPermission,
+      portfolioReservationId: input.portfolioReservationId,
     });
   } catch (err: any) {
-    return { ok: false, status: 400, error: err.message };
+    return {
+      ok: false,
+      status: err instanceof DatabaseWriteError ? 503 : 400,
+      error: err instanceof DatabaseWriteError
+        ? `Paper order intent was not durably accepted (${err.commitState}).`
+        : err.message,
+    };
   }
 
+  if (!submissionObservation
+    || submissionObservation.provenance !== 'observed'
+    || Date.now() - submissionObservation.receivedAt > DEFAULT_PAPER_BROKER_POLICY_V5.maximumQuoteAgeMs) {
+    const reason = !submissionObservation
+      ? 'MARKET_OBSERVATION_UNAVAILABLE'
+      : submissionObservation.provenance !== 'observed'
+        ? 'OBSERVED_MARKET_QUOTE_REQUIRED'
+        : 'STALE_MARKET_OBSERVATION';
+    try { rejectOrderIntent(intent.intentId, reason); }
+    catch (err: any) {
+      return { ok: false, status: 503, error: `Paper order rejection could not be durably recorded (${err?.commitState || 'unknown'}).` };
+    }
+    return { ok: false, status: 409, error: reason };
+  }
+
+  // Reserve enough for adverse execution and the fee. For leveraged entries,
+  // multiplying the fee component by leverage keeps the later cash fee outside
+  // margin from exceeding the pre-trade balance check.
+  const worstPrice = submissionObservation.price * (1
+    + (DEFAULT_PAPER_BROKER_POLICY_V5.halfSpreadBps
+      + DEFAULT_PAPER_BROKER_POLICY_V5.maximumSlippageBps
+      + DEFAULT_PAPER_BROKER_POLICY_V5.feeBps * (agent.tradeType === 'perp' ? tradeLeverage : 1)) / 10_000);
   try {
     evaluateOrderRisk(intent, {
       userId,
       availableBalance: user.paperBalance,
-      currentPrice: executionPrice
+      currentPrice: worstPrice,
+      positionEffect,
+      availablePositionSize: priorPosition.size,
     });
   } catch (err: any) {
+    try {
+      rejectOrderIntent(intent.intentId, err.message);
+    } catch (persistError: any) {
+      return {
+        ok: false,
+        status: 503,
+        error: `Paper order rejection could not be durably recorded (${persistError?.commitState || 'unknown'}).`,
+      };
+    }
     return { ok: false, status: 400, error: err.message };
   }
 
-  let trade;
   try {
-    trade = executeOrderIntent(intent.intentId, executionPrice);
-    trade.roomId = roomId || agent.roomId;
+    markOrderIntentRiskAccepted(intent.intentId, positionEffect);
+    intent = submitOrderIntentToBroker(intent.intentId);
   } catch (err: any) {
-    return { ok: false, status: 400, error: err.message };
+    try { markOrderIntentUnresolved(intent.intentId, `BROKER_SUBMISSION_FAILED:${err.message}`); } catch { /* surfaced by status */ }
+    return {
+      ok: false,
+      status: err instanceof DatabaseWriteError ? 503 : 400,
+      error: err instanceof DatabaseWriteError
+        ? `Paper broker submission was not durably recorded (${err.commitState}).`
+        : err.message,
+    };
   }
+  return { ok: true, status: 202, pending: true, intent, balance: user.paperBalance };
+}
 
-  // EdgeOps: attach the (sanitized) thesis and tag the trade. Trades without a
-  // complete thesis still execute — they're just excluded from edge reports.
-  const { thesis, tag } = sanitizeThesis(input.thesis);
-  if (thesis) trade.thesis = thesis;
-  trade.edgeops = tag;
-
-  // Honest cost-basis accounting. Opening posts margin; closing returns the
-  // posted margin plus the REAL realized P&L (exit vs. average entry).
-  const isClose = side === 'sell' || side === 'short';
-  const pos = isClose ? positionBefore(db.trades, userId, agentId, assetSymbol.toUpperCase()) : { size: 0, avgEntry: 0 };
-
+function commitPaperBrokerFill(intentId: string, fill: PaperFillV5, stopTriggered: boolean): PaperTrade {
+  const db = readDatabase();
+  const intent = db.orderIntentsV5?.[intentId];
+  if (!intent || (intent.status !== 'BROKER_PENDING' && intent.status !== 'PARTIALLY_FILLED')) {
+    throw new Error(`BROKER_INTENT_NOT_COMMITTABLE:${intentId}`);
+  }
+  if (intent.lastBrokerObservationHash === fill.observationHash) {
+    throw new Error('BROKER_OBSERVATION_ALREADY_CONSUMED');
+  }
+  const agent = db.agents[intent.agentId];
+  const user = db.users[intent.userId];
+  if (!agent || agent.ownerId !== intent.userId || !user) throw new Error('OWNER_OR_AGENT_CHANGED_BEFORE_COMMIT');
+  const isClose = intent.positionEffect === 'reduce';
+  const pos = isClose
+    ? positionBefore(db.trades, intent.userId, intent.agentId, intent.assetSymbol)
+    : { size: 0, signedSize: 0, avgEntry: 0, openedAt: 0 };
+  const quantity = isClose ? Math.min(fill.quantity, pos.size) : fill.quantity;
+  if (!(quantity > 0)) throw new Error('BROKER_RISK_REJECT:REDUCE_ONLY_POSITION_UNAVAILABLE_AT_FILL');
+  const committedFill = quantity === fill.quantity ? fill : {
+    ...fill,
+    quantity,
+    notionalUsd: quantity * fill.fillPrice,
+    feeUsd: quantity * fill.fillPrice * DEFAULT_PAPER_BROKER_POLICY_V5.feeBps / 10_000,
+    spreadCostUsd: fill.spreadCostUsd * quantity / fill.quantity,
+    slippageUsd: fill.slippageUsd * quantity / fill.quantity,
+    partial: true,
+  };
+  const trade: PaperTrade = {
+    id: `trd_v5_${committedFill.fillId.slice(-24)}`,
+    orderIntentId: intent.intentId,
+    paperFillId: committedFill.fillId,
+    brokerPolicyId: committedFill.brokerPolicyId,
+    agentId: intent.agentId,
+    userId: intent.userId,
+    roomId: intent.roomId || agent.roomId,
+    assetSymbol: intent.assetSymbol,
+    tradeType: intent.tradeType,
+    side: intent.side,
+    size: quantity,
+    price: committedFill.fillPrice,
+    leverage: intent.leverage,
+    timestamp: committedFill.filledAt,
+    status: 'open',
+    referencePrice: committedFill.referencePrice,
+    referenceObservationHash: committedFill.observationHash,
+    feeUsd: committedFill.feeUsd,
+    spreadCostUsd: committedFill.spreadCostUsd,
+    slippageUsd: committedFill.slippageUsd,
+    experimentId: intent.experimentId,
+    experimentLabel: intent.experimentLabel,
+    opportunityObservationId: intent.opportunityObservationId,
+    paperPermission: intent.paperPermission,
+    thesis: intent.thesis,
+    edgeops: intent.edgeops,
+  };
   if (!isClose || pos.size <= 0) {
-    const margin = agent.tradeType === 'perp' ? (tradeSize * executionPrice) / tradeLeverage : (tradeSize * executionPrice);
-    user.paperBalance -= margin;
+    const margin = agent.tradeType === 'perp'
+      ? (quantity * committedFill.fillPrice) / intent.leverage
+      : quantity * committedFill.fillPrice;
+    if (margin + committedFill.feeUsd > user.paperBalance + 1e-9) {
+      throw new Error('BROKER_RISK_REJECT:INSUFFICIENT_BALANCE_AT_FILL');
+    }
+    user.paperBalance -= margin + committedFill.feeUsd;
     trade.pnl = undefined;
   } else {
-    const closeSize = Math.min(tradeSize, pos.size);
-    const realizedPnl = (executionPrice - pos.avgEntry) * closeSize;
-    const marginReturned = agent.tradeType === 'perp' ? (closeSize * pos.avgEntry) / tradeLeverage : (closeSize * pos.avgEntry);
-    user.paperBalance += marginReturned + realizedPnl;
-    trade.pnl = Number(realizedPnl.toFixed(2));
+    const realizedPnl = (committedFill.fillPrice - pos.avgEntry) * quantity * Math.sign(pos.signedSize);
+    const marginReturned = agent.tradeType === 'perp'
+      ? (quantity * pos.avgEntry) / intent.leverage
+      : quantity * pos.avgEntry;
+    const holdingMs = Math.max(0, committedFill.filledAt - pos.openedAt);
+    const holdingDays = holdingMs / 86_400_000;
+    const fundingUsd = agent.tradeType === 'perp'
+      ? quantity * pos.avgEntry * DEFAULT_PAPER_BROKER_POLICY_V5.perpFundingBpsPerDay / 10_000 * holdingDays
+      : 0;
+    const borrowUsd = agent.tradeType === 'perp' && pos.signedSize < 0
+      ? quantity * pos.avgEntry * DEFAULT_PAPER_BROKER_POLICY_V5.shortBorrowBpsPerDay / 10_000 * holdingDays
+      : 0;
+    user.paperBalance += marginReturned + realizedPnl - committedFill.feeUsd - fundingUsd - borrowUsd;
+    trade.fundingUsd = Number(fundingUsd.toPrecision(12));
+    trade.borrowUsd = Number(borrowUsd.toPrecision(12));
+    trade.holdingMs = holdingMs;
+    trade.pnl = Number((realizedPnl - committedFill.feeUsd - fundingUsd - borrowUsd).toFixed(2));
   }
-
+  intent.stopTriggered = stopTriggered;
   db.trades.push(trade);
-  agent.lastTradeAt = Date.now();
-
+  agent.lastTradeAt = committedFill.filledAt;
   db.auditEvents.push({
     id: 'aud_' + generateId(),
-    userId,
+    userId: intent.userId,
     username: user.username,
-    action: audit.action,
-    details: `${audit.detailsPrefix} ${side} of ${tradeSize} ${assetSymbol} at $${executionPrice}`,
-    timestamp: Date.now()
+    action: intent.auditAction || 'PAPER_BROKER_FILL',
+    details: `${intent.auditDetailsPrefix || 'Paper broker filled'} ${intent.side} of ${quantity} ${intent.assetSymbol} at $${committedFill.fillPrice}`,
+    timestamp: committedFill.filledAt,
   });
-
   db.graphEvents.push({
     id: 'gph_' + generateId(),
     type: 'paper_action',
-    userId,
+    userId: intent.userId,
     targetId: trade.id,
     targetType: 'Agent',
-    metadata: { side, size: tradeSize, assetSymbol },
-    timestamp: Date.now()
+    metadata: {
+      side: intent.side,
+      size: quantity,
+      assetSymbol: intent.assetSymbol,
+      orderIntentId: intent.intentId,
+      paperFillId: committedFill.fillId,
+    },
+    timestamp: committedFill.filledAt,
   });
+  recordPaperBrokerFill(db, intent.intentId, trade, committedFill);
+  try {
+    writeDatabase(db);
+  } catch (err: any) {
+    try {
+      markOrderIntentUnresolved(
+        intent.intentId,
+        `FINAL_TRADE_COMMIT_FAILED:${err?.commitState || 'unknown'}`,
+      );
+    } catch (statusError: any) {
+      console.error('[paper-order] failed to persist unresolved intent state:', statusError?.message);
+    }
+    throw err;
+  }
+  return trade;
+}
 
-  writeDatabase(db);
-  return { ok: true, trade, balance: user.paperBalance };
+let paperBrokerLastCycleAt: number | null = null;
+
+export function processPaperBrokerOnce(
+  now = Date.now(),
+  resolveObservation: (symbol: string) => MarketObservationV5 | null = getPriceObservation,
+  policy: PaperBrokerPolicyV5 = DEFAULT_PAPER_BROKER_POLICY_V5,
+): { inspected: number; filled: number; partial: number; rejected: number; expired: number; waiting: number } {
+  const result = { inspected: 0, filled: 0, partial: 0, rejected: 0, expired: 0, waiting: 0 };
+  const intents = Object.values(readDatabase().orderIntentsV5 || {})
+    .filter((intent) => intent.status === 'BROKER_PENDING' || intent.status === 'PARTIALLY_FILLED');
+  for (const intent of intents) {
+    result.inspected += 1;
+    const evaluation = evaluatePaperBrokerV5({
+      intent,
+      observation: resolveObservation(intent.assetSymbol),
+      now,
+      policy,
+    });
+    try {
+      if (evaluation.action === 'wait') {
+        if (evaluation.stopTriggered && !intent.stopTriggered) {
+          const db = readDatabase();
+          const current = db.orderIntentsV5?.[intent.intentId];
+          if (current && (current.status === 'BROKER_PENDING' || current.status === 'PARTIALLY_FILLED')) {
+            current.stopTriggered = true;
+            current.updatedAt = now;
+            writeDatabase(db);
+          }
+        }
+        result.waiting += 1;
+      } else if (evaluation.action === 'reject') {
+        rejectBrokerOrderIntent(intent.intentId, evaluation.reason);
+        result.rejected += 1;
+      } else if (evaluation.action === 'expire') {
+        expireBrokerOrderIntent(intent.intentId, evaluation.reason);
+        result.expired += 1;
+      } else {
+        commitPaperBrokerFill(intent.intentId, evaluation.fill, evaluation.stopTriggered);
+        if (evaluation.fill.partial) result.partial += 1;
+        else result.filled += 1;
+      }
+    } catch (err: any) {
+      if (String(err?.message || '').startsWith('BROKER_RISK_REJECT:')) {
+        try {
+          rejectBrokerOrderIntent(intent.intentId, err.message);
+          result.rejected += 1;
+        } catch { /* reconciliation retains the nonterminal evidence */ }
+      } else {
+        try { markOrderIntentUnresolved(intent.intentId, `PAPER_BROKER_COMMIT_FAILED:${err?.commitState || err.message}`); }
+        catch { /* status and reconciliation retain the nonterminal evidence */ }
+      }
+    }
+  }
+  paperBrokerLastCycleAt = now;
+  return result;
+}
+
+let paperBrokerStarted = false;
+let paperBrokerIntervalMs = 1_000;
+export function paperBrokerClockV5() {
+  return {
+    id: 'paper_broker_clock_v5',
+    enabled: paperBrokerStarted,
+    cadenceMs: paperBrokerIntervalMs,
+    lastCompletedAt: paperBrokerLastCycleAt,
+  };
+}
+
+export function startPaperBroker(): void {
+  if (paperBrokerStarted) return;
+  paperBrokerStarted = true;
+  const intervalMs = Math.max(250, Number(process.env.PAPER_BROKER_TICK_MS) || 1_000);
+  paperBrokerIntervalMs = intervalMs;
+  setInterval(() => {
+    try { processPaperBrokerOnce(); }
+    catch (error: any) { console.warn('[paper-broker-v5] cycle failed:', error?.message); }
+  }, intervalMs).unref();
+  console.log(`[paper-broker-v5] armed every ${intervalMs}ms; live execution locked`);
 }
 
 // Expose the cost-basis position for strategy decisions (autotrader).
@@ -252,7 +537,13 @@ tradesRouter.post('/api/trades', (req: any, res) => {
     res.status(result.status || 400).json({ error: result.error });
     return;
   }
-  res.json({ success: true, trade: result.trade, balance: result.balance });
+  res.status(result.status || 200).json({
+    success: true,
+    pending: result.pending,
+    intent: result.intent,
+    trade: result.trade,
+    balance: result.balance,
+  });
 });
 
 // List trades
@@ -291,7 +582,19 @@ tradesRouter.get('/api/trades', (req: any, res) => {
   const userId = req.userId;
   const db = readDatabase();
   const myTrades = db.trades.filter(t => t.userId === userId);
-  res.json({ trades: myTrades });
+  const orders = Object.values(db.orderIntentsV5 || {})
+    .filter((intent) => intent.userId === userId)
+    .sort((left, right) => right.createdAt - left.createdAt);
+  const orderIds = new Set(orders.map((intent) => intent.intentId));
+  const fills = (db.paperFillsV5 || []).filter((fill) => orderIds.has(fill.intentId));
+  res.json({
+    mode: 'Paper money',
+    brokerPolicyId: DEFAULT_PAPER_BROKER_POLICY_V5.id,
+    trades: myTrades,
+    orders,
+    fills,
+    liveExecution: 'locked',
+  });
 });
 
 // Delete a specific trade

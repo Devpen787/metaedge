@@ -1,5 +1,7 @@
 import { readDatabase, writeDatabase } from '../storage.js';
 import type { FrozenStrategySpec, LayeredDecision, ValidationRecord } from './types.js';
+import { assertAuthorityV5Contract } from '../v5/authority.js';
+import { persistCycleOperatorTruthV5 } from '../v5/operator_truth.js';
 
 const MAX_DECISIONS = 2_000;
 const MAX_EXECUTED_IDS = 5_000;
@@ -9,6 +11,7 @@ function runtime(db: ReturnType<typeof readDatabase>) {
 }
 
 export function persistStrategySpec(spec: FrozenStrategySpec): FrozenStrategySpec {
+  assertAuthorityV5Contract(spec);
   const db = readDatabase();
   const state = runtime(db);
   const existing = state.strategySpecs[spec.hash];
@@ -45,6 +48,7 @@ export function persistDecision(decision: LayeredDecision): LayeredDecision {
 
 export function persistDecisions(decisions: LayeredDecision[]): LayeredDecision[] {
   if (!decisions.length) return decisions;
+  for (const decision of decisions) assertAuthorityV5Contract(decision);
   const db = readDatabase();
   const state = runtime(db);
   const indexes = new Map(state.decisions.map((item, index) => [item.id, index]));
@@ -83,6 +87,7 @@ export function decisionWasExecuted(decisionId: string): string | undefined {
 export function persistCycleSummary(summary: NonNullable<ReturnType<typeof readDatabase>['decisionRuntime']>['lastCycle']) {
   const db = readDatabase();
   runtime(db).lastCycle = summary;
+  persistCycleOperatorTruthV5(db, summary);
   writeDatabase(db);
 }
 
@@ -98,5 +103,11 @@ export function decisionRuntimeSnapshot(viewerId?: string) {
     recentDecisions: state.decisions.slice(-100).reverse().map(visibleDecision),
     queued: state.decisions.filter((decision) => decision.queueStatus === 'queued').slice(-100).map(visibleDecision),
     lastCycle: state.lastCycle || null,
+    marketDataV5: {
+      activeUniverse: db.marketDataV5?.activeUniverseId
+        ? db.marketDataV5.universeVersions[db.marketDataV5.activeUniverseId]
+        : null,
+      latestCoverage: db.marketDataV5?.latestCoverage || null,
+    },
   };
 }

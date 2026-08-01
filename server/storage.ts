@@ -6,6 +6,29 @@ import { DatabaseState } from '../src/types';
 export const DB_FILE = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
 let databaseCache: { mtimeMs: number; size: number; state: DatabaseState } | null = null;
 
+export type DatabaseCommitState = 'not_committed' | 'possibly_committed';
+
+export interface DatabaseCommitReceipt {
+  file: string;
+  bytes: number;
+  mtimeMs: number;
+  committedAt: number;
+  durability: 'file_and_directory_synced';
+}
+
+export class DatabaseWriteError extends Error {
+  readonly code = 'DATABASE_WRITE_FAILED';
+
+  constructor(
+    message: string,
+    readonly commitState: DatabaseCommitState,
+    readonly cause: unknown,
+  ) {
+    super(message);
+    this.name = 'DatabaseWriteError';
+  }
+}
+
 export function readDatabase(): DatabaseState {
   try {
     const defaultPredictions = {
@@ -74,17 +97,18 @@ export function readDatabase(): DatabaseState {
         arenaRankSnapshots: {},
         trailingState: {},
         cooldowns: {},
+        orderIntentsV5: {},
+        orderNonceIndexV5: {},
+        orderEventsV5: [],
+        paperFillsV5: [],
+        experimentsV5: { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] },
+        marketDataV5: { universeVersions: {}, coverageHistory: [] },
         decisionRuntime: {
           strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {}
         }
       };
       
-      const dir = path.dirname(DB_FILE);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(DB_FILE, JSON.stringify(initialState, null, 2), 'utf8');
-      const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: initialState };
+      writeDatabase(initialState);
       return initialState;
     }
     const stat = fs.statSync(DB_FILE);
@@ -114,6 +138,30 @@ export function readDatabase(): DatabaseState {
     }
     if (!parsed.trailingState) parsed.trailingState = {};
     if (!parsed.cooldowns) parsed.cooldowns = {};
+    if (!parsed.orderIntentsV5) parsed.orderIntentsV5 = {};
+    if (!parsed.orderNonceIndexV5) parsed.orderNonceIndexV5 = {};
+    if (!parsed.orderEventsV5) parsed.orderEventsV5 = [];
+    if (!parsed.paperFillsV5) parsed.paperFillsV5 = [];
+    if (!parsed.experimentsV5) {
+      parsed.experimentsV5 = { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] };
+    }
+    if (!parsed.experimentsV5.specs) parsed.experimentsV5.specs = {};
+    if (!parsed.experimentsV5.states) parsed.experimentsV5.states = {};
+    if (!parsed.experimentsV5.budgets) parsed.experimentsV5.budgets = {};
+    if (!parsed.experimentsV5.observations) parsed.experimentsV5.observations = [];
+    if (!parsed.experimentsV5.lifecycleEvents) parsed.experimentsV5.lifecycleEvents = [];
+    if (parsed.portfolioAllocatorV5) {
+      if (!parsed.portfolioAllocatorV5.reservations) parsed.portfolioAllocatorV5.reservations = {};
+      if (!parsed.portfolioAllocatorV5.decisions) parsed.portfolioAllocatorV5.decisions = [];
+    }
+    if (parsed.populationOperationsV5) {
+      if (!parsed.populationOperationsV5.samples) parsed.populationOperationsV5.samples = [];
+      if (!parsed.populationOperationsV5.assuranceRecords) parsed.populationOperationsV5.assuranceRecords = [];
+      if (!parsed.populationOperationsV5.acceptanceBundles) parsed.populationOperationsV5.acceptanceBundles = [];
+    }
+    if (!parsed.marketDataV5) parsed.marketDataV5 = { universeVersions: {}, coverageHistory: [] };
+    if (!parsed.marketDataV5.universeVersions) parsed.marketDataV5.universeVersions = {};
+    if (!parsed.marketDataV5.coverageHistory) parsed.marketDataV5.coverageHistory = [];
     if (!parsed.decisionRuntime) {
       parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
     }
@@ -121,11 +169,17 @@ export function readDatabase(): DatabaseState {
     if (!parsed.decisionRuntime.validations) parsed.decisionRuntime.validations = {};
     if (!parsed.decisionRuntime.decisions) parsed.decisionRuntime.decisions = [];
     if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
+    if (!parsed.decisionRuntime.cycleDiagnostics) parsed.decisionRuntime.cycleDiagnostics = [];
+    if (!parsed.decisionRuntime.forwardCheckpoints) parsed.decisionRuntime.forwardCheckpoints = [];
     databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state: parsed };
     return parsed;
   } catch (error) {
     databaseCache = null;
     console.error('Error reading database:', error);
+    // Failure to create the canonical store is a write failure, not an empty
+    // product. Returning an in-memory default here would make later mutations
+    // look accepted even though no durable database exists.
+    if (error instanceof DatabaseWriteError) throw error;
     // A parse error must NOT silently wipe everyone's data. Preserve the bad
     // file for forensics, then try to recover from the newest daily backup
     // before falling back to an empty state.
@@ -151,23 +205,29 @@ export function readDatabase(): DatabaseState {
       users: {}, sessions: {}, rooms: {}, agents: {}, strategies: {}, trades: [],
       vaultClubs: {}, auditEvents: [], graphEvents: [], predictionMarkets: {}, predictionBetEvents: [],
       arenaLeagues: {}, arenaMembers: [], arenaBadges: [], arenaRankSnapshots: {},
+      orderIntentsV5: {}, orderNonceIndexV5: {}, orderEventsV5: [],
+      paperFillsV5: [],
+      experimentsV5: { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] },
+      marketDataV5: { universeVersions: {}, coverageHistory: [] },
       decisionRuntime: { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} }
     };
   }
 }
 
-export function writeDatabase(state: DatabaseState) {
+export function writeDatabase(state: DatabaseState): DatabaseCommitReceipt {
+  const dir = path.dirname(DB_FILE);
+  let tmp: string | null = null;
+  let renamed = false;
   try {
-    const dir = path.dirname(DB_FILE);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    // Atomic write: serialize, flush to a temp file, then rename over the
-    // target. rename() is atomic on POSIX, so a crash mid-write can never leave
-    // a half-written (corrupt) db.json — readers see either the old or new file.
+    // Atomic durable write: serialize, flush a unique temp file, rename over the
+    // target, then fsync the parent directory so the rename itself survives a
+    // crash. Success is acknowledged only after all four stages complete.
     const json = JSON.stringify(state, null, 2);
-    const tmp = `${DB_FILE}.tmp-${process.pid}`;
-    const fd = fs.openSync(tmp, 'w');
+    tmp = `${DB_FILE}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`;
+    const fd = fs.openSync(tmp, 'wx');
     try {
       fs.writeFileSync(fd, json, 'utf8');
       fs.fsyncSync(fd);
@@ -175,9 +235,45 @@ export function writeDatabase(state: DatabaseState) {
       fs.closeSync(fd);
     }
     fs.renameSync(tmp, DB_FILE);
-    const stat = fs.statSync(DB_FILE); databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state };
+    renamed = true;
+    tmp = null;
+
+    const dirFd = fs.openSync(dir, 'r');
+    try {
+      fs.fsyncSync(dirFd);
+    } finally {
+      fs.closeSync(dirFd);
+    }
+
+    const stat = fs.statSync(DB_FILE);
+    databaseCache = { mtimeMs: stat.mtimeMs, size: stat.size, state };
+    return {
+      file: DB_FILE,
+      bytes: stat.size,
+      mtimeMs: stat.mtimeMs,
+      committedAt: Date.now(),
+      durability: 'file_and_directory_synced',
+    };
   } catch (error) {
-    console.error('Error writing database:', error);
+    // A caller may have mutated the cached object before attempting this
+    // commit. Drop the cache on every failure so the next read returns only
+    // durable on-disk state, never the uncommitted object.
+    databaseCache = null;
+    if (tmp) {
+      try {
+        fs.unlinkSync(tmp);
+      } catch (cleanupError: any) {
+        if (cleanupError?.code !== 'ENOENT') {
+          console.error('Error cleaning failed database temp file:', cleanupError);
+        }
+      }
+    }
+    const commitState: DatabaseCommitState = renamed ? 'possibly_committed' : 'not_committed';
+    throw new DatabaseWriteError(
+      `Canonical database write failed (${commitState})`,
+      commitState,
+      error,
+    );
   }
 }
 

@@ -1,6 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { legacyWritersEnabled } from '../v5/authority.js';
 
 const operationChildren = new Set<ReturnType<typeof spawn>>();
 let cleanupRegistered = false;
@@ -65,6 +66,9 @@ export function remainingChallengerDelay(lastRunAt: number | null, now = Date.no
 }
 
 export function startFastPerpOperation(): void {
+  if (!legacyWritersEnabled()) {
+    console.log('[fast-perps] legacy v3 operation disabled by v5 authority'); return;
+  }
   if (process.env.FAST_PERP_OPERATION_ENABLED !== 'true') {
     console.log('[fast-perps] governed paper operation disabled by default pending recovery proof'); return;
   }

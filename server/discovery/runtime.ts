@@ -5,11 +5,13 @@ import { discoverCrossMarketRelationships, runCatalystExperiments } from './expe
 import { persistFactoryOutput } from './store.js';
 import { readFactoryConfig } from './sources.js';
 import type { FactoryDisposition, FactoryRun } from './types.js';
+import { legacyWritersEnabled } from '../v5/authority.js';
 
 const INTERVAL_MS = Math.max(15 * 60_000, Number(process.env.OPPORTUNITY_FACTORY_INTERVAL_MS) || 6 * 60 * 60_000);
 let running = false;
 
 export async function runOpportunityFactory(): Promise<FactoryRun> {
+  if (!legacyWritersEnabled()) throw new Error('LEGACY_WRITER_DISABLED:OPPORTUNITY_FACTORY_V3');
   if (running) throw new Error('OPPORTUNITY_FACTORY_OVERLAP');
   running = true; const startedAt = Date.now(); const runId = `factory_${crypto.createHash('sha256').update(String(startedAt)).digest('hex').slice(0, 16)}`;
   try {
@@ -38,6 +40,10 @@ export async function runOpportunityFactory(): Promise<FactoryRun> {
 }
 
 export function startOpportunityFactory() {
+  if (!legacyWritersEnabled()) {
+    console.log('[opportunity-factory] legacy v3 writer disabled by v5 authority');
+    return;
+  }
   if (process.env.OPPORTUNITY_FACTORY_DISABLED === 'true') { console.log('[opportunity-factory] disabled'); return; }
   let childRunning = false;
   const run = () => {

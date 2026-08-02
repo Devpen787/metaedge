@@ -217,7 +217,7 @@ export function recordLocalAcceptanceBundleV5(generatedAt = Date.now()): LocalAc
   db.populationOperationsV5!.acceptanceBundles ||= [];
   if (!db.populationOperationsV5!.acceptanceBundles!.some((row) => row.bundleId === bundle.bundleId)) {
     db.populationOperationsV5!.acceptanceBundles!.push(bundle);
-    writeDatabase(db);
+    writeDatabase(db, ['populationOperationsV5']);
   }
   return bundle;
 }

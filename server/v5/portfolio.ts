@@ -474,7 +474,7 @@ export function reservePortfolioRiskV5(
   ledger.reservations[reservationId] = reservation;
   ledger.decisions.push(decision);
   if (ledger.decisions.length > 20_000) ledger.decisions.splice(0, ledger.decisions.length - 20_000);
-  writeDatabase(db);
+  writeDatabase(db, ['portfolioAllocatorV5']);
   return { accepted, reservation, decision };
 }
 
@@ -485,7 +485,7 @@ export function releasePortfolioReservationV5(reservationId: string, reason: str
   reservation.status = 'released';
   reservation.releasedReason = reason.slice(0, 500);
   reservation.updatedAt = now;
-  writeDatabase(db);
+  writeDatabase(db, ['portfolioAllocatorV5']);
 }
 
 export function reconcilePortfolioReservationsV5(now = Date.now()): { inspected: number; changed: number } {
@@ -493,7 +493,7 @@ export function reconcilePortfolioReservationsV5(now = Date.now()): { inspected:
   const ledger = store(db);
   const inspected = Object.keys(ledger.reservations).length;
   const changed = reconcileInPlace(db, now);
-  if (changed > 0) writeDatabase(db);
+  if (changed > 0) writeDatabase(db, ['portfolioAllocatorV5']);
   return { inspected, changed };
 }
 

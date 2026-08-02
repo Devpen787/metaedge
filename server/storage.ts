@@ -42,6 +42,8 @@ export interface DatabaseCommitReceipt {
   revision?: number;
 }
 
+export type DatabaseSegmentKey = Extract<keyof DatabaseState, string>;
+
 export class DatabaseWriteError extends Error {
   readonly code = 'DATABASE_WRITE_FAILED';
 
@@ -237,21 +239,43 @@ export function readDatabase(): DatabaseState {
   }
 }
 
-function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
+function writePostgresDatabase(
+  state: DatabaseState,
+  changedKeysHint?: readonly DatabaseSegmentKey[],
+): DatabaseCommitReceipt {
   let commitState: DatabaseCommitState = 'not_committed';
   try {
     const expectedRevision = postgresStateRevision.get(state);
     if (expectedRevision == null || !postgresCache || postgresCache.revision !== expectedRevision) {
       throw new Error('POSTGRES_WRITE_REQUIRES_CURRENT_READ_STATE');
     }
+    if (changedKeysHint && process.env.METAEDGE_VERIFY_POSTGRES_WRITE_HINTS === 'true') {
+      const hinted = new Set<string>(changedKeysHint);
+      const unexpected = Object.keys(state).filter((key) => {
+        const serialized = snapshotSerializedSegment((state as any)[key]);
+        return serialized.fingerprint !== postgresCache!.segmentFingerprints[key] && !hinted.has(key);
+      });
+      unexpected.push(...Object.keys(postgresCache.segmentFingerprints)
+        .filter((key) => !Object.hasOwn(state, key) && !hinted.has(key)));
+      if (unexpected.length) {
+        throw new Error(`POSTGRES_WRITE_HINT_INCOMPLETE:${[...new Set(unexpected)].sort().join(',')}`);
+      }
+    }
     const changedSegments: PostgresWriteSegment[] = [];
     const nextSegmentHashes = { ...postgresCache.segmentHashes };
     const nextSegmentCanonical = { ...postgresCache.segmentCanonical };
     const nextSegmentBytes = { ...postgresCache.segmentBytes };
-    const nextSegmentFingerprints: Record<string, string> = {};
-    const currentKeys = Object.keys(state).sort();
+    const nextSegmentFingerprints: Record<string, string> = changedKeysHint
+      ? { ...postgresCache.segmentFingerprints }
+      : {};
+    const hintedKeys = changedKeysHint ? [...new Set(changedKeysHint)].sort() : null;
+    const currentKeys = hintedKeys
+      ? hintedKeys.filter((key) => Object.hasOwn(state, key))
+      : Object.keys(state).sort();
     const currentKeySet = new Set(currentKeys);
-    const deletedKeys = Object.keys(postgresCache.segmentHashes).filter((key) => !currentKeySet.has(key));
+    const deletedKeys = hintedKeys
+      ? hintedKeys.filter((key) => !Object.hasOwn(state, key) && Object.hasOwn(postgresCache.segmentHashes, key))
+      : Object.keys(postgresCache.segmentHashes).filter((key) => !currentKeySet.has(key));
     for (const key of currentKeys) {
       const serialized = snapshotSerializedSegment((state as any)[key]);
       nextSegmentFingerprints[key] = serialized.fingerprint;
@@ -273,6 +297,7 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
       delete nextSegmentHashes[key];
       delete nextSegmentCanonical[key];
       delete nextSegmentBytes[key];
+      delete nextSegmentFingerprints[key];
     }
     if (changedSegments.length === 0 && deletedKeys.length === 0) {
       postgresCache.segmentFingerprints = nextSegmentFingerprints;
@@ -327,8 +352,11 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
   }
 }
 
-export function writeDatabase(state: DatabaseState): DatabaseCommitReceipt {
-  if (DATABASE_BACKEND === 'postgres') return writePostgresDatabase(state);
+export function writeDatabase(
+  state: DatabaseState,
+  changedKeysHint?: readonly DatabaseSegmentKey[],
+): DatabaseCommitReceipt {
+  if (DATABASE_BACKEND === 'postgres') return writePostgresDatabase(state, changedKeysHint);
   const dir = path.dirname(DB_FILE);
   let tmp: string | null = null;
   let renamed = false;

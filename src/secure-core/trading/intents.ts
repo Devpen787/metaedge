@@ -258,7 +258,7 @@ export function createOrderIntent(userId: string, input: OrderIntentInput): Orde
   orderState.nonceIndex[idempotencyKey] = intent.intentId;
   appendEvent(db, intent, 'CREATED', {}, now);
   appendAudit(db, intent, 'CREATE_ORDER_INTENT_V5', `Created durable paper order intent ${intent.intentId}`, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderNonceIndexV5', 'orderEventsV5', 'auditEvents', 'portfolioAllocatorV5']);
   return intent;
 }
 
@@ -288,7 +288,7 @@ export function markOrderIntentRiskAccepted(
   intent.updatedAt = now;
   appendEvent(db, intent, 'RISK_ACCEPTED', {}, now);
   appendAudit(db, intent, 'ORDER_RISK_ACCEPTED_V5', `Risk accepted as ${positionEffect}`, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents']);
   return intent;
 }
 
@@ -307,7 +307,7 @@ export function submitOrderIntentToBroker(intentId: string): OrderIntentV5 {
     observationHash: intent.submissionObservationHash,
   }, now);
   appendAudit(db, intent, 'SUBMIT_PAPER_BROKER_V5', `Submitted to ${intent.brokerPolicyId}`, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents']);
   return intent;
 }
 
@@ -326,7 +326,7 @@ export function rejectOrderIntent(intentId: string, reason: string): OrderIntent
   transitionPortfolioReservation(db, intent, 'released', now, intent.failureReason);
   appendEvent(db, intent, 'RISK_REJECTED', { reason: intent.failureReason }, now);
   appendAudit(db, intent, 'ORDER_RISK_REJECTED_V5', intent.failureReason, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents', 'portfolioAllocatorV5']);
   return intent;
 }
 
@@ -346,7 +346,7 @@ export function rejectBrokerOrderIntent(intentId: string, reason: string): Order
   transitionPortfolioReservation(db, intent, 'released', now, intent.failureReason);
   appendEvent(db, intent, 'BROKER_REJECTED', { reason: intent.noTradeReason }, now);
   appendAudit(db, intent, 'PAPER_BROKER_REJECTED_V5', intent.noTradeReason, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents', 'portfolioAllocatorV5']);
   return intent;
 }
 
@@ -369,7 +369,7 @@ export function expireBrokerOrderIntent(intentId: string, reason: string): Order
     remainingSize: intent.remainingSize ?? intent.size,
   }, now);
   appendAudit(db, intent, 'PAPER_BROKER_EXPIRED_V5', intent.noTradeReason, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents', 'portfolioAllocatorV5']);
   return intent;
 }
 
@@ -504,7 +504,7 @@ export function markOrderIntentUnresolved(intentId: string, reason: string): Ord
   intent.updatedAt = now;
   appendEvent(db, intent, 'UNRESOLVED', { reason: intent.failureReason }, now);
   appendAudit(db, intent, 'ORDER_UNRESOLVED_V5', intent.failureReason, now);
-  writeDatabase(db);
+  writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents']);
   return intent;
 }
 
@@ -635,6 +635,6 @@ export function reconcileOrderIntents(): OrderReconciliationResultV5 {
     }
   }
 
-  if (changed) writeDatabase(db);
+  if (changed) writeDatabase(db, ['orderIntentsV5', 'orderEventsV5', 'auditEvents', 'portfolioAllocatorV5']);
   return result;
 }

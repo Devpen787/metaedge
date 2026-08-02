@@ -258,6 +258,7 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
     const universeVersion = activateUniverseVersionV5(
       createUniverseVersionV5(resolved.rows.map((row) => row.symbol), resolved.observedAt),
     );
+    await new Promise<void>((resolve) => setImmediate(resolve));
     configureRecorderUniverseV5(universeVersion);
     // Capture immediately instead of waiting up to one minute after a new
     // universe becomes authoritative.
@@ -274,14 +275,17 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
     const coverageByStrategySymbol = new Map<string, MarketCoverageEntryV5>();
     const compiledStrategies = STRATEGY_PLUGINS.map((plugin) => compileFrozenStrategy(plugin));
     persistStrategySpecs(compiledStrategies);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     const experimentEntries = STRATEGY_PLUGINS.map((plugin, index) => ({
       plugin,
       strategy: compiledStrategies[index],
     }));
     const registeredExperiments = ensureExperimentPopulationV5(experimentEntries);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     // Trial controls and the forward evidence cutoff must exist before any
     // observation can be admitted to the broker in this cycle.
     ensureExperimentTrialsV5(Date.now());
+    await new Promise<void>((resolve) => setImmediate(resolve));
     const experimentByPlugin = new Map(registeredExperiments.map((item) => [item.spec.pluginId, item]));
     for (const { plugin, strategy: spec } of experimentEntries) {
       const registered = experimentByPlugin.get(plugin.id);
@@ -318,9 +322,13 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       }
     }
     persistDecisions(researchDecisions);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     persistOpportunityObservationsV5(opportunityObservations);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     reconcileExperimentEligibilityV5(opportunityObservations, Date.now());
+    await new Promise<void>((resolve) => setImmediate(resolve));
     persistCoverageMatrixV5(universeVersion.universeId, [...coverageByStrategySymbol.values()]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
     // Free shared exposure first. A valid reduction is never queued behind a
     // new entry that could consume the capacity the reduction is releasing.
     experimentRoutes.sort((left, right) => {
@@ -342,8 +350,10 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
         markDecisionRouted(candidate.decision.id, result.intentId);
         routed++;
       }
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
     flushExperimentObservationUpdatesV5();
+    await new Promise<void>((resolve) => setImmediate(resolve));
 
     const db = readDatabase();
     const agents = Object.values(db.agents).filter((agent) => agent.autopilot && agent.status === 'active');
@@ -367,8 +377,10 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       else paperCandidates++;
     }
     persistDecisions(agentDecisions.map((item) => item.decision));
+    await new Promise<void>((resolve) => setImmediate(resolve));
     for (const { decision, context } of agentDecisions) {
       if (decision.outcome === 'paper_trade_candidate' && routePaperDecision(decision, context)) routed++;
+      await new Promise<void>((resolve) => setImmediate(resolve));
     }
 
     const summary = { cycleId, startedAt, completedAt: Date.now(), evaluated, declines, hypotheses, paperCandidates, routed };

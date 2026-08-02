@@ -239,7 +239,7 @@ export function ensureExperimentPopulationV5(
       execution: { ownerId: SYSTEM_OWNER_ID, agent },
     });
   }
-  writeDatabase(db);
+  writeDatabase(db, ['users', 'agents', 'experimentsV5']);
   return registered;
 }
 
@@ -344,7 +344,7 @@ export function persistOpportunityObservationsV5(observations: OpportunityObserv
   if (registry.observations.length > MAX_OBSERVATIONS) {
     registry.observations.splice(0, registry.observations.length - MAX_OBSERVATIONS);
   }
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
 }
 
 export function reconcileExperimentEligibilityV5(
@@ -395,7 +395,7 @@ export function reconcileExperimentEligibilityV5(
   if (registry.lifecycleEvents.length > 5_000) {
     registry.lifecycleEvents.splice(0, registry.lifecycleEvents.length - 5_000);
   }
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
 }
 
 function updateObservation(
@@ -410,7 +410,7 @@ function updateObservation(
   const observation = experiments(db).observations.find((item) => item.observationId === observationId);
   if (!observation) throw new Error(`OPPORTUNITY_OBSERVATION_NOT_FOUND:${observationId}`);
   Object.assign(observation, update);
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
 }
 
 export function routeExperimentObservationV5(input: {
@@ -467,7 +467,7 @@ export function routeExperimentObservationV5(input: {
     if (!registry.lifecycleEvents.some((item) => item.eventId === promotion.eventId)) {
       registry.lifecycleEvents.push(promotion);
     }
-    writeDatabase(db);
+    writeDatabase(db, ['experimentsV5']);
   }
   if (observation.eligibility !== 'eligible') return decline('REGIME_OR_GATE_INELIGIBLE');
   if (currentState.health === 'failed') return decline('EXPERIMENT_HEALTH_FAILED');
@@ -546,7 +546,7 @@ export function routeExperimentObservationV5(input: {
     reservedBudget.reservedNotionalUsd += notional;
     reservedBudget.updatedAt = Date.now();
     try {
-      writeDatabase(reservedDb);
+      writeDatabase(reservedDb, ['experimentsV5']);
     } catch (error) {
       releasePortfolioReservationV5(allocation.reservation.reservationId, 'EXPERIMENT_BUDGET_RESERVATION_WRITE_FAILED');
       throw error;
@@ -592,7 +592,7 @@ export function routeExperimentObservationV5(input: {
       reservation.status = 'released';
       reservation.reason = result.error || 'ORDER_NOT_ACCEPTED';
       afterBudget.updatedAt = Date.now();
-      writeDatabase(after);
+      writeDatabase(after, ['experimentsV5']);
     }
     return decline(result.error || 'ORDER_NOT_ACCEPTED');
   }
@@ -603,7 +603,7 @@ export function routeExperimentObservationV5(input: {
     reservation.status = 'accepted';
     reservation.intentId = result.intent.intentId;
     afterBudget.updatedAt = Date.now();
-    writeDatabase(after);
+    writeDatabase(after, ['experimentsV5']);
   }
   updateObservation(observation.observationId, {
     disposition: 'admitted',
@@ -617,7 +617,7 @@ export function routeExperimentObservationV5(input: {
 
 export function flushExperimentObservationUpdatesV5(): void {
   const db = readDatabase();
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
 }
 
 export function reduceExperimentLifecycleV5(
@@ -707,7 +707,7 @@ export function applyExperimentLifecycleEventV5(event: ExperimentLifecycleEventV
   const next = reduceExperimentLifecycleV5(current, spec, event);
   registry.states[event.experimentId] = next;
   registry.lifecycleEvents.push(event);
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
   return next;
 }
 
@@ -752,7 +752,7 @@ export function proposeExperimentChallengerV5(input: {
   registry.specs[challenger.experimentId] = existing || challenger;
   registry.states[challenger.experimentId] ||= createExperimentState(challenger, now);
   registry.budgets[challenger.experimentId] ||= createBudget(challenger, now);
-  writeDatabase(db);
+  writeDatabase(db, ['experimentsV5']);
   return registry.specs[challenger.experimentId];
 }
 

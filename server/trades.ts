@@ -67,7 +67,7 @@ tradesRouter.post('/api/copilot/execute', (req: any, res) => {
   // Ensure the vehicle exists before the (fresh-read) trade executes.
   const db = readDatabase();
   copilotAgent(db, userId);
-  writeDatabase(db);
+  writeDatabase(db, ['agents']);
   const agent = copilotAgent(readDatabase(), userId);
 
   const result = placePaperTrade(
@@ -428,7 +428,10 @@ function commitPaperBrokerFill(intentId: string, fill: PaperFillV5, stopTriggere
   });
   recordPaperBrokerFill(db, intent.intentId, trade, committedFill);
   try {
-    writeDatabase(db);
+    writeDatabase(db, [
+      'users', 'agents', 'trades', 'auditEvents', 'graphEvents', 'orderIntentsV5',
+      'orderEventsV5', 'paperFillsV5', 'portfolioAllocatorV5',
+    ]);
   } catch (err: any) {
     try {
       markOrderIntentUnresolved(
@@ -469,7 +472,7 @@ export function processPaperBrokerOnce(
           if (current && (current.status === 'BROKER_PENDING' || current.status === 'PARTIALLY_FILLED')) {
             current.stopTriggered = true;
             current.updatedAt = now;
-            writeDatabase(db);
+            writeDatabase(db, ['orderIntentsV5']);
           }
         }
         result.waiting += 1;
@@ -574,7 +577,7 @@ tradesRouter.post('/api/trades/:id/review', (req: any, res) => {
     reviewedAt: Date.now()
   };
   trade.review = review;
-  writeDatabase(db);
+  writeDatabase(db, ['trades']);
   res.json({ success: true, review });
 });
 

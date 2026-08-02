@@ -154,7 +154,7 @@ export function recordPopulationOperationSampleV5(now = Date.now()): PopulationO
     checkpoint.checkpointHash = digest({ ...checkpointBody, diagnosticHash });
     checkpoint.checkpointId = `forward_checkpoint_v5_${checkpoint.checkpointHash.slice(0, 24)}`;
   }
-  writeDatabase(db);
+  writeDatabase(db, ['populationOperationsV5', 'decisionRuntime']);
   return sample;
 }
 
@@ -162,7 +162,7 @@ export function markPopulationUiLedgerParityV5(verified: boolean, now = Date.now
   const db = readDatabase();
   const ledger = operationStore(db);
   ledger.uiLedgerParityVerifiedAt = verified ? now : undefined;
-  writeDatabase(db);
+  writeDatabase(db, ['populationOperationsV5']);
 }
 
 export function recordPopulationAssuranceV5(kind: PopulationAssuranceKindV5, evidenceIds: string[], now = Date.now()): void {
@@ -182,7 +182,7 @@ export function recordPopulationAssuranceV5(kind: PopulationAssuranceKindV5, evi
       evidenceHash,
       recordedAt: now,
     });
-    writeDatabase(db);
+    writeDatabase(db, ['populationOperationsV5']);
   }
 }
 

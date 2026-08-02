@@ -104,7 +104,7 @@ export function activateUniverseVersionV5(version: UniverseVersionV5): UniverseV
   const market = (db.marketDataV5 ||= { universeVersions: {}, coverageHistory: [] });
   market.universeVersions[version.universeId] ||= version;
   market.activeUniverseId = version.universeId;
-  writeDatabase(db);
+  writeDatabase(db, ['marketDataV5']);
   return market.universeVersions[version.universeId];
 }
 
@@ -155,6 +155,6 @@ export function persistCoverageMatrixV5(
   const history = (market.coverageHistory ||= []);
   if (!history.some((item) => item.matrixId === matrix.matrixId)) history.push(matrix);
   if (history.length > 50) history.splice(0, history.length - 50);
-  writeDatabase(db);
+  writeDatabase(db, ['marketDataV5']);
   return matrix;
 }

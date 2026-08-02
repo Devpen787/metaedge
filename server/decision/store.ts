@@ -26,7 +26,7 @@ export function persistStrategySpecs(specs: FrozenStrategySpec[]): FrozenStrateg
     state.strategySpecs[spec.hash] = spec;
     changed = true;
   }
-  if (changed) writeDatabase(db);
+  if (changed) writeDatabase(db, ['decisionRuntime']);
   return specs.map((spec) => state.strategySpecs[spec.hash]);
 }
 
@@ -39,7 +39,7 @@ export function persistValidation(validation: ValidationRecord): ValidationRecor
     throw new Error('Forward-paper validation must name its authorized symbols');
   }
   state.validations[validation.id] = validation;
-  writeDatabase(db);
+  writeDatabase(db, ['decisionRuntime']);
   return validation;
 }
 
@@ -67,7 +67,7 @@ export function persistDecisions(decisions: LayeredDecision[]): LayeredDecision[
     else { indexes.set(decision.id, state.decisions.length); state.decisions.push(decision); }
   }
   if (state.decisions.length > MAX_DECISIONS) state.decisions.splice(0, state.decisions.length - MAX_DECISIONS);
-  writeDatabase(db);
+  writeDatabase(db, ['decisionRuntime']);
   return decisions;
 }
 
@@ -83,7 +83,7 @@ export function markDecisionRouted(decisionId: string, tradeId: string): Layered
   if (ids.length > MAX_EXECUTED_IDS) {
     for (const id of ids.slice(0, ids.length - MAX_EXECUTED_IDS)) delete state.executedDecisionIds[id];
   }
-  writeDatabase(db);
+  writeDatabase(db, ['decisionRuntime']);
   return decision;
 }
 
@@ -97,7 +97,7 @@ export function persistCycleSummary(summary: NonNullable<ReturnType<typeof readD
   const db = readDatabase();
   runtime(db).lastCycle = summary;
   persistCycleOperatorTruthV5(db, summary);
-  writeDatabase(db);
+  writeDatabase(db, ['decisionRuntime']);
 }
 
 export function decisionRuntimeSnapshot(viewerId?: string) {

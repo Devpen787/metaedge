@@ -165,7 +165,7 @@ export function ensureExperimentTrialsV5(now = Date.now()): ExperimentTrialV5[] 
     throw new Error('EXPERIMENT_LEARNING_POLICY_MUTATED');
   }
   const trials = ensureTrials(db, now);
-  writeDatabase(db);
+  writeDatabase(db, ['experimentLearningV5']);
   return trials;
 }
 
@@ -553,7 +553,7 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
     });
   }
   state.lastReconciledAt = now;
-  writeDatabase(db);
+  writeDatabase(db, ['experimentLearningV5']);
 
   for (const outcome of allOutcomes) {
     if (outcome.classification !== 'evidence_eligible' || state.lifecycleAppliedOutcomeIds[outcome.outcomeId]) continue;
@@ -574,7 +574,7 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
     const latest = readDatabase();
     const latestLearning = learning(latest);
     latestLearning.lifecycleAppliedOutcomeIds[outcome.outcomeId] = event.eventId;
-    writeDatabase(latest);
+    writeDatabase(latest, ['experimentLearningV5']);
   }
 
   const final = learning(readDatabase());

@@ -10,7 +10,7 @@ import cookieParser from 'cookie-parser';
 // so production never touches it.
 
 import { authRouter, sessionMiddleware, persistEphemeralOnMutation } from './server/auth.js';
-import { databaseStatus, readDatabase } from './server/storage.js';
+import { DATABASE_BACKEND, databaseStatus, readDatabase } from './server/storage.js';
 import { pricesRouter } from './server/prices.js';
 import { historyRouter } from './server/history.js';
 import { roomsRouter } from './server/rooms.js';
@@ -263,16 +263,20 @@ async function startServer() {
     startJanitor();
     startKillGuard();
 
-    // EdgeOps report automation: regenerate the edge report daily so fresh
-    // evidence is always sitting in data/edgeops/ — no cron, no SSH needed.
-    const runReport = () => {
-      import('node:child_process').then(({ execFile }) =>
-        execFile('node', ['scripts/edgeops_report.mjs'], { timeout: 60_000 }, (err) =>
-          console.log(err ? `[edgeops] report failed: ${err.message}` : '[edgeops] daily edge report written'))
-      ).catch((e) => console.warn('[edgeops] report scheduling failed:', e?.message));
-    };
-    setTimeout(runReport, 60_000);                       // once shortly after boot
-    setInterval(runReport, 24 * 60 * 60 * 1000).unref(); // then daily
+    // The legacy EdgeOps report reads data/db.json directly. PostgreSQL V5 must
+    // not spawn a writer that cannot see canonical state.
+    if (DATABASE_BACKEND === 'file') {
+      const runReport = () => {
+        import('node:child_process').then(({ execFile }) =>
+          execFile('node', ['scripts/edgeops_report.mjs'], { timeout: 60_000 }, (err) =>
+            console.log(err ? `[edgeops] report failed: ${err.message}` : '[edgeops] daily edge report written'))
+        ).catch((e) => console.warn('[edgeops] report scheduling failed:', e?.message));
+      };
+      setTimeout(runReport, 60_000);
+      setInterval(runReport, 24 * 60 * 60 * 1000).unref();
+    } else {
+      console.log('[edgeops-v5] legacy file report disabled under PostgreSQL authority');
+    }
   });
 
   // Graceful shutdown: stop accepting connections and exit cleanly on deploy

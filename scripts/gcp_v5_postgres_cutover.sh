@@ -18,7 +18,34 @@ mkdir -p "$metaedge_shared_dir/backups"
 
 sudo cp "$metaedge_unit" "$metaedge_shared_dir/backups/metaedge.service.before-postgres-$metaedge_stamp"
 crontab -l > "$metaedge_shared_dir/backups/crontab.before-postgres-$metaedge_stamp" 2>/dev/null || true
-crontab -l 2>/dev/null | grep -v 'auto_deploy.sh' | crontab - || true
+
+legacy_runtime_pids() {
+  local candidate candidate_cwd
+  while read -r candidate; do
+    [[ "$candidate" =~ ^[0-9]+$ ]] || continue
+    candidate_cwd="$(readlink -f "/proc/$candidate/cwd" 2>/dev/null || true)"
+    if [ "$candidate_cwd" = "$metaedge_legacy_dir" ]; then echo "$candidate"; fi
+  done < <(pgrep -u "$(id -u)" -f '^/usr/bin/node scripts/.*\.(mjs|js|cjs)( |$)' || true)
+}
+
+stop_legacy_runtime() {
+  local legacy_pids candidate
+  crontab -r 2>/dev/null || true
+  legacy_pids="$(legacy_runtime_pids)"
+  if [ -n "$legacy_pids" ]; then
+    while read -r candidate; do kill -TERM "$candidate" 2>/dev/null || true; done <<<"$legacy_pids"
+  fi
+  for _ in $(seq 1 30); do
+    [ -z "$(legacy_runtime_pids)" ] && return 0
+    sleep 1
+  done
+  legacy_pids="$(legacy_runtime_pids)"
+  if [ -n "$legacy_pids" ]; then
+    while read -r candidate; do kill -KILL "$candidate" 2>/dev/null || true; done <<<"$legacy_pids"
+  fi
+  sleep 1
+  [ -z "$(legacy_runtime_pids)" ] || { echo "legacy runtime processes remain" >&2; return 1; }
+}
 
 rollback() {
   echo "cutover failed; restoring prior service" >&2
@@ -31,6 +58,7 @@ rollback() {
 }
 trap rollback ERR
 
+stop_legacy_runtime
 sudo systemctl stop metaedge
 # Freeze the canonical JSON writer before taking the migration snapshot. A
 # pre-stop copy could miss a paper trade committed during the cutover window.
@@ -89,6 +117,8 @@ Environment=FAST_PERP_RESEARCH_ENABLED=false
 ExecStart=$(command -v node) $metaedge_release_dir/dist/server.cjs
 Restart=always
 RestartSec=3
+TimeoutStopSec=15
+KillMode=control-group
 
 [Install]
 WantedBy=multi-user.target

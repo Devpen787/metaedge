@@ -94,9 +94,20 @@ test('production cutover gives cold PostgreSQL reads time and explicitly enables
   assert.match(cutover, /for _ in \$\(seq 1 90\)/);
   assert.match(cutover, /Environment=OPPORTUNITY_FACTORY_DISABLED=true/);
   assert.match(cutover, /Environment=FAST_PERP_OPERATION_ENABLED=false/);
+  assert.match(cutover, /crontab -r/);
+  assert.match(cutover, /legacy_runtime_pids/);
+  assert.match(cutover, /readlink -f "\/proc\/\$candidate\/cwd"/);
+  assert.match(cutover, /TimeoutStopSec=15/);
+  assert.match(cutover, /KillMode=control-group/);
   assert.ok(
     cutover.indexOf('sudo systemctl stop metaedge')
       < cutover.indexOf('cp "$metaedge_source_db" "$metaedge_shared_dir\/backups\/db-before-postgres-'),
     'the final migration snapshot must be taken only after the legacy writer stops',
   );
+});
+
+test('PostgreSQL production disables the legacy file-only EdgeOps subprocess', () => {
+  const source = fs.readFileSync(path.join(process.cwd(), 'server.ts'), 'utf8');
+  assert.match(source, /if \(DATABASE_BACKEND === 'file'\)/);
+  assert.match(source, /legacy file report disabled under PostgreSQL authority/);
 });

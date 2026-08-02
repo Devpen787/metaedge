@@ -57,7 +57,12 @@ if [ ! -f "$ENV_FILE" ]; then
     echo "COOKIE_SECRET=$(head -c 32 /dev/urandom | base64 | tr -d '=+/')"
     echo "DATABASE_URL=$DATABASE_URL"
     echo "METAEDGE_POSTGRES_POOL_MAX=2"
+    echo "METAEDGE_POSTGRES_STATEMENT_TIMEOUT_MS=60000"
+    echo "METAEDGE_POSTGRES_IDLE_TIMEOUT_MS=30000"
+    echo "METAEDGE_POSTGRES_SYNC_TIMEOUT_MS=90000"
     echo "METAEDGE_POSTGRES_WORKER_PATH=$APP_DIR/dist/postgres_worker.cjs"
+    echo "DECISION_RUNTIME_DISABLED=false"
+    echo "V5_DECISION_WRITER_ENABLED=true"
   } > "$ENV_FILE"
   chmod 600 "$ENV_FILE"
 fi
@@ -73,6 +78,8 @@ Requires=postgresql.service
 User=$USER
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
+Environment=DECISION_RUNTIME_DISABLED=false
+Environment=V5_DECISION_WRITER_ENABLED=true
 Environment=OPPORTUNITY_FACTORY_DISABLED=true
 Environment=FAST_PERP_RECORDER_ENABLED=false
 Environment=FAST_PERP_OPERATION_ENABLED=false

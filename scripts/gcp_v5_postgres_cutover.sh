@@ -53,16 +53,19 @@ npm --prefix "$metaedge_release_dir" run postgres:compare -- \
 
 metaedge_runtime_env="$metaedge_shared_dir/metaedge.env"
 umask 077
-grep -vE '^(DATABASE_URL|METAEDGE_POSTGRES_|METAEDGE_ALLOW_PRODUCTION_SQLITE|GIT_COMMIT|LIVE_EXECUTION_ENABLED)=' \
+grep -vE '^(DATABASE_URL|METAEDGE_POSTGRES_|METAEDGE_ALLOW_PRODUCTION_SQLITE|GIT_COMMIT|LIVE_EXECUTION_ENABLED|DECISION_RUNTIME_DISABLED|V5_DECISION_WRITER_ENABLED)=' \
   "$metaedge_legacy_dir/.env.production" > "$metaedge_runtime_env"
 {
   echo "DATABASE_URL=$DATABASE_URL"
   echo "METAEDGE_POSTGRES_POOL_MAX=2"
   echo "METAEDGE_POSTGRES_STATEMENT_TIMEOUT_MS=60000"
   echo "METAEDGE_POSTGRES_IDLE_TIMEOUT_MS=30000"
+  echo "METAEDGE_POSTGRES_SYNC_TIMEOUT_MS=90000"
   echo "METAEDGE_POSTGRES_WORKER_PATH=$metaedge_release_dir/dist/postgres_worker.cjs"
   echo "GIT_COMMIT=$metaedge_commit"
   echo "LIVE_EXECUTION_ENABLED=false"
+  echo "DECISION_RUNTIME_DISABLED=false"
+  echo "V5_DECISION_WRITER_ENABLED=true"
 } >> "$metaedge_runtime_env"
 chmod 600 "$metaedge_runtime_env"
 
@@ -76,6 +79,8 @@ Requires=postgresql.service
 User=$(id -un)
 WorkingDirectory=$metaedge_release_dir
 EnvironmentFile=$metaedge_runtime_env
+Environment=DECISION_RUNTIME_DISABLED=false
+Environment=V5_DECISION_WRITER_ENABLED=true
 Environment=OPPORTUNITY_FACTORY_DISABLED=true
 Environment=FAST_PERP_RECORDER_ENABLED=false
 Environment=FAST_PERP_OPERATION_ENABLED=false
@@ -92,7 +97,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart metaedge
 
 metaedge_health=""
-for _ in $(seq 1 30); do
+for _ in $(seq 1 90); do
   metaedge_health="$(curl -fsS http://127.0.0.1:3000/api/health 2>/dev/null || true)"
   if [ -n "$metaedge_health" ]; then break; fi
   sleep 1

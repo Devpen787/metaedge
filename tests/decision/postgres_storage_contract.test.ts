@@ -58,3 +58,13 @@ test('PostgreSQL canonical schema is constrained, versioned, and commit-audited'
   assert.match(sql, /value jsonb not null/);
   assert.match(sql, /state_hash ~ '\^\[0-9a-f\]\{64\}\$'/);
 });
+
+test('production cutover gives cold PostgreSQL reads time and explicitly enables only the V5 paper decision writer', () => {
+  const cutover = fs.readFileSync(path.join(process.cwd(), 'scripts', 'gcp_v5_postgres_cutover.sh'), 'utf8');
+  assert.match(cutover, /METAEDGE_POSTGRES_SYNC_TIMEOUT_MS=90000/);
+  assert.match(cutover, /Environment=DECISION_RUNTIME_DISABLED=false/);
+  assert.match(cutover, /Environment=V5_DECISION_WRITER_ENABLED=true/);
+  assert.match(cutover, /for _ in \$\(seq 1 90\)/);
+  assert.match(cutover, /Environment=OPPORTUNITY_FACTORY_DISABLED=true/);
+  assert.match(cutover, /Environment=FAST_PERP_OPERATION_ENABLED=false/);
+});

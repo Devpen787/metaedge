@@ -2,9 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
-import { readPostgresState, writePostgresState, type PostgresStateSegment } from './postgres_sync.js';
-import { canonicalJson } from './canonical_json.js';
+import { readPostgresState, writePostgresState, type PostgresWriteSegment } from './postgres_sync.js';
 import { normalizePersistedState } from './state_normalization.js';
+import {
+  canonicalStateHash,
+  compactStateBytes,
+  snapshotCanonicalSegment,
+  trackTopLevelMutations,
+} from './postgres_state_cache.js';
 
 const configuredDatabaseUrl = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
 export const DATABASE_BACKEND = /^postgres(?:ql)?:\/\//i.test(configuredDatabaseUrl) ? 'postgres' : 'file';
@@ -19,6 +24,9 @@ let postgresCache: {
   stateHash: string;
   state: DatabaseState;
   segmentHashes: Record<string, string>;
+  segmentCanonical: Record<string, string>;
+  segmentBytes: Record<string, number>;
+  dirtyKeys: Set<string>;
 } | null = null;
 const postgresStateRevision = new WeakMap<object, number>();
 
@@ -45,14 +53,6 @@ export class DatabaseWriteError extends Error {
     super(message);
     this.name = 'DatabaseWriteError';
   }
-}
-
-function valueHash(value: unknown): string {
-  return crypto.createHash('sha256').update(canonicalJson(value)).digest('hex');
-}
-
-function stateHash(state: DatabaseState): string {
-  return crypto.createHash('sha256').update(canonicalJson(state)).digest('hex');
 }
 
 export function readDatabase(): DatabaseState {
@@ -167,9 +167,30 @@ export function readDatabase(): DatabaseState {
     parsed = normalizePersistedState(parsed);
     if (DATABASE_BACKEND === 'postgres') {
       const revision = postgresRead!.revision!;
-      const segmentHashes = Object.fromEntries(postgresRead!.segments!.map((segment) => [segment.key, segment.valueHash]));
-      postgresCache = { revision, stateHash: postgresRead!.stateHash || stateHash(parsed), state: parsed, segmentHashes };
-      postgresStateRevision.set(parsed, revision);
+      const snapshots = Object.fromEntries(postgresRead!.segments!.map((segment) => {
+        const snapshot = snapshotCanonicalSegment(segment.value);
+        if (snapshot.valueHash !== segment.valueHash || snapshot.valueBytes !== segment.valueBytes) {
+          throw new Error(`POSTGRES_SEGMENT_INTEGRITY_MISMATCH:${segment.key}`);
+        }
+        return [segment.key, snapshot];
+      }));
+      const segmentHashes = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueHash]));
+      const segmentCanonical = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.canonical]));
+      const segmentBytes = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueBytes]));
+      const computedStateHash = canonicalStateHash(segmentCanonical);
+      if (postgresRead!.stateHash !== computedStateHash) throw new Error('POSTGRES_STATE_HASH_MISMATCH');
+      const tracked = trackTopLevelMutations(parsed as DatabaseState);
+      postgresCache = {
+        revision,
+        stateHash: computedStateHash,
+        state: tracked.state,
+        segmentHashes,
+        segmentCanonical,
+        segmentBytes,
+        dirtyKeys: tracked.dirtyKeys,
+      };
+      postgresStateRevision.set(tracked.state, revision);
+      parsed = tracked.state;
     } else {
       databaseCache = { mtimeMs: fileStat!.mtimeMs, size: fileStat!.size, state: parsed };
     }
@@ -224,21 +245,47 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
     if (expectedRevision == null || !postgresCache || postgresCache.revision !== expectedRevision) {
       throw new Error('POSTGRES_WRITE_REQUIRES_CURRENT_READ_STATE');
     }
-    const serialized = JSON.stringify(state);
-    const bytes = Buffer.byteLength(serialized);
-    const nextStateHash = stateHash(state);
-    const currentKeys = Object.keys(state).sort();
-    const currentKeySet = new Set(currentKeys);
-    const changedSegments: PostgresStateSegment[] = [];
-    const nextSegmentHashes: Record<string, string> = {};
-    for (const key of currentKeys) {
-      const hash = valueHash((state as any)[key]);
-      nextSegmentHashes[key] = hash;
-      if (postgresCache.segmentHashes[key] !== hash) {
-        changedSegments.push({ key, value: (state as any)[key], valueHash: hash });
+    const dirtyKeys = postgresCache.dirtyKeys;
+    const changedSegments: PostgresWriteSegment[] = [];
+    const nextSegmentHashes = { ...postgresCache.segmentHashes };
+    const nextSegmentCanonical = { ...postgresCache.segmentCanonical };
+    const nextSegmentBytes = { ...postgresCache.segmentBytes };
+    const deletedKeys: string[] = [];
+    for (const key of dirtyKeys) {
+      if (!Object.prototype.hasOwnProperty.call(state, key)) {
+        if (Object.prototype.hasOwnProperty.call(nextSegmentHashes, key)) deletedKeys.push(key);
+        delete nextSegmentHashes[key];
+        delete nextSegmentCanonical[key];
+        delete nextSegmentBytes[key];
+        continue;
+      }
+      const snapshot = snapshotCanonicalSegment((state as any)[key]);
+      nextSegmentHashes[key] = snapshot.valueHash;
+      nextSegmentCanonical[key] = snapshot.canonical;
+      nextSegmentBytes[key] = snapshot.valueBytes;
+      if (postgresCache.segmentHashes[key] !== snapshot.valueHash) {
+        changedSegments.push({
+          key,
+          valueJson: snapshot.valueJson,
+          valueHash: snapshot.valueHash,
+          valueBytes: snapshot.valueBytes,
+        });
       }
     }
-    const deletedKeys = Object.keys(postgresCache.segmentHashes).filter((key) => !currentKeySet.has(key));
+    if (changedSegments.length === 0 && deletedKeys.length === 0) {
+      dirtyKeys.clear();
+      return {
+        file: 'postgres:metaedge.state_segments',
+        bytes: compactStateBytes(postgresCache.segmentBytes),
+        mtimeMs: Date.now(),
+        committedAt: Date.now(),
+        durability: 'postgres_transaction_committed',
+        backend: 'postgres',
+        revision: expectedRevision,
+      };
+    }
+    const nextStateHash = canonicalStateHash(nextSegmentCanonical);
+    const bytes = compactStateBytes(nextSegmentBytes);
     const result = writePostgresState({
       expectedRevision,
       changedSegments,
@@ -253,7 +300,11 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
       stateHash: nextStateHash,
       state,
       segmentHashes: nextSegmentHashes,
+      segmentCanonical: nextSegmentCanonical,
+      segmentBytes: nextSegmentBytes,
+      dirtyKeys,
     };
+    dirtyKeys.clear();
     postgresStateRevision.set(state, result.revision);
     return {
       file: 'postgres:metaedge.state_segments',

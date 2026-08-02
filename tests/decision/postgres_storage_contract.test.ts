@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { canonicalJson } from '../../server/canonical_json.js';
 import { normalizePersistedState } from '../../server/state_normalization.js';
+import {
+  canonicalStateHash,
+  compactStateBytes,
+  snapshotCanonicalSegment,
+  trackTopLevelMutations,
+} from '../../server/postgres_state_cache.js';
 
 test('canonical state hashing is independent of JSONB object-key order', () => {
   assert.equal(
@@ -27,6 +34,26 @@ test('migration normalization is deterministic and removes first-write schema dr
     specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [],
   });
   assert.equal(canonicalJson(normalizePersistedState(normalized)), first);
+});
+
+test('PostgreSQL state cache tracks only mutated top-level segments and preserves canonical root identity', () => {
+  const source: any = {
+    decisionRuntime: { decisions: [{ id: 'a', evidence: { z: 2, a: 1 } }] },
+    trades: [{ id: 'trade_1', pnl: 0 }],
+  };
+  const tracked = trackTopLevelMutations(source);
+  assert.deepEqual([...tracked.dirtyKeys], []);
+  tracked.state.decisionRuntime.decisions.push({ id: 'b' });
+  assert.deepEqual([...tracked.dirtyKeys], ['decisionRuntime']);
+  tracked.dirtyKeys.clear();
+  tracked.state.trades[0].pnl = 2;
+  assert.deepEqual([...tracked.dirtyKeys], ['trades']);
+
+  const snapshots = Object.fromEntries(Object.entries(tracked.state).map(([key, value]) => [key, snapshotCanonicalSegment(value)]));
+  const canonicalByKey = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.canonical]));
+  const bytesByKey = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueBytes]));
+  assert.equal(canonicalStateHash(canonicalByKey), crypto.createHash('sha256').update(canonicalJson(tracked.state)).digest('hex'));
+  assert.equal(compactStateBytes(bytesByKey), Buffer.byteLength(JSON.stringify(tracked.state)));
 });
 
 test('production refuses file-backed canonical state unless an isolated smoke explicitly opts in', () => {

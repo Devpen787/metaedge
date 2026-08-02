@@ -65,7 +65,7 @@ async function handle(message: RequestMessage): Promise<unknown> {
         return { unchanged: true, revision, schemaVersion: Number(meta.rows[0].schema_version), stateHash: meta.rows[0].state_hash };
       }
       const segments = await client.query(`
-        select segment_key, value, value_hash
+        select segment_key, value, value_hash, value_bytes
         from metaedge.state_segments
         order by segment_key
       `);
@@ -77,6 +77,7 @@ async function handle(message: RequestMessage): Promise<unknown> {
           key: row.segment_key,
           value: row.value,
           valueHash: row.value_hash,
+          valueBytes: Number(row.value_bytes),
         })),
       };
     });
@@ -104,6 +105,9 @@ async function handle(message: RequestMessage): Promise<unknown> {
         [revision, input.stateHash, input.stateBytes, input.writerId, changed.map((row: any) => row.key), deleted],
       );
       for (const segment of changed) {
+        const valueJson = String(segment.valueJson || '');
+        const valueBytes = Buffer.byteLength(valueJson);
+        if (valueBytes !== Number(segment.valueBytes)) throw new Error(`POSTGRES_SEGMENT_BYTES_MISMATCH:${segment.key}`);
         await client.query(
           `insert into metaedge.state_segments
             (segment_key, value, value_hash, value_bytes, last_revision)
@@ -114,8 +118,7 @@ async function handle(message: RequestMessage): Promise<unknown> {
              value_bytes = excluded.value_bytes,
              last_revision = excluded.last_revision,
              updated_at = clock_timestamp()`,
-          [segment.key, JSON.stringify(segment.value), segment.valueHash,
-            Buffer.byteLength(JSON.stringify(segment.value)), revision],
+          [segment.key, valueJson, segment.valueHash, valueBytes, revision],
         );
       }
       if (deleted.length > 0) {

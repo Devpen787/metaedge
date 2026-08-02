@@ -1,10 +1,18 @@
 import path from 'node:path';
 import { MessageChannel, receiveMessageOnPort, Worker, type MessagePort } from 'node:worker_threads';
 
-export interface PostgresStateSegment {
+export interface PostgresReadSegment {
   key: string;
   value: unknown;
   valueHash: string;
+  valueBytes: number;
+}
+
+export interface PostgresWriteSegment {
+  key: string;
+  valueJson: string;
+  valueHash: string;
+  valueBytes: number;
 }
 
 export interface PostgresReadResult {
@@ -13,12 +21,12 @@ export interface PostgresReadResult {
   revision?: number;
   schemaVersion?: number;
   stateHash?: string;
-  segments?: PostgresStateSegment[];
+  segments?: PostgresReadSegment[];
 }
 
 export interface PostgresWriteInput {
   expectedRevision: number;
-  changedSegments: PostgresStateSegment[];
+  changedSegments: PostgresWriteSegment[];
   deletedKeys: string[];
   stateHash: string;
   stateBytes: number;

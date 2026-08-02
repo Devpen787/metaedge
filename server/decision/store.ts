@@ -3,7 +3,11 @@ import type { FrozenStrategySpec, LayeredDecision, ValidationRecord } from './ty
 import { assertAuthorityV5Contract } from '../v5/authority.js';
 import { persistCycleOperatorTruthV5 } from '../v5/operator_truth.js';
 
-const MAX_DECISIONS = 2_000;
+// Decisions are a recent operational trace. Longitudinal learning is retained
+// in experiment outcomes, lifecycle evidence, fills, and trades; keeping an
+// unbounded raw decision payload would make every durable cycle rewrite stall
+// the request-serving process as the population runs continuously.
+const MAX_DECISIONS = 1_000;
 const MAX_EXECUTED_IDS = 5_000;
 
 function runtime(db: ReturnType<typeof readDatabase>) {

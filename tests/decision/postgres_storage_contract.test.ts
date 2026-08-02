@@ -11,7 +11,7 @@ import {
   canonicalStateHash,
   compactStateBytes,
   snapshotCanonicalSegment,
-  trackTopLevelMutations,
+  snapshotSerializedSegment,
 } from '../../server/postgres_state_cache.js';
 
 test('canonical state hashing is independent of JSONB object-key order', () => {
@@ -36,24 +36,22 @@ test('migration normalization is deterministic and removes first-write schema dr
   assert.equal(canonicalJson(normalizePersistedState(normalized)), first);
 });
 
-test('PostgreSQL state cache tracks only mutated top-level segments and preserves canonical root identity', () => {
+test('PostgreSQL state cache fingerprints only changed segments, stays clone-safe, and preserves canonical root identity', () => {
   const source: any = {
     decisionRuntime: { decisions: [{ id: 'a', evidence: { z: 2, a: 1 } }] },
     trades: [{ id: 'trade_1', pnl: 0 }],
   };
-  const tracked = trackTopLevelMutations(source);
-  assert.deepEqual([...tracked.dirtyKeys], []);
-  tracked.state.decisionRuntime.decisions.push({ id: 'b' });
-  assert.deepEqual([...tracked.dirtyKeys], ['decisionRuntime']);
-  tracked.dirtyKeys.clear();
-  tracked.state.trades[0].pnl = 2;
-  assert.deepEqual([...tracked.dirtyKeys], ['trades']);
+  const before = Object.fromEntries(Object.entries(source).map(([key, value]) => [key, snapshotSerializedSegment(value).fingerprint]));
+  source.decisionRuntime.decisions.push({ id: 'b' });
+  const after = Object.fromEntries(Object.entries(source).map(([key, value]) => [key, snapshotSerializedSegment(value).fingerprint]));
+  assert.deepEqual(Object.keys(after).filter((key) => after[key] !== before[key]), ['decisionRuntime']);
+  assert.deepEqual(structuredClone(source), source);
 
-  const snapshots = Object.fromEntries(Object.entries(tracked.state).map(([key, value]) => [key, snapshotCanonicalSegment(value)]));
+  const snapshots = Object.fromEntries(Object.entries(source).map(([key, value]) => [key, snapshotCanonicalSegment(value)]));
   const canonicalByKey = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.canonical]));
   const bytesByKey = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueBytes]));
-  assert.equal(canonicalStateHash(canonicalByKey), crypto.createHash('sha256').update(canonicalJson(tracked.state)).digest('hex'));
-  assert.equal(compactStateBytes(bytesByKey), Buffer.byteLength(JSON.stringify(tracked.state)));
+  assert.equal(canonicalStateHash(canonicalByKey), crypto.createHash('sha256').update(canonicalJson(source)).digest('hex'));
+  assert.equal(compactStateBytes(bytesByKey), Buffer.byteLength(JSON.stringify(source)));
 });
 
 test('production refuses file-backed canonical state unless an isolated smoke explicitly opts in', () => {

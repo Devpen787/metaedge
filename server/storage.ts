@@ -8,7 +8,7 @@ import {
   canonicalStateHash,
   compactStateBytes,
   snapshotCanonicalSegment,
-  trackTopLevelMutations,
+  snapshotSerializedSegment,
 } from './postgres_state_cache.js';
 
 const configuredDatabaseUrl = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
@@ -26,7 +26,7 @@ let postgresCache: {
   segmentHashes: Record<string, string>;
   segmentCanonical: Record<string, string>;
   segmentBytes: Record<string, number>;
-  dirtyKeys: Set<string>;
+  segmentFingerprints: Record<string, string>;
 } | null = null;
 const postgresStateRevision = new WeakMap<object, number>();
 
@@ -177,20 +177,19 @@ export function readDatabase(): DatabaseState {
       const segmentHashes = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueHash]));
       const segmentCanonical = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.canonical]));
       const segmentBytes = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.valueBytes]));
+      const segmentFingerprints = Object.fromEntries(Object.entries(snapshots).map(([key, row]) => [key, row.fingerprint]));
       const computedStateHash = canonicalStateHash(segmentCanonical);
       if (postgresRead!.stateHash !== computedStateHash) throw new Error('POSTGRES_STATE_HASH_MISMATCH');
-      const tracked = trackTopLevelMutations(parsed as DatabaseState);
       postgresCache = {
         revision,
         stateHash: computedStateHash,
-        state: tracked.state,
+        state: parsed,
         segmentHashes,
         segmentCanonical,
         segmentBytes,
-        dirtyKeys: tracked.dirtyKeys,
+        segmentFingerprints,
       };
-      postgresStateRevision.set(tracked.state, revision);
-      parsed = tracked.state;
+      postgresStateRevision.set(parsed, revision);
     } else {
       databaseCache = { mtimeMs: fileStat!.mtimeMs, size: fileStat!.size, state: parsed };
     }
@@ -245,21 +244,19 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
     if (expectedRevision == null || !postgresCache || postgresCache.revision !== expectedRevision) {
       throw new Error('POSTGRES_WRITE_REQUIRES_CURRENT_READ_STATE');
     }
-    const dirtyKeys = postgresCache.dirtyKeys;
     const changedSegments: PostgresWriteSegment[] = [];
     const nextSegmentHashes = { ...postgresCache.segmentHashes };
     const nextSegmentCanonical = { ...postgresCache.segmentCanonical };
     const nextSegmentBytes = { ...postgresCache.segmentBytes };
-    const deletedKeys: string[] = [];
-    for (const key of dirtyKeys) {
-      if (!Object.prototype.hasOwnProperty.call(state, key)) {
-        if (Object.prototype.hasOwnProperty.call(nextSegmentHashes, key)) deletedKeys.push(key);
-        delete nextSegmentHashes[key];
-        delete nextSegmentCanonical[key];
-        delete nextSegmentBytes[key];
-        continue;
-      }
-      const snapshot = snapshotCanonicalSegment((state as any)[key]);
+    const nextSegmentFingerprints: Record<string, string> = {};
+    const currentKeys = Object.keys(state).sort();
+    const currentKeySet = new Set(currentKeys);
+    const deletedKeys = Object.keys(postgresCache.segmentHashes).filter((key) => !currentKeySet.has(key));
+    for (const key of currentKeys) {
+      const serialized = snapshotSerializedSegment((state as any)[key]);
+      nextSegmentFingerprints[key] = serialized.fingerprint;
+      if (postgresCache.segmentFingerprints[key] === serialized.fingerprint) continue;
+      const snapshot = snapshotCanonicalSegment((state as any)[key], serialized);
       nextSegmentHashes[key] = snapshot.valueHash;
       nextSegmentCanonical[key] = snapshot.canonical;
       nextSegmentBytes[key] = snapshot.valueBytes;
@@ -272,8 +269,13 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
         });
       }
     }
+    for (const key of deletedKeys) {
+      delete nextSegmentHashes[key];
+      delete nextSegmentCanonical[key];
+      delete nextSegmentBytes[key];
+    }
     if (changedSegments.length === 0 && deletedKeys.length === 0) {
-      dirtyKeys.clear();
+      postgresCache.segmentFingerprints = nextSegmentFingerprints;
       return {
         file: 'postgres:metaedge.state_segments',
         bytes: compactStateBytes(postgresCache.segmentBytes),
@@ -302,9 +304,8 @@ function writePostgresDatabase(state: DatabaseState): DatabaseCommitReceipt {
       segmentHashes: nextSegmentHashes,
       segmentCanonical: nextSegmentCanonical,
       segmentBytes: nextSegmentBytes,
-      dirtyKeys,
+      segmentFingerprints: nextSegmentFingerprints,
     };
-    dirtyKeys.clear();
     postgresStateRevision.set(state, result.revision);
     return {
       file: 'postgres:metaedge.state_segments',

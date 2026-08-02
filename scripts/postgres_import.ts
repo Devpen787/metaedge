@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { semanticHash, stateSegments, withAdminClient } from './postgres_state_common.js';
+import { normalizePersistedState } from '../server/state_normalization.js';
 
 const source = path.resolve(process.argv[2] || '');
 if (!source || !fs.existsSync(source)) throw new Error('POSTGRES_IMPORT_SOURCE_FILE_REQUIRED');
 const raw = fs.readFileSync(source, 'utf8');
-const state = JSON.parse(raw) as Record<string, unknown>;
+const state = normalizePersistedState(JSON.parse(raw) as Record<string, any>);
 assert.equal(Array.isArray(state.trades), true, 'source is not a MetaEdge state document');
 assert.equal(typeof state.users, 'object', 'source is not a MetaEdge state document');
-const segments = stateSegments(state);
+const segments = stateSegments(state as unknown as Record<string, unknown>);
 const stateHash = semanticHash(state);
 const stateBytes = Buffer.byteLength(JSON.stringify(state));
 

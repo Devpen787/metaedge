@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { DatabaseState } from '../src/types';
 import { readPostgresState, writePostgresState, type PostgresStateSegment } from './postgres_sync.js';
 import { canonicalJson } from './canonical_json.js';
+import { normalizePersistedState } from './state_normalization.js';
 
 const configuredDatabaseUrl = process.env.DATABASE_URL || path.join(process.cwd(), 'data', 'db.json');
 export const DATABASE_BACKEND = /^postgres(?:ql)?:\/\//i.test(configuredDatabaseUrl) ? 'postgres' : 'file';
@@ -156,62 +157,14 @@ export function readDatabase(): DatabaseState {
         && databaseCache.size === fileStat.size) return databaseCache.state;
       parsed = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
     }
-    if (!parsed.sessions) {
-      parsed.sessions = {};
-    }
+    if (!parsed.sessions) parsed.sessions = {};
     if (!parsed.predictionMarkets) {
       parsed.predictionMarkets = defaultPredictions;
-    }
-    if (!parsed.predictionBetEvents) {
-      parsed.predictionBetEvents = [];
     }
     if (!parsed.arenaLeagues) {
       parsed.arenaLeagues = defaultLeagues;
     }
-    if (!parsed.arenaMembers) {
-      parsed.arenaMembers = [];
-    }
-    if (!parsed.arenaBadges) {
-      parsed.arenaBadges = [];
-    }
-    if (!parsed.arenaRankSnapshots) {
-      parsed.arenaRankSnapshots = {};
-    }
-    if (!parsed.trailingState) parsed.trailingState = {};
-    if (!parsed.cooldowns) parsed.cooldowns = {};
-    if (!parsed.orderIntentsV5) parsed.orderIntentsV5 = {};
-    if (!parsed.orderNonceIndexV5) parsed.orderNonceIndexV5 = {};
-    if (!parsed.orderEventsV5) parsed.orderEventsV5 = [];
-    if (!parsed.paperFillsV5) parsed.paperFillsV5 = [];
-    if (!parsed.experimentsV5) {
-      parsed.experimentsV5 = { specs: {}, states: {}, budgets: {}, observations: [], lifecycleEvents: [] };
-    }
-    if (!parsed.experimentsV5.specs) parsed.experimentsV5.specs = {};
-    if (!parsed.experimentsV5.states) parsed.experimentsV5.states = {};
-    if (!parsed.experimentsV5.budgets) parsed.experimentsV5.budgets = {};
-    if (!parsed.experimentsV5.observations) parsed.experimentsV5.observations = [];
-    if (!parsed.experimentsV5.lifecycleEvents) parsed.experimentsV5.lifecycleEvents = [];
-    if (parsed.portfolioAllocatorV5) {
-      if (!parsed.portfolioAllocatorV5.reservations) parsed.portfolioAllocatorV5.reservations = {};
-      if (!parsed.portfolioAllocatorV5.decisions) parsed.portfolioAllocatorV5.decisions = [];
-    }
-    if (parsed.populationOperationsV5) {
-      if (!parsed.populationOperationsV5.samples) parsed.populationOperationsV5.samples = [];
-      if (!parsed.populationOperationsV5.assuranceRecords) parsed.populationOperationsV5.assuranceRecords = [];
-      if (!parsed.populationOperationsV5.acceptanceBundles) parsed.populationOperationsV5.acceptanceBundles = [];
-    }
-    if (!parsed.marketDataV5) parsed.marketDataV5 = { universeVersions: {}, coverageHistory: [] };
-    if (!parsed.marketDataV5.universeVersions) parsed.marketDataV5.universeVersions = {};
-    if (!parsed.marketDataV5.coverageHistory) parsed.marketDataV5.coverageHistory = [];
-    if (!parsed.decisionRuntime) {
-      parsed.decisionRuntime = { strategySpecs: {}, validations: {}, decisions: [], executedDecisionIds: {} };
-    }
-    if (!parsed.decisionRuntime.strategySpecs) parsed.decisionRuntime.strategySpecs = {};
-    if (!parsed.decisionRuntime.validations) parsed.decisionRuntime.validations = {};
-    if (!parsed.decisionRuntime.decisions) parsed.decisionRuntime.decisions = [];
-    if (!parsed.decisionRuntime.executedDecisionIds) parsed.decisionRuntime.executedDecisionIds = {};
-    if (!parsed.decisionRuntime.cycleDiagnostics) parsed.decisionRuntime.cycleDiagnostics = [];
-    if (!parsed.decisionRuntime.forwardCheckpoints) parsed.decisionRuntime.forwardCheckpoints = [];
+    parsed = normalizePersistedState(parsed);
     if (DATABASE_BACKEND === 'postgres') {
       const revision = postgresRead!.revision!;
       const segmentHashes = Object.fromEntries(postgresRead!.segments!.map((segment) => [segment.key, segment.valueHash]));

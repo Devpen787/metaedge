@@ -258,7 +258,9 @@ function writePostgresDatabase(
       unexpected.push(...Object.keys(postgresCache.segmentFingerprints)
         .filter((key) => !Object.hasOwn(state, key) && !hinted.has(key)));
       if (unexpected.length) {
-        throw new Error(`POSTGRES_WRITE_HINT_INCOMPLETE:${[...new Set(unexpected)].sort().join(',')}`);
+        const detail = [...new Set(unexpected)].sort().join(',');
+        console.error(`[postgres-state] write hint incomplete: ${detail}`);
+        throw new Error(`POSTGRES_WRITE_HINT_INCOMPLETE:${detail}`);
       }
     }
     const changedSegments: PostgresWriteSegment[] = [];

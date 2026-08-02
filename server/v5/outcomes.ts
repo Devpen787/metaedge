@@ -492,6 +492,7 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
   assessments: number;
 } {
   const db = readDatabase();
+  const learningInitialized = !db.experimentLearningV5;
   const state = learning(db);
   if (canonical(state.policy) !== canonical(DEFAULT_EXPERIMENT_LEARNING_POLICY_V5)) {
     throw new Error('EXPERIMENT_LEARNING_POLICY_MUTATED');
@@ -529,7 +530,7 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
   // state revision. Reassess only when the declared trial population or its
   // resolved outcomes changed; clock freshness is tracked in process by
   // outcomeReconcilerLastCompletedAt below.
-  if (!trialsChanged && !assessmentsMissing && newOutcomes === 0) {
+  if (!learningInitialized && !trialsChanged && !assessmentsMissing && newOutcomes === 0) {
     return {
       trials: trials.length,
       completedEpisodes: episodes.length,

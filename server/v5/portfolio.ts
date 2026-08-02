@@ -490,10 +490,11 @@ export function releasePortfolioReservationV5(reservationId: string, reason: str
 
 export function reconcilePortfolioReservationsV5(now = Date.now()): { inspected: number; changed: number } {
   const db = readDatabase();
+  const initialized = !db.portfolioAllocatorV5;
   const ledger = store(db);
   const inspected = Object.keys(ledger.reservations).length;
   const changed = reconcileInPlace(db, now);
-  if (changed > 0) writeDatabase(db, ['portfolioAllocatorV5']);
+  if (initialized || changed > 0) writeDatabase(db, ['portfolioAllocatorV5']);
   return { inspected, changed };
 }
 

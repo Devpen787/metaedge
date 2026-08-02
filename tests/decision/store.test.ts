@@ -9,10 +9,11 @@ process.env.DATABASE_URL = path.join(dir, 'db.json');
 
 test('strategy, validation, decision, and execution state survive a database reread', async () => {
   const { readDatabase } = await import('../../server/storage.js');
-  const { persistStrategySpec, persistValidation, persistDecision, persistDecisions, markDecisionRouted, decisionRuntimeSnapshot } = await import('../../server/decision/store.js');
+  const { persistStrategySpec, persistStrategySpecs, persistValidation, persistDecision, persistDecisions, markDecisionRouted, decisionRuntimeSnapshot } = await import('../../server/decision/store.js');
   const { compileFrozenStrategy } = await import('../../server/decision/specs.js');
   const { rsiMeanReversionV5 } = await import('../../server/decision/plugins.js');
   const spec = persistStrategySpec(compileFrozenStrategy(rsiMeanReversionV5, 100));
+  persistStrategySpecs([spec, { ...spec, hash: 'spec_test_batch', pluginId: 'batch_plugin' }]);
   persistValidation({
     id: 'validation_test', strategyHash: spec.hash, status: 'forward_paper_candidate',
     datasetId: 'fixture', datasetHash: 'hash', codeCommit: 'commit', folds: 3,
@@ -35,6 +36,7 @@ test('strategy, validation, decision, and execution state survive a database rer
   markDecisionRouted('decision_test', 'trade_test');
   const db = readDatabase();
   assert.equal(db.decisionRuntime?.strategySpecs[spec.hash].hash, spec.hash);
+  assert.equal(db.decisionRuntime?.strategySpecs.spec_test_batch.hash, 'spec_test_batch');
   assert.equal(db.decisionRuntime?.executedDecisionIds.decision_test, 'trade_test');
   assert.equal(db.decisionRuntime?.decisions.filter((d) => d.cycleId === 'cycle_batch').length, 2);
   assert.equal(decisionRuntimeSnapshot().recentDecisions.find((d) => d.id === 'decision_test')?.queueStatus, 'routed');

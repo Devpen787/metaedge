@@ -27,9 +27,9 @@ import {
   latestValidation,
   markDecisionRouted,
   persistCycleSummary,
-  persistDecision,
   persistDecisions,
   persistStrategySpec,
+  persistStrategySpecs,
 } from './store.js';
 import type { DecisionContext, FrozenStrategySpec, LayeredDecision, StrategyPlugin, ValidationRecord } from './types.js';
 import type { FeedRow } from '../opportunity/feed.js';
@@ -45,6 +45,7 @@ import { v5AuthorityFlags } from '../v5/authority.js';
 import {
   buildOpportunityObservationV5,
   ensureExperimentPopulationV5,
+  flushExperimentObservationUpdatesV5,
   persistOpportunityObservationsV5,
   reconcileExperimentEligibilityV5,
   routeExperimentObservationV5,
@@ -271,9 +272,11 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       context: DecisionContext;
     }> = [];
     const coverageByStrategySymbol = new Map<string, MarketCoverageEntryV5>();
-    const experimentEntries = STRATEGY_PLUGINS.map((plugin) => ({
+    const compiledStrategies = STRATEGY_PLUGINS.map((plugin) => compileFrozenStrategy(plugin));
+    persistStrategySpecs(compiledStrategies);
+    const experimentEntries = STRATEGY_PLUGINS.map((plugin, index) => ({
       plugin,
-      strategy: persistStrategySpec(compileFrozenStrategy(plugin)),
+      strategy: compiledStrategies[index],
     }));
     const registeredExperiments = ensureExperimentPopulationV5(experimentEntries);
     // Trial controls and the forward evidence cutoff must exist before any
@@ -334,15 +337,17 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       return rank(left) - rank(right);
     });
     for (const candidate of experimentRoutes) {
-      const result = routeExperimentObservationV5(candidate);
+      const result = routeExperimentObservationV5({ ...candidate, deferDeclinePersistence: true });
       if (result.routed && result.intentId) {
         markDecisionRouted(candidate.decision.id, result.intentId);
         routed++;
       }
     }
+    flushExperimentObservationUpdatesV5();
 
     const db = readDatabase();
     const agents = Object.values(db.agents).filter((agent) => agent.autopilot && agent.status === 'active');
+    const agentDecisions: Array<{ decision: LayeredDecision; context: DecisionContext }> = [];
     for (const agent of agents) {
       const plugin = AGENT_STRATEGY_PLUGIN[agent.strategyType];
       const row = rowsBySymbol.get(agent.assetSymbol.toUpperCase());
@@ -354,14 +359,16 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       // features from a recorder that never captured this symbol.
       if (!coverage?.armed) continue;
       const context = buildContext(cycleId, row, resolved.observedAt, plugin, resolved.stale, { ownerId: agent.ownerId, agent });
-      const decision = persistDecision(evaluate(context, plugin, spec, latestValidation(spec.hash)));
+      const decision = evaluate(context, plugin, spec, latestValidation(spec.hash));
+      agentDecisions.push({ decision, context });
       evaluated++;
       if (decision.outcome === 'decline') declines++;
       else if (decision.outcome === 'research_hypothesis') hypotheses++;
-      else {
-        paperCandidates++;
-        if (routePaperDecision(decision, context)) routed++;
-      }
+      else paperCandidates++;
+    }
+    persistDecisions(agentDecisions.map((item) => item.decision));
+    for (const { decision, context } of agentDecisions) {
+      if (decision.outcome === 'paper_trade_candidate' && routePaperDecision(decision, context)) routed++;
     }
 
     const summary = { cycleId, startedAt, completedAt: Date.now(), evaluated, declines, hypotheses, paperCandidates, routed };

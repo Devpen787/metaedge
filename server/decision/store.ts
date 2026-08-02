@@ -11,14 +11,23 @@ function runtime(db: ReturnType<typeof readDatabase>) {
 }
 
 export function persistStrategySpec(spec: FrozenStrategySpec): FrozenStrategySpec {
-  assertAuthorityV5Contract(spec);
+  persistStrategySpecs([spec]);
+  return spec;
+}
+
+export function persistStrategySpecs(specs: FrozenStrategySpec[]): FrozenStrategySpec[] {
+  if (!specs.length) return specs;
+  for (const spec of specs) assertAuthorityV5Contract(spec);
   const db = readDatabase();
   const state = runtime(db);
-  const existing = state.strategySpecs[spec.hash];
-  if (existing) return existing;
-  state.strategySpecs[spec.hash] = spec;
-  writeDatabase(db);
-  return spec;
+  let changed = false;
+  for (const spec of specs) {
+    if (state.strategySpecs[spec.hash]) continue;
+    state.strategySpecs[spec.hash] = spec;
+    changed = true;
+  }
+  if (changed) writeDatabase(db);
+  return specs.map((spec) => state.strategySpecs[spec.hash]);
 }
 
 export function persistValidation(validation: ValidationRecord): ValidationRecord {

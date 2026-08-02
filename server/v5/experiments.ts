@@ -418,6 +418,7 @@ export function routeExperimentObservationV5(input: {
   observation: OpportunityObservationV5;
   decision: LayeredDecision;
   context: DecisionContext;
+  deferDeclinePersistence?: boolean;
 }): { routed: boolean; reason: string; intentId?: string } {
   const { registered, observation, decision, context } = input;
   const flags = v5AuthorityFlags();
@@ -426,10 +427,18 @@ export function routeExperimentObservationV5(input: {
   let currentState = registry.states[registered.spec.experimentId];
   const currentSpec = registry.specs[registered.spec.experimentId];
   const decline = (reason: string) => {
-    updateObservation(observation.observationId, {
+    const update: Pick<OpportunityObservationV5, 'disposition' | 'reasons'> = {
       disposition: reason.startsWith('LIFECYCLE_') || reason === 'NO_SIGNAL' ? 'shadow' : 'declined',
       reasons: [...new Set([...observation.reasons, reason])],
-    });
+    };
+    if (input.deferDeclinePersistence) {
+      const stored = registry.observations.find((item) => item.observationId === observation.observationId);
+      if (!stored) throw new Error(`OPPORTUNITY_OBSERVATION_NOT_FOUND:${observation.observationId}`);
+      Object.assign(stored, update);
+      Object.assign(observation, update);
+    } else {
+      updateObservation(observation.observationId, update);
+    }
     return { routed: false, reason };
   };
   if (flags.liveExecutionEnabled) return decline('LIVE_EXECUTION_MUST_REMAIN_LOCKED');
@@ -604,6 +613,11 @@ export function routeExperimentObservationV5(input: {
     permission: effectivePermission,
   });
   return { routed: true, reason: effectivePermission, intentId: result.intent.intentId };
+}
+
+export function flushExperimentObservationUpdatesV5(): void {
+  const db = readDatabase();
+  writeDatabase(db);
 }
 
 export function reduceExperimentLifecycleV5(

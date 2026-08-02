@@ -29,7 +29,7 @@ const SYSTEM_OWNER_ID = 'usr_v5_paper_discovery';
 // Resolved learning survives separately in experimentLearningV5, so bound this
 // hot rewritten segment instead of allowing a few hours of cycles to turn it
 // into a request-blocking multi-dozen-megabyte payload.
-const MAX_OBSERVATIONS = 2_000;
+const MAX_OBSERVATIONS = 1_000;
 export const POPULATION_PAPER_MAX_OPEN_NOTIONAL_USD_V5 = DEFAULT_PORTFOLIO_ALLOCATOR_POLICY_V5.maximumGrossExposureUsd;
 const DEFAULT_LIFECYCLE_POLICY = {
   minimumDwellMs: 6 * 60 * 60_000,

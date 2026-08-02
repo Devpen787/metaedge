@@ -52,7 +52,22 @@ function operationStore(db: DatabaseState) {
   });
   current.assuranceRecords ||= [];
   current.acceptanceBundles ||= [];
-  const { policyHash: storedHash, ...storedBody } = current.policy;
+  const storedHash = current.policy.policyHash;
+  // PostgreSQL jsonb does not preserve object-key insertion order. Rebuild the
+  // policy body in its declared order before hashing so a restart cannot make
+  // the same immutable policy look mutated solely because jsonb reordered it.
+  const storedBody = {
+    authorityVersion: current.policy.authorityVersion,
+    schema: current.policy.schema,
+    id: current.policy.id,
+    semanticVersion: current.policy.semanticVersion,
+    minimumRegisteredArms: current.policy.minimumRegisteredArms,
+    maximumRegisteredArms: current.policy.maximumRegisteredArms,
+    minimumMechanismFamilies: current.policy.minimumMechanismFamilies,
+    requiredConsecutiveCleanCycles: current.policy.requiredConsecutiveCleanCycles,
+    unresolvedOrderSlaMs: current.policy.unresolvedOrderSlaMs,
+    liveExecution: current.policy.liveExecution,
+  };
   if (storedHash !== digest(storedBody) || storedHash !== DEFAULT_POPULATION_OPERATION_POLICY_V5.policyHash) {
     throw new Error('POPULATION_OPERATION_POLICY_IMMUTABLE');
   }

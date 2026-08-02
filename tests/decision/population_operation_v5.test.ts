@@ -62,6 +62,19 @@ test('the expanded population is operationally clean only when every continuous 
   assert.ok(missing.reasons.includes('REQUIRED_CONTINUOUS_CLOCK_MISSING'));
 });
 
+test('PostgreSQL-style policy key reordering does not manufacture an immutability failure', async () => {
+  const { db, now } = await seededPopulation();
+  const {
+    DEFAULT_POPULATION_OPERATION_POLICY_V5,
+    evaluatePopulationOperationV5,
+  } = await import('../../server/v5/population.js');
+  const reorderedPolicy = Object.fromEntries(
+    Object.entries(DEFAULT_POPULATION_OPERATION_POLICY_V5).reverse(),
+  ) as typeof DEFAULT_POPULATION_OPERATION_POLICY_V5;
+  db.populationOperationsV5 = { policy: reorderedPolicy, samples: [], assuranceRecords: [] };
+  assert.doesNotThrow(() => evaluatePopulationOperationV5(db, now, healthyClocks(now)));
+});
+
 test('an unresolved order beyond its SLA and any active pre-V5 agent fail the population sample closed', async () => {
   const { db, now } = await seededPopulation();
   db.agents.legacy_intruder = { id: 'legacy_intruder', ownerId: 'owner', name: 'legacy', description: 'fixture',

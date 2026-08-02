@@ -401,7 +401,11 @@ test('durable reconciliation counts retired challengers, resolves once, and appl
   assert.equal(afterFirst.experimentsV5!.states[trial.experimentId].eligibleOutcomeCount, 1);
   const second = reconcileExperimentOutcomesV5(50_000);
   assert.equal(second.newOutcomes, 0);
-  assert.equal(readDatabase().experimentsV5!.states[trial.experimentId].eligibleOutcomeCount, 1);
+  const afterSecond = readDatabase();
+  assert.equal(afterSecond.experimentsV5!.states[trial.experimentId].eligibleOutcomeCount, 1);
+  assert.equal(afterSecond.experimentLearningV5!.lastReconciledAt, 40_000);
+  assert.ok(Object.values(afterSecond.experimentLearningV5!.assessments)
+    .every((assessment) => assessment.assessedAt === 40_000));
 });
 
 test.after(() => fs.rmSync(root, { recursive: true, force: true }));

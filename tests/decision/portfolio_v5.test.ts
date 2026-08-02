@@ -282,6 +282,16 @@ test('unresolved experiment orders retain pending exposure and consume the unres
   assert.equal(snapshot.reservations[0].status, 'bound');
 });
 
+test('a no-op portfolio reconciliation does not manufacture durable timestamp changes', async () => {
+  await reset();
+  const { reconcilePortfolioReservationsV5, portfolioAllocatorSnapshotV5 } = await import('../../server/v5/portfolio.js');
+  const first = reconcilePortfolioReservationsV5(1_000);
+  const second = reconcilePortfolioReservationsV5(2_000);
+  assert.deepEqual(first, { inspected: 0, changed: 0 });
+  assert.deepEqual(second, { inspected: 0, changed: 0 });
+  assert.equal(portfolioAllocatorSnapshotV5(2_000).lastReconciledAt, null);
+});
+
 test('aggregate and family post-cost rolling losses veto new entries but not reductions', async () => {
   await reset();
   const losing = await seedExperiment('exp_daily_loss', 'loss_family');

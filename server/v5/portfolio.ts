@@ -149,7 +149,10 @@ function reconcileInPlace(db: DatabaseState, now: number): number {
       changed += 1;
     }
   }
-  ledger.lastReconciledAt = now;
+  // A completed no-op reconciliation is represented by the in-process clock.
+  // Persisting wall-clock passage every five seconds would create needless
+  // canonical database revisions and can stall request handling on small hosts.
+  if (changed > 0) ledger.lastReconciledAt = now;
   return changed;
 }
 
@@ -490,7 +493,7 @@ export function reconcilePortfolioReservationsV5(now = Date.now()): { inspected:
   const ledger = store(db);
   const inspected = Object.keys(ledger.reservations).length;
   const changed = reconcileInPlace(db, now);
-  writeDatabase(db);
+  if (changed > 0) writeDatabase(db);
   return { inspected, changed };
 }
 

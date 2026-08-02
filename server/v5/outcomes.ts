@@ -496,7 +496,9 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
   if (canonical(state.policy) !== canonical(DEFAULT_EXPERIMENT_LEARNING_POLICY_V5)) {
     throw new Error('EXPERIMENT_LEARNING_POLICY_MUTATED');
   }
+  const trialCountBefore = Object.keys(state.trials).length;
   const trials = ensureTrials(db, now);
+  const trialsChanged = Object.keys(state.trials).length !== trialCountBefore;
   const trialByExperiment = new Map(trials.map((trial) => [trial.experimentId, trial]));
   const episodes = completedEpisodes(db.trades);
   const fills = Object.fromEntries((db.paperFillsV5 || []).map((fill) => [fill.fillId, fill]));
@@ -521,6 +523,22 @@ export function reconcileExperimentOutcomesV5(now = Date.now()): {
     }
   }
   const allOutcomes = Object.values(state.outcomes);
+  const assessmentsMissing = trials.some((trial) => !state.assessments[trial.trialId]);
+  // The continuous reconciler runs every few seconds. Assessments are evidence
+  // artifacts, so wall-clock passage alone must not create a new canonical
+  // state revision. Reassess only when the declared trial population or its
+  // resolved outcomes changed; clock freshness is tracked in process by
+  // outcomeReconcilerLastCompletedAt below.
+  if (!trialsChanged && !assessmentsMissing && newOutcomes === 0) {
+    return {
+      trials: trials.length,
+      completedEpisodes: episodes.length,
+      newOutcomes: 0,
+      validOutcomes: allOutcomes.filter((outcome) => outcome.operationalStatus === 'valid').length,
+      invalidOutcomes: allOutcomes.filter((outcome) => outcome.operationalStatus === 'invalid').length,
+      assessments: Object.keys(state.assessments).length,
+    };
+  }
   const familyTrialCounts = trials.reduce((counts, trial) => {
     counts.set(trial.family, (counts.get(trial.family) || 0) + 1);
     return counts;

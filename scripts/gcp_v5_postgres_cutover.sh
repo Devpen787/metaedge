@@ -16,12 +16,6 @@ test -f "$metaedge_release_dir/dist/server.cjs"
 test -f "$metaedge_release_dir/dist/postgres_worker.cjs"
 mkdir -p "$metaedge_shared_dir/backups"
 
-cp "$metaedge_source_db" "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
-chmod 600 "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
-sync "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
-sha256sum "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json" \
-  > "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.sha256"
-
 sudo cp "$metaedge_unit" "$metaedge_shared_dir/backups/metaedge.service.before-postgres-$metaedge_stamp"
 crontab -l > "$metaedge_shared_dir/backups/crontab.before-postgres-$metaedge_stamp" 2>/dev/null || true
 crontab -l 2>/dev/null | grep -v 'auto_deploy.sh' | crontab - || true
@@ -38,6 +32,13 @@ rollback() {
 trap rollback ERR
 
 sudo systemctl stop metaedge
+# Freeze the canonical JSON writer before taking the migration snapshot. A
+# pre-stop copy could miss a paper trade committed during the cutover window.
+cp "$metaedge_source_db" "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
+chmod 600 "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
+sync "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json"
+sha256sum "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.json" \
+  > "$metaedge_shared_dir/backups/db-before-postgres-$metaedge_stamp.sha256"
 # shellcheck disable=SC1090
 source "$metaedge_pg_secret"
 export METAEDGE_POSTGRES_ADMIN_URL="$DATABASE_URL"

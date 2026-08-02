@@ -67,4 +67,9 @@ test('production cutover gives cold PostgreSQL reads time and explicitly enables
   assert.match(cutover, /for _ in \$\(seq 1 90\)/);
   assert.match(cutover, /Environment=OPPORTUNITY_FACTORY_DISABLED=true/);
   assert.match(cutover, /Environment=FAST_PERP_OPERATION_ENABLED=false/);
+  assert.ok(
+    cutover.indexOf('sudo systemctl stop metaedge')
+      < cutover.indexOf('cp "$metaedge_source_db" "$metaedge_shared_dir\/backups\/db-before-postgres-'),
+    'the final migration snapshot must be taken only after the legacy writer stops',
+  );
 });

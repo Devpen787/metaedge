@@ -67,6 +67,17 @@ export const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'],
 };
 
 let running = false;
+let initialCycleState: 'not_required' | 'pending' | 'healthy' | 'failed' = 'not_required';
+
+export function decisionRuntimeReadiness() {
+  const required = v5AuthorityFlags().decisionWriterEnabled
+    && process.env.DECISION_RUNTIME_DISABLED !== 'true';
+  return {
+    required,
+    state: required ? initialCycleState : 'not_required',
+    ready: !required || initialCycleState === 'healthy',
+  } as const;
+}
 
 function yieldToRequestLoop(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
@@ -415,9 +426,16 @@ export function startDecisionRuntime() {
     console.log('[decision-runtime] disabled via DECISION_RUNTIME_DISABLED');
     return;
   }
+  initialCycleState = 'pending';
   const run = () => runDecisionCycle()
-    .then((summary) => console.log(`[decision-runtime] ${summary.cycleId}: evaluated=${summary.evaluated} declines=${summary.declines} hypotheses=${summary.hypotheses} candidates=${summary.paperCandidates} routed=${summary.routed}${summary.error ? ` error=${summary.error}` : ''}`))
-    .catch((error) => console.warn('[decision-runtime] cycle failed:', error.message));
+    .then((summary) => {
+      if (initialCycleState !== 'healthy') initialCycleState = summary.error ? 'failed' : 'healthy';
+      console.log(`[decision-runtime] ${summary.cycleId}: evaluated=${summary.evaluated} declines=${summary.declines} hypotheses=${summary.hypotheses} candidates=${summary.paperCandidates} routed=${summary.routed}${summary.error ? ` error=${summary.error}` : ''}`);
+    })
+    .catch((error) => {
+      if (initialCycleState !== 'healthy') initialCycleState = 'failed';
+      console.warn('[decision-runtime] cycle failed:', error.message);
+    });
   setTimeout(run, 15_000).unref();
   setInterval(run, CYCLE_MS).unref();
   console.log(`[decision-runtime] running every ${Math.round(CYCLE_MS / 1000)}s — live-market decisions, paper routing only`);

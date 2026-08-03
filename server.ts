@@ -29,7 +29,7 @@ import { platformRouter } from './server/platform.js';
 import { researchRouter } from './server/research.js';
 import { startJanitor } from './server/janitor.js';
 import { startKillGuard } from './server/killguard.js';
-import { startDecisionRuntime } from './server/decision/runtime.js';
+import { decisionRuntimeReadiness, startDecisionRuntime } from './server/decision/runtime.js';
 import { startRiskLoop } from './server/decision/risk_loop.js';
 import { startBroadFeed } from './server/broad_feed.js';
 import { startDailyRoll } from './server/decision/daily_features.js';
@@ -120,15 +120,18 @@ app.get('/api/health', (_req, res) => {
     users = Object.keys(db.users || {}).length;
     dbOk = true;
   } catch { /* dbOk stays false */ }
-  res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
+  const decisionRuntime = decisionRuntimeReadiness();
+  const ready = dbOk && decisionRuntime.ready;
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ok' : dbOk && decisionRuntime.state === 'pending' ? 'starting' : 'degraded',
     app: 'MetaEdge',
     commit: process.env.GIT_COMMIT || 'dev',
     uptimeSec: Math.round((Date.now() - START_TIME) / 1000),
     dbConnectivity: dbOk,
     storage: databaseStatus(),
     users,
-    liveModeGlobalLock: process.env.LIVE_EXECUTION_ENABLED !== 'true'
+    liveModeGlobalLock: process.env.LIVE_EXECUTION_ENABLED !== 'true',
+    readiness: { decisionRuntime },
   });
 });
 

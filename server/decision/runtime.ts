@@ -68,6 +68,10 @@ export const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'],
 
 let running = false;
 
+function yieldToRequestLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 function source(
   provider: string,
   dataset: string,
@@ -258,7 +262,7 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
     const universeVersion = activateUniverseVersionV5(
       createUniverseVersionV5(resolved.rows.map((row) => row.symbol), resolved.observedAt),
     );
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     configureRecorderUniverseV5(universeVersion);
     // Capture immediately instead of waiting up to one minute after a new
     // universe becomes authoritative.
@@ -275,17 +279,17 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
     const coverageByStrategySymbol = new Map<string, MarketCoverageEntryV5>();
     const compiledStrategies = STRATEGY_PLUGINS.map((plugin) => compileFrozenStrategy(plugin));
     persistStrategySpecs(compiledStrategies);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     const experimentEntries = STRATEGY_PLUGINS.map((plugin, index) => ({
       plugin,
       strategy: compiledStrategies[index],
     }));
     const registeredExperiments = ensureExperimentPopulationV5(experimentEntries);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     // Trial controls and the forward evidence cutoff must exist before any
     // observation can be admitted to the broker in this cycle.
     ensureExperimentTrialsV5(Date.now());
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     const experimentByPlugin = new Map(registeredExperiments.map((item) => [item.spec.pluginId, item]));
     for (const { plugin, strategy: spec } of experimentEntries) {
       const registered = experimentByPlugin.get(plugin.id);
@@ -319,16 +323,20 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
         if (decision.outcome === 'decline') declines++;
         else if (decision.outcome === 'research_hypothesis') hypotheses++;
         else paperCandidates++;
+        // Hundreds of strategy/symbol evaluations otherwise form one long
+        // synchronous CPU burst on the small production VM. Yield in bounded
+        // batches so health and read requests remain serviceable mid-cycle.
+        if (evaluated % 20 === 0) await yieldToRequestLoop();
       }
     }
     persistDecisions(researchDecisions);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     persistOpportunityObservationsV5(opportunityObservations);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     reconcileExperimentEligibilityV5(opportunityObservations, Date.now());
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     persistCoverageMatrixV5(universeVersion.universeId, [...coverageByStrategySymbol.values()]);
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     // Free shared exposure first. A valid reduction is never queued behind a
     // new entry that could consume the capacity the reduction is releasing.
     experimentRoutes.sort((left, right) => {
@@ -350,10 +358,10 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
         markDecisionRouted(candidate.decision.id, result.intentId);
         routed++;
       }
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await yieldToRequestLoop();
     }
     flushExperimentObservationUpdatesV5();
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
 
     const db = readDatabase();
     const agents = Object.values(db.agents).filter((agent) => agent.autopilot && agent.status === 'active');
@@ -377,10 +385,10 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       else paperCandidates++;
     }
     persistDecisions(agentDecisions.map((item) => item.decision));
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await yieldToRequestLoop();
     for (const { decision, context } of agentDecisions) {
       if (decision.outcome === 'paper_trade_candidate' && routePaperDecision(decision, context)) routed++;
-      await new Promise<void>((resolve) => setImmediate(resolve));
+      await yieldToRequestLoop();
     }
 
     const summary = { cycleId, startedAt, completedAt: Date.now(), evaluated, declines, hypotheses, paperCandidates, routed };

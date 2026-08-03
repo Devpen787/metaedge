@@ -46,6 +46,32 @@ test('a failed write throws, cleans staging, and cannot leak cached mutations', 
   );
 });
 
+test('batched writes become durable together and discard mutations when the final commit fails', async () => {
+  const {
+    DatabaseWriteError,
+    readDatabase,
+    runDatabaseWriteBatch,
+    writeDatabase,
+  } = await import('../../server/storage.js');
+  const durable = readDatabase();
+  runDatabaseWriteBatch(() => {
+    (durable as any).batchMarker = 'first';
+    assert.equal(writeDatabase(durable).durability, 'pending_batch');
+    (durable as any).batchMarker = 'complete';
+    assert.equal(writeDatabase(durable).durability, 'pending_batch');
+  });
+  assert.equal((readDatabase() as any).batchMarker, 'complete');
+
+  const failing = readDatabase();
+  (failing as any).failedBatchMarker = 'must-not-leak';
+  assert.throws(() => runDatabaseWriteBatch(() => {
+    writeDatabase(failing);
+    (failing as any).cycle = failing;
+    writeDatabase(failing);
+  }), DatabaseWriteError);
+  assert.equal((readDatabase() as any).failedBatchMarker, undefined);
+});
+
 test('paper trade execution cannot report success when its canonical commit fails', async () => {
   const { DatabaseWriteError, readDatabase, writeDatabase } = await import('../../server/storage.js');
   const { placePaperTrade } = await import('../../server/trades.js');

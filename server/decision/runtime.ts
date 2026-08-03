@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { readDatabase } from '../storage.js';
+import { readDatabase, runDatabaseWriteBatch } from '../storage.js';
 import {
   captureMarketObservationsOnce,
   configureRecorderUniverseV5,
@@ -353,11 +353,14 @@ export async function runDecisionCycle(): Promise<NonNullable<ReturnType<typeof 
       return rank(left) - rank(right);
     });
     for (const candidate of experimentRoutes) {
-      const result = routeExperimentObservationV5({ ...candidate, deferDeclinePersistence: true });
-      if (result.routed && result.intentId) {
-        markDecisionRouted(candidate.decision.id, result.intentId);
-        routed++;
-      }
+      const result = runDatabaseWriteBatch(() => {
+        const routedResult = routeExperimentObservationV5({ ...candidate, deferDeclinePersistence: true });
+        if (routedResult.routed && routedResult.intentId) {
+          markDecisionRouted(candidate.decision.id, routedResult.intentId);
+        }
+        return routedResult;
+      });
+      if (result.routed && result.intentId) routed++;
       await yieldToRequestLoop();
     }
     flushExperimentObservationUpdatesV5();

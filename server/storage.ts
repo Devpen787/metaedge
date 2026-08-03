@@ -37,12 +37,21 @@ export interface DatabaseCommitReceipt {
   bytes: number;
   mtimeMs: number;
   committedAt: number;
-  durability: 'file_and_directory_synced' | 'postgres_transaction_committed';
+  durability: 'file_and_directory_synced' | 'postgres_transaction_committed' | 'pending_batch';
   backend?: 'file' | 'postgres';
   revision?: number;
 }
 
 export type DatabaseSegmentKey = Extract<keyof DatabaseState, string>;
+
+interface DatabaseWriteBatch {
+  state: DatabaseState | null;
+  changedKeys: Set<DatabaseSegmentKey>;
+  requiresFullScan: boolean;
+  writes: number;
+}
+
+let activeWriteBatch: DatabaseWriteBatch | null = null;
 
 export class DatabaseWriteError extends Error {
   readonly code = 'DATABASE_WRITE_FAILED';
@@ -358,6 +367,30 @@ export function writeDatabase(
   state: DatabaseState,
   changedKeysHint?: readonly DatabaseSegmentKey[],
 ): DatabaseCommitReceipt {
+  if (activeWriteBatch) {
+    if (activeWriteBatch.state && activeWriteBatch.state !== state) {
+      throw new Error('DATABASE_WRITE_BATCH_STATE_IDENTITY_MISMATCH');
+    }
+    activeWriteBatch.state = state;
+    activeWriteBatch.writes += 1;
+    if (changedKeysHint) {
+      for (const key of changedKeysHint) activeWriteBatch.changedKeys.add(key);
+    } else {
+      activeWriteBatch.requiresFullScan = true;
+    }
+    // Callers inside the batch may continue mutating the same canonical state,
+    // but the enclosing runDatabaseWriteBatch cannot return until the single
+    // physical commit below succeeds. This receipt is deliberately explicit:
+    // it is never durable evidence on its own.
+    return {
+      file: 'batch:pending',
+      bytes: 0,
+      mtimeMs: 0,
+      committedAt: 0,
+      durability: 'pending_batch',
+      backend: DATABASE_BACKEND,
+    };
+  }
   if (DATABASE_BACKEND === 'postgres') return writePostgresDatabase(state, changedKeysHint);
   const dir = path.dirname(DB_FILE);
   let tmp: string | null = null;
@@ -419,6 +452,44 @@ export function writeDatabase(
       commitState,
       error,
     );
+  }
+}
+
+/**
+ * Coalesce a synchronous paper-ledger operation into one canonical commit.
+ *
+ * The callback must not await or yield: keeping the boundary synchronous
+ * prevents timers and request handlers from accidentally joining another
+ * operation's transaction. Any callback or final-write failure invalidates the
+ * mutable cache so the next read can expose durable state only.
+ */
+export function runDatabaseWriteBatch<T>(operation: () => T): T {
+  if (activeWriteBatch) return operation();
+  const batch: DatabaseWriteBatch = {
+    state: null,
+    changedKeys: new Set<DatabaseSegmentKey>(),
+    requiresFullScan: false,
+    writes: 0,
+  };
+  activeWriteBatch = batch;
+  try {
+    const result = operation();
+    if (result && typeof (result as any).then === 'function') {
+      throw new Error('DATABASE_WRITE_BATCH_MUST_BE_SYNCHRONOUS');
+    }
+    activeWriteBatch = null;
+    if (batch.writes > 0 && batch.state) {
+      writeDatabase(
+        batch.state,
+        batch.requiresFullScan ? undefined : [...batch.changedKeys],
+      );
+    }
+    return result;
+  } catch (error) {
+    activeWriteBatch = null;
+    databaseCache = null;
+    postgresCache = null;
+    throw error;
   }
 }
 

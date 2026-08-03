@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { DatabaseWriteError, readDatabase, writeDatabase, generateId } from './storage.js';
+import {
+  DatabaseWriteError,
+  generateId,
+  readDatabase,
+  runDatabaseWriteBatch,
+  writeDatabase,
+} from './storage.js';
 import type {
   MarketObservationV5,
   OrderIntentV5,
@@ -448,7 +454,7 @@ function commitPaperBrokerFill(intentId: string, fill: PaperFillV5, stopTriggere
 
 let paperBrokerLastCycleAt: number | null = null;
 
-export function processPaperBrokerOnce(
+function processPaperBrokerOnceUnbatched(
   now = Date.now(),
   resolveObservation: (symbol: string) => MarketObservationV5 | null = getPriceObservation,
   policy: PaperBrokerPolicyV5 = DEFAULT_PAPER_BROKER_POLICY_V5,
@@ -501,6 +507,18 @@ export function processPaperBrokerOnce(
   }
   paperBrokerLastCycleAt = now;
   return result;
+}
+
+export function processPaperBrokerOnce(
+  now = Date.now(),
+  resolveObservation: (symbol: string) => MarketObservationV5 | null = getPriceObservation,
+  policy: PaperBrokerPolicyV5 = DEFAULT_PAPER_BROKER_POLICY_V5,
+): { inspected: number; filled: number; partial: number; rejected: number; expired: number; waiting: number } {
+  // A broker tick may resolve several intents. Their user balances, fills,
+  // trades, audits, order events, and portfolio conversions are one canonical
+  // state transition, so persist them together instead of blocking the request
+  // loop for a commit per intent.
+  return runDatabaseWriteBatch(() => processPaperBrokerOnceUnbatched(now, resolveObservation, policy));
 }
 
 let paperBrokerStarted = false;

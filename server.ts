@@ -123,7 +123,11 @@ app.get('/api/health', (_req, res) => {
   const decisionRuntime = decisionRuntimeReadiness();
   const ready = dbOk && decisionRuntime.ready;
   res.status(ready ? 200 : 503).json({
-    status: ready ? 'ok' : dbOk && decisionRuntime.state === 'pending' ? 'starting' : 'degraded',
+    status: ready
+      ? 'ok'
+      : dbOk && (decisionRuntime.state === 'pending' || decisionRuntime.state === 'settling')
+        ? 'starting'
+        : 'degraded',
     app: 'MetaEdge',
     commit: process.env.GIT_COMMIT || 'dev',
     uptimeSec: Math.round((Date.now() - START_TIME) / 1000),

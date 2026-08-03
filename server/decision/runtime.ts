@@ -68,14 +68,21 @@ export const AGENT_STRATEGY_PLUGIN: Partial<Record<TradingAgent['strategyType'],
 
 let running = false;
 let initialCycleState: 'not_required' | 'pending' | 'healthy' | 'failed' = 'not_required';
+let initialCycleCompletedAt: number | null = null;
+const INITIAL_READINESS_SETTLE_MS = 15_000;
 
-export function decisionRuntimeReadiness() {
+export function decisionRuntimeReadiness(now = Date.now()) {
   const required = v5AuthorityFlags().decisionWriterEnabled
     && process.env.DECISION_RUNTIME_DISABLED !== 'true';
+  const settling = required
+    && initialCycleState === 'healthy'
+    && initialCycleCompletedAt != null
+    && now < initialCycleCompletedAt + INITIAL_READINESS_SETTLE_MS;
   return {
     required,
-    state: required ? initialCycleState : 'not_required',
-    ready: !required || initialCycleState === 'healthy',
+    state: required ? settling ? 'settling' : initialCycleState : 'not_required',
+    ready: !required || (initialCycleState === 'healthy' && !settling),
+    settleUntil: settling ? initialCycleCompletedAt! + INITIAL_READINESS_SETTLE_MS : null,
   } as const;
 }
 
@@ -427,9 +434,13 @@ export function startDecisionRuntime() {
     return;
   }
   initialCycleState = 'pending';
+  initialCycleCompletedAt = null;
   const run = () => runDecisionCycle()
     .then((summary) => {
-      if (initialCycleState !== 'healthy') initialCycleState = summary.error ? 'failed' : 'healthy';
+      if (initialCycleState !== 'healthy') {
+        initialCycleState = summary.error ? 'failed' : 'healthy';
+        initialCycleCompletedAt = summary.error ? null : summary.completedAt;
+      }
       console.log(`[decision-runtime] ${summary.cycleId}: evaluated=${summary.evaluated} declines=${summary.declines} hypotheses=${summary.hypotheses} candidates=${summary.paperCandidates} routed=${summary.routed}${summary.error ? ` error=${summary.error}` : ''}`);
     })
     .catch((error) => {

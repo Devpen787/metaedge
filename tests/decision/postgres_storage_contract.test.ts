@@ -93,6 +93,7 @@ test('production cutover gives cold PostgreSQL reads time and explicitly enables
   assert.match(cutover, /Environment=OPPORTUNITY_FACTORY_DISABLED=true/);
   assert.match(cutover, /Environment=FAST_PERP_OPERATION_ENABLED=false/);
   assert.match(cutover, /crontab -r/);
+  assert.match(cutover, /grep -v 'gcp_postgres_backup\.sh' \|\| true/);
   assert.match(cutover, /legacy_runtime_pids/);
   assert.match(cutover, /readlink -f "\/proc\/\$candidate\/cwd"/);
   assert.match(cutover, /TimeoutStopSec=15/);

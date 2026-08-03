@@ -149,9 +149,13 @@ console.log(JSON.stringify({
 }));
 NODE
 
-(crontab -l 2>/dev/null | grep -v 'gcp_postgres_backup.sh'; \
-  echo "0 3 * * * METAEDGE_RELEASE_DIR=$metaedge_release_dir bash $metaedge_release_dir/scripts/gcp_postgres_backup.sh >> $metaedge_shared_dir/postgres-backup.log 2>&1 # metaedge-postgres-backup") \
-  | crontab -
+{
+  # An empty crontab is expected after stop_legacy_runtime. Both `crontab -l`
+  # and grep return nonzero for that valid state, so neutralize the read side
+  # explicitly instead of letting `set -o pipefail` roll back a healthy cutover.
+  crontab -l 2>/dev/null | grep -v 'gcp_postgres_backup.sh' || true
+  echo "0 3 * * * METAEDGE_RELEASE_DIR=$metaedge_release_dir bash $metaedge_release_dir/scripts/gcp_postgres_backup.sh >> $metaedge_shared_dir/postgres-backup.log 2>&1 # metaedge-postgres-backup"
+} | crontab -
 
 trap - ERR
 echo "MetaEdge V5 PostgreSQL cutover complete: commit=$metaedge_commit backup_stamp=$metaedge_stamp live_locked=true"

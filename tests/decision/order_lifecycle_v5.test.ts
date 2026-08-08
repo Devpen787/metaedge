@@ -218,6 +218,34 @@ test('a partial broker fill survives reconciliation and completes only on a diff
   assert.equal(completed.tradeIds?.length, 2);
 });
 
+test('multi-fill intent is not mis-marked UNRESOLVED, and an already-mis-marked one is recovered (regression)', async () => {
+  const { readDatabase, writeDatabase } = await import('../../server/storage.js');
+  const { createOrderIntent, markOrderIntentRiskAccepted, prepareOrderExecution, reconcileOrderIntents } = await import('../../src/secure-core/trading/intents.js');
+  // A multi-fill order produces TWO durable trades for one intent; intent.tradeId is the LAST.
+  const intent = createOrderIntent('order_user', { agentId: 'order_agent', assetSymbol: 'MULTIFILL', side: 'buy', size: 2, tradeType: 'token', leverage: 1, nonce: 'multifill-regression-fixture' });
+  markOrderIntentRiskAccepted(intent.intentId, 'increase');
+  const tradeA = prepareOrderExecution(intent.intentId, 100);
+  const tradeB = { ...tradeA, id: `${tradeA.id}_b`, price: 101 };   // second fill, same intent lineage
+  const db = readDatabase();
+  db.trades.push(tradeA, tradeB);
+  const it = (db.orderIntentsV5 as any)[intent.intentId];
+  // exact prod-broken shape: EXECUTED, tradeId = LAST trade, two trades in lineage, fully filled
+  it.status = 'EXECUTED'; it.tradeId = tradeB.id; it.tradeIds = [tradeA.id, tradeB.id]; it.filledSize = 2; it.remainingSize = 0;
+  writeDatabase(db);
+  // (1) prevention: re-reconciling a valid multi-fill EXECUTED intent must NOT mark it UNRESOLVED
+  reconcileOrderIntents();
+  assert.equal(readDatabase().orderIntentsV5?.[intent.intentId].status, 'EXECUTED');
+  // (2) recovery: an intent already mis-marked UNRESOLVED by the old first-vs-last bug is restored
+  const db2 = readDatabase();
+  const it2 = (db2.orderIntentsV5 as any)[intent.intentId];
+  it2.status = 'UNRESOLVED'; it2.failureReason = 'RECONCILIATION_EXECUTED_TRADE_MISSING_OR_MISMATCHED';
+  writeDatabase(db2);
+  reconcileOrderIntents();
+  const after = readDatabase().orderIntentsV5?.[intent.intentId];
+  assert.equal(after?.status, 'EXECUTED');
+  assert.equal(after?.failureReason ?? null, null);
+});
+
 test('perp short open and close account for fees, funding, and borrow costs', async () => {
   const { readDatabase, writeDatabase } = await import('../../server/storage.js');
   const { agentPosition, placePaperTrade, processPaperBrokerOnce } = await import('../../server/trades.js');

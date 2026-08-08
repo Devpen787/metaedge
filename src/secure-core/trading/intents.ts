@@ -616,8 +616,32 @@ export function reconcileOrderIntents(): OrderReconciliationResultV5 {
       continue;
     }
 
+    // Recover intents previously mis-marked UNRESOLVED by the first-vs-last tradeId
+    // comparison below: a multi-fill order records several trades, intent.tradeId is
+    // the LAST, but the check compared it to relatedTrades[0] (the FIRST). If the
+    // intent is fully filled and its tradeId is a durable trade in its own lineage,
+    // it genuinely EXECUTED — restore it so the outcome reconciler can close it.
+    const wronglyUnresolved = intent.status === 'UNRESOLVED'
+      && intent.failureReason === 'RECONCILIATION_EXECUTED_TRADE_MISSING_OR_MISMATCHED'
+      && tradeMatchesLineage
+      && relatedTrades.some((trade) => trade.id === intent.tradeId)
+      && (intent.remainingSize ?? 0) <= 1e-9;
+    if (wronglyUnresolved) {
+      const now = Date.now();
+      intent.status = 'EXECUTED';
+      intent.failureReason = undefined;
+      intent.updatedAt = now;
+      appendEvent(db, intent, 'EXECUTED', { tradeId: intent.tradeId }, now);
+      appendAudit(db, intent, 'RECONCILE_ORDER_EXECUTED_V5', 'Recovered order mis-marked unresolved (multi-fill lineage)', now);
+      result.recoveredExecuted += 1;
+      changed = true;
+      continue;
+    }
+
+    // A multi-fill order records several trades; intent.tradeId is the LAST one, so
+    // match against ALL related trades, not just relatedTrades[0] (which was the bug).
     const executedWithoutMatchingTrade = intent.status === 'EXECUTED'
-      && (!tradeMatchesLineage || matchingTrade.id !== intent.tradeId);
+      && (!tradeMatchesLineage || !relatedTrades.some((trade) => trade.id === intent.tradeId));
     const strandedNonTerminal = intent.status === 'PENDING' || intent.status === 'RISK_ACCEPTED';
     if (executedWithoutMatchingTrade || strandedNonTerminal) {
       const now = Date.now();

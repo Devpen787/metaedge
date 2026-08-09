@@ -60,8 +60,6 @@ export async function resolveUniverse(tier: Tier, options: { allowStaleForDeclin
     // provenance-bearing observations. Decision features can therefore cite
     // the same source row that admitted the symbol, rather than a product
     // catalog value or uncited long-tail fallback.
-    for (const row of feed.included) registerResearchObservation(row, feed.t);
-
     // The universe we SCORE = a stable core of top-volume majors (so BTC/ETH never drop
     // out) PLUS the biggest 24h movers among liquid coins (that's where the action is,
     // and it rotates as the market moves). Capped so the small box stays responsive.
@@ -76,6 +74,9 @@ export async function resolveUniverse(tier: Tier, options: { allowStaleForDeclin
       rows.push(r);
       if (rows.length >= CAP) break;
     }
+    // Register observations only for the coins we actually score (not the whole liquid
+    // pool) — keeps the small box's memory bounded while still hunting movers across it.
+    for (const row of rows) registerResearchObservation(row, feed.t);
     const topMovers = movers.slice(0, 5).map((r) => `${r.symbol}${r.change24h >= 0 ? '+' : ''}${r.change24h.toFixed(1)}%`);
     console.log(`[universe] liquid=${feed.included.length} scored=${rows.length} (15 majors + top movers, cap ${CAP}) | biggest movers: ${topMovers.join(' ')}`);
 

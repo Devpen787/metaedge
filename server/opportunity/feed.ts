@@ -37,7 +37,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 // the same unexamined-default failure as the 1h timeframe. One call still returns
 // all 100 rows, so widening the bound costs nothing.
 const FETCH_N = 250;
-const VOLUME_FLOOR_USD = 50_000_000;
+const VOLUME_FLOOR_USD = 10_000_000;
 const WASH_VOL_MCAP_RATIO = 0.5;  // majors observed 0.01-0.13; SHEB 92,283
 const STABLE_PRICE_BAND = 0.02;   // |price - 1|
 const STABLE_RANGE_FRAC = 0.01;   // (high - low) / price

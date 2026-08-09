@@ -62,17 +62,34 @@ export async function resolveUniverse(tier: Tier, options: { allowStaleForDeclin
     // catalog value or uncited long-tail fallback.
     for (const row of feed.included) registerResearchObservation(row, feed.t);
 
+    // The universe we SCORE = a stable core of top-volume majors (so BTC/ETH never drop
+    // out) PLUS the biggest 24h movers among liquid coins (that's where the action is,
+    // and it rotates as the market moves). Capped so the small box stays responsive.
+    const CAP = Math.max(10, Number(process.env.UNIVERSE_CAP) || 40);
+    const majors = [...feed.included].sort((a, b) => b.volume24h - a.volume24h).slice(0, 15);
+    const movers = [...feed.included].sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h));
+    const seen = new Set<string>();
+    const rows: FeedRow[] = [];
+    for (const r of [...majors, ...movers]) {
+      if (seen.has(r.symbol)) continue;
+      seen.add(r.symbol);
+      rows.push(r);
+      if (rows.length >= CAP) break;
+    }
+    const topMovers = movers.slice(0, 5).map((r) => `${r.symbol}${r.change24h >= 0 ? '+' : ''}${r.change24h.toFixed(1)}%`);
+    console.log(`[universe] liquid=${feed.included.length} scored=${rows.length} (15 majors + top movers, cap ${CAP}) | biggest movers: ${topMovers.join(' ')}`);
+
     const members: UniverseMember[] = [
-      ...feed.included.map((r) => ({
+      ...rows.map((r) => ({
         symbol: r.symbol, tier: 1 as Tier, included: true,
-        reason: 'passed criterion (volume rank, feed complete, non-stable, non-wash)',
+        reason: 'passed criterion + selected (top-volume major or biggest 24h mover)',
       })),
       // Exclusions are EVIDENCE — recorded with reasons, never silently dropped.
       ...feed.excluded.map((e) => ({
         symbol: e.symbol, tier: 1 as Tier, included: false, reason: e.reason,
       })),
     ];
-    return { members, rows: feed.included, observedAt: feed.t, stale: feed.stale === true };
+    return { members, rows, observedAt: feed.t, stale: feed.stale === true };
   }
 
   // Tiers 2-3 remain separate policy surfaces. Wide funding capture now exists,

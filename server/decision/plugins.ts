@@ -439,6 +439,83 @@ export const negativeFundingReversalV5: StrategyPlugin = {
 // The custom_ai agent family (its only consumer) has no honest mechanism and is
 // intentionally left unmapped: it evaluates to nothing rather than to theatre.
 
+// CALM-MARKET / ALL-WEATHER ARMS — these fire in low-volatility, non-trending ranges (when the
+// trend/momentum/breakout arms rest). They intentionally require ONLY real-time features (no
+// daily/hourly-200 SMA), so they are eligible immediately rather than waiting on long history.
+
+export const rangeReversionV5: StrategyPlugin = {
+  authorityVersion: 5, schema: 'strategy-plugin.v5', id: 'range_reversion', version: '5.0.0',
+  mechanism: 'fade a short-horizon oversold dip inside a calm, non-trending range and exit on reversion', instrument: 'spot',
+  requiredFeatures: [FEATURE_VERSIONS.price, FEATURE_VERSIONS.volume24h, FEATURE_VERSIONS.change24h, FEATURE_VERSIONS.rsi14, FEATURE_VERSIONS.realizedVol],
+  parameters: { entryRsi: 30, exitRsi: 52, maximumVolPctPerHour: 1.0, maximumTrendChange24hPct: 3, stopLossPct: 4, takeProfitPct: 3, maxHoldHours: 36 },
+  benchmark: 'buy_hold_same_symbol_same_window',
+  falsifier: 'post-cost forward expectancy <= 0 across calm-range oversold episodes after 30 closed paper trades',
+  expectedFailureRegimes: ['trend_breakout', 'volatility_shock', 'range_break'],
+  regimeGate(context) {
+    const vol = Number(context.features[FEATURE_VERSIONS.realizedVol]?.value);
+    const change = Number(context.features[FEATURE_VERSIONS.change24h]?.value);
+    const eligible = Number.isFinite(vol) && Number.isFinite(change)
+      && vol <= Number(this.parameters.maximumVolPctPerHour)
+      && Math.abs(change) <= Number(this.parameters.maximumTrendChange24hPct);
+    return { eligible, reason: eligible ? 'CALM_RANGE_REGIME' : 'RANGE_REGIME_INELIGIBLE' };
+  },
+  generateSignal(context) {
+    const price = Number(context.features[FEATURE_VERSIONS.price]?.value);
+    const rsi = Number(context.features[FEATURE_VERSIONS.rsi14]?.value);
+    if (!context.position.holding && rsi <= Number(this.parameters.entryRsi)) {
+      return { action: 'buy', strength: Math.min(1, Math.max(0, (Number(this.parameters.entryRsi) - rsi) / Number(this.parameters.entryRsi))),
+        setup: `RSI14=${rsi.toFixed(1)} oversold in a calm range`, trigger: `RSI14 <= ${this.parameters.entryRsi} while volatility is compressed`,
+        invalidation: `-${this.parameters.stopLossPct}% stop, +${this.parameters.takeProfitPct}% target, RSI >= ${this.parameters.exitRsi}, or ${this.parameters.maxHoldHours}h time stop`, regime: 'calm_range_oversold' };
+    }
+    if (context.position.holding) {
+      const heldHours = context.position.heldSince ? (context.evaluatedAt - context.position.heldSince) / 3_600_000 : 0;
+      const stop = context.position.averageEntryPrice > 0 && price <= context.position.averageEntryPrice * (1 - Number(this.parameters.stopLossPct) / 100);
+      const target = context.position.averageEntryPrice > 0 && price >= context.position.averageEntryPrice * (1 + Number(this.parameters.takeProfitPct) / 100);
+      if (rsi >= Number(this.parameters.exitRsi) || stop || target || heldHours >= Number(this.parameters.maxHoldHours)) {
+        return { action: 'sell', strength: 1, setup: `open range-reversion position at ${context.position.averageEntryPrice}`,
+          trigger: stop ? 'stop loss' : target ? 'profit target' : rsi >= Number(this.parameters.exitRsi) ? `RSI14 >= ${this.parameters.exitRsi}` : `${this.parameters.maxHoldHours}h time stop`,
+          invalidation: 'position closed by the precommitted exit rule', regime: 'position_exit' };
+      }
+    }
+    return { action: 'hold', strength: 0, setup: 'calm-range conditions observed', trigger: 'entry/exit threshold not met', invalidation: 'none', regime: 'no_signal' };
+  },
+};
+
+export const calmDipFadeV5: StrategyPlugin = {
+  authorityVersion: 5, schema: 'strategy-plugin.v5', id: 'calm_dip_fade', version: '5.0.0',
+  mechanism: 'buy a bounded 24h pullback in a low-volatility market and exit as price recovers toward flat', instrument: 'spot',
+  requiredFeatures: [FEATURE_VERSIONS.price, FEATURE_VERSIONS.volume24h, FEATURE_VERSIONS.change24h, FEATURE_VERSIONS.realizedVol],
+  parameters: { entryChange24hPct: -2.5, floorChange24hPct: -7, exitChange24hPct: 0.5, maximumVolPctPerHour: 1.2, stopLossPct: 5, maxHoldHours: 24 },
+  benchmark: 'buy_hold_same_symbol_same_window',
+  falsifier: 'post-cost forward expectancy <= 0 across calm bounded-dip episodes',
+  expectedFailureRegimes: ['trend_breakdown', 'capitulation', 'liquidity_withdrawal'],
+  regimeGate(context) {
+    const vol = Number(context.features[FEATURE_VERSIONS.realizedVol]?.value);
+    const eligible = Number.isFinite(vol) && vol <= Number(this.parameters.maximumVolPctPerHour);
+    return { eligible, reason: eligible ? 'LOW_VOLATILITY_REGIME' : 'VOLATILITY_TOO_HIGH_FOR_DIP_FADE' };
+  },
+  generateSignal(context) {
+    const price = Number(context.features[FEATURE_VERSIONS.price]?.value);
+    const change = Number(context.features[FEATURE_VERSIONS.change24h]?.value);
+    // only fade a BOUNDED dip (between the floor and the entry threshold); a deeper drop is a breakdown, not a dip.
+    if (!context.position.holding && change <= Number(this.parameters.entryChange24hPct) && change >= Number(this.parameters.floorChange24hPct)) {
+      return { action: 'buy', strength: Math.min(1, Math.abs(change) / Math.abs(Number(this.parameters.floorChange24hPct))),
+        setup: `${change.toFixed(2)}% bounded dip in a calm market`, trigger: `24h change between ${this.parameters.floorChange24hPct}% and ${this.parameters.entryChange24hPct}% while volatility is low`,
+        invalidation: `-${this.parameters.stopLossPct}% stop, 24h change >= ${this.parameters.exitChange24hPct}%, or ${this.parameters.maxHoldHours}h time stop`, regime: 'calm_bounded_dip' };
+    }
+    if (context.position.holding) {
+      const heldHours = context.position.heldSince ? (context.evaluatedAt - context.position.heldSince) / 3_600_000 : 0;
+      const stop = context.position.averageEntryPrice > 0 && price <= context.position.averageEntryPrice * (1 - Number(this.parameters.stopLossPct) / 100);
+      if (change >= Number(this.parameters.exitChange24hPct) || stop || heldHours >= Number(this.parameters.maxHoldHours)) {
+        return { action: 'sell', strength: 1, setup: `open dip-fade position at ${context.position.averageEntryPrice}`,
+          trigger: stop ? 'stop loss' : change >= Number(this.parameters.exitChange24hPct) ? 'recovered toward flat' : `${this.parameters.maxHoldHours}h time stop`,
+          invalidation: 'position closed by the precommitted exit rule', regime: 'position_exit' };
+      }
+    }
+    return { action: 'hold', strength: 0, setup: 'calm-dip conditions observed', trigger: 'entry/exit threshold not met', invalidation: 'none', regime: 'no_signal' };
+  },
+};
+
 export const STRATEGY_PLUGINS: StrategyPlugin[] = [
   rsiMeanReversionV5,
   momentum24hV5,
@@ -454,4 +531,6 @@ export const STRATEGY_PLUGINS: StrategyPlugin[] = [
   liquidityExpansionV5,
   lowVolatilityDriftV5,
   negativeFundingReversalV5,
+  rangeReversionV5,
+  calmDipFadeV5,
 ];

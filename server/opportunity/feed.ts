@@ -36,7 +36,7 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 // survivor — for no reason other than an arbitrary round number. Rank cutoffs are
 // the same unexamined-default failure as the 1h timeframe. One call still returns
 // all 100 rows, so widening the bound costs nothing.
-const FETCH_N = 100;
+const FETCH_N = 250;
 const VOLUME_FLOOR_USD = 50_000_000;
 const WASH_VOL_MCAP_RATIO = 0.5;  // majors observed 0.01-0.13; SHEB 92,283
 const STABLE_PRICE_BAND = 0.02;   // |price - 1|

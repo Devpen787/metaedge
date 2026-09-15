@@ -1,37 +1,29 @@
 # V1 Product Wedge
 
-Status: **P1 DRAFT — revised around wallet-capable trading agents**
+Status: **P1 APPROVED — product authority**
 
-Updated: 2026-09-15
+Approved: 2026-09-15
 
-## Working wedge statement
+## Approved wedge
 
 MetaEdge is an **agent-native trading workspace for wallet-capable agents that can trade fast, smart, and disciplined**.
 
-The human operator defines the mandate, capital, risk boundaries, allowed markets, wallet/authority, and when authority should increase or be revoked. The agent is then expected to do the actual operating work:
+The human operator defines the mandate, capital, risk boundaries, allowed markets, wallet/authority, and when authority should increase or be revoked. The trading agent is expected to do the operating work:
 
 **sense → understand → decide → act → manage → reconcile → learn**
 
 without requiring the human to manually approve every ordinary paper decision inside an already-approved envelope.
 
-V1 remains **paper-first**, but wallets and authority are first-class product concepts from the beginning so the product is training the right behavior for later real execution.
+V1 remains **paper-first**, but wallet identity, capital assignment, and bounded authority are first-class product concepts from the beginning so the product trains the right behavior for later real execution.
 
-## The product thesis
-
-Most trading systems optimize one or two qualities:
-
-- bots can be fast but rigid or reckless;
-- research assistants can be smart but slow and non-operational;
-- humans can be disciplined but inconsistent, emotional, fragmented, and unable to watch every market continuously.
-
-MetaEdge should develop agents that combine all three:
+## Core promise: fast, smart, disciplined
 
 ### Fast
 
 The agent can:
 
 - observe markets continuously;
-- identify changes quickly;
+- identify material changes quickly;
 - act inside an already-approved authority envelope without waiting for per-tick confirmation;
 - avoid analysis paralysis and chronically late participation;
 - manage an open position as quickly as it entered it.
@@ -58,8 +50,8 @@ The agent can:
 - obey explicit risk and authority boundaries;
 - define the cost of finding out before taking exposure;
 - avoid fear-driven hesitation and win-driven overconfidence;
-- follow its approved process even after wins or losses;
-- manage, reduce, exit, or reverse when the situation changes;
+- follow its approved process after both wins and losses;
+- manage, reduce, exit, or reverse when conditions change;
 - reconcile ambiguous execution before retrying;
 - preserve decision history so learning is based on what was known at the time.
 
@@ -71,23 +63,23 @@ A trading agent without an execution identity is only an adviser.
 
 MetaEdge is ultimately about **agents with wallets and bounded authority**.
 
-For V1, that should mean a paper-wallet / simulated-capital equivalent with the same product concepts the user will later need for real authority:
+For V1, that means a paper-wallet / simulated-capital equivalent using the same product concepts needed later for real authority:
 
 - which agent is acting;
-- which wallet/account it controls;
+- which wallet/account or paper capital it controls;
 - how much capital it may use;
 - which instruments/venues it may access;
 - what risk rules apply;
 - what actions it may take autonomously;
-- when it must stop or escalate;
+- when it must stop, notify, or escalate;
 - how the human can pause/revoke it;
 - how actions are reviewed afterwards.
 
 Future real execution may use MetaMask Agent Wallet, Smart Account permissions, delegated authority, or another adapter. That implementation choice must not redefine the product model.
 
-## Working primary user hypothesis
+## Approved primary human operator
 
-The first MetaEdge user is an **active crypto trader / agent operator** who wants to create, configure, or supervise wallet-capable trading agents rather than manually make every trading decision.
+The initial human user is an **active crypto trader / agent operator** who wants to create, configure, or supervise wallet-capable trading agents rather than manually make every trading decision.
 
 They likely:
 
@@ -98,9 +90,7 @@ They likely:
 - want faster execution than a chat/research workflow provides;
 - want more reasoning than a rigid rule bot provides;
 - do not want an opaque autonomous bot with unconstrained capital;
-- want to see agents earn more authority through demonstrated behavior.
-
-This is the current P1 hypothesis, not yet a frozen persona.
+- want agents to earn more authority through demonstrated behavior.
 
 ## Human role vs agent role
 
@@ -132,7 +122,7 @@ The agent should primarily:
 - learn from outcomes and missed opportunities;
 - stay inside its wallet/risk/authority envelope.
 
-The product should not make the human become the agent's manual execution loop.
+The product must not make the human become the agent's manual execution loop.
 
 ## Core problem
 
@@ -158,13 +148,13 @@ MetaEdge should make a fourth option credible:
 ```text
 WALLET-CAPABLE AGENT
 fast enough to catch the opportunity
-smart enough to understand uncertainty
- disciplined enough to protect capital and follow process
+smart enough to reason under uncertainty
+disciplined enough to protect capital and follow process
 ```
 
-## What V1 must prove
+## Approved V1 proof loop
 
-V1 succeeds if a user can repeatedly experience this loop:
+V1 succeeds if the operator can repeatedly experience this:
 
 1. Create/select an agent and give it a clear mandate.
 2. Assign a paper wallet/capital pool and explicit authority/risk envelope.
@@ -172,9 +162,9 @@ V1 succeeds if a user can repeatedly experience this loop:
 4. The agent detects something material and forms a usable view without demanding certainty.
 5. Inside its approved envelope, it can take bounded paper action without waiting for per-tick human approval.
 6. The agent continues managing the position as evidence/risk changes.
-7. The user can understand what the agent did, why, what changed, and what remains uncertain.
+7. The operator can understand what the agent did, why, what changed, and what remains uncertain.
 8. Review separates decision quality, discipline, execution, and outcome.
-9. The user can tighten, widen, pause, retire, or eventually promote the agent's authority based on evidence.
+9. The operator can tighten, widen, pause, retire, or eventually promote the agent's authority based on evidence.
 
 The product thesis is not proven if MetaEdge only produces good analysis while the agent remains unable to operate.
 
@@ -182,35 +172,28 @@ The product thesis is not proven if MetaEdge only produces good analysis while t
 
 **Build and operate wallet-capable trading agents that can trade fast, smart, and disciplined.**
 
-Alternative language to test later:
+Marketing wording remains open; the product promise does not.
 
-- Trading agents that think before they act — without waiting until the opportunity is gone.
-- Give an agent a wallet, a mandate, and boundaries. Make it earn your trust.
-- Agents that discover, trade, manage, and learn under bounded authority.
-- From market intelligence to disciplined autonomous action.
+## Approved first wow moment
 
-No marketing line is frozen yet.
+> **“My agent saw something I would have missed, acted in time within the exact limits I gave it, and then managed the position without becoming reckless or frozen.”**
 
-## Candidate first wow moment
+The wow moment comes from **competent agency**, not from a dashboard or clever chat response.
 
-> “I gave an agent a paper wallet, a clear mandate and risk limits. It found an opportunity, explained the important part, acted without waiting for me, managed the position as conditions changed, and stayed inside the rules.”
-
-The wow moment should come from **competent agency**, not from a dashboard or a clever chat answer.
-
-## V1 boundaries — working
+## V1 boundaries
 
 Likely in scope:
 
 - agent creation/selection/configuration;
 - paper wallet / agent capital assignment;
-- explicit mandate, allowed markets and authority envelope;
+- explicit mandate, allowed markets, and authority envelope;
 - market/source sensing and opportunity discovery;
 - agent reasoning under uncertainty;
 - bounded autonomous paper decisions and execution;
 - continuous paper position management;
 - concise explanations / material alerts;
 - human pause/stop/intervention;
-- review of decision quality, discipline, execution and outcome;
+- review of decision quality, discipline, execution, and outcome;
 - progressive agent trust/authority history;
 - selected wallet/trader/source intelligence where it improves agent decisions.
 
@@ -241,67 +224,15 @@ MetaEdge is not primarily:
 
 Those may become supporting capabilities. The wedge is the **competent wallet-capable trading agent**.
 
-## P1 questions to resolve before moving on
+## Deliberately deferred from P1
 
-### Q1 — Primary human operator
+The following are not needed to approve the wedge and move forward:
 
-Which operator should the first product experience optimize for?
+- spot only vs spot + paper perps;
+- exact starter-agent design;
+- exact human notification/interrupt rules;
+- navigation/information architecture;
+- evidence visualization;
+- technical wallet substrate.
 
-A. Active crypto trader who wants agents to monitor/trade continuously under explicit limits.
-B. Technical agent builder who wants a framework for composing trading agents.
-C. Copy/source follower who mainly wants an agent to select and transform external signals.
-
-Working recommendation: **A**. B and C can become strong jobs/capabilities without making V1 a developer framework or copy-only product.
-
-### Q2 — Agent starting point
-
-Should the first Golden experience begin with:
-
-- creating/configuring a new agent;
-- choosing a MetaEdge starter agent and setting its mandate;
-- or importing/adapting an existing strategy/source into an agent?
-
-Working bias: start with a **starter agent + explicit mandate**, because it proves agency faster without forcing the user to design a strategy from scratch.
-
-### Q3 — First wow moment
-
-Working candidate:
-
-> “My agent saw something I would have missed, acted in time within the exact limits I gave it, and then managed the position without becoming reckless or frozen.”
-
-We should approve or rewrite this before navigation/design work.
-
-### Q4 — Initial market scope
-
-Does the first Golden agent need:
-
-- crypto spot only; or
-- crypto spot + paper perps?
-
-This should be decided from the journey and what is required to demonstrate fast/smart/disciplined agent behavior, not from old code coverage.
-
-### Q5 — Human attention model
-
-What should the operator be interrupted for?
-
-Candidate principle:
-
-- **ordinary in-envelope paper decisions:** agent acts and records;
-- **material change / unusual risk / envelope boundary:** notify;
-- **outside authority / future real escalation:** require explicit human action.
-
-This must be designed deliberately in later UX-law work.
-
-## P1 exit criterion
-
-Human approval of:
-
-1. wallet-capable trading agents as the product wedge;
-2. active crypto trader / agent operator as the initial human user;
-3. fast / smart / disciplined as the core agent promise;
-4. the human-vs-agent responsibility split;
-5. the V1 proof loop;
-6. the first wow moment;
-7. major scope exclusions.
-
-Only then move P2 User Jobs from draft to active review.
+These must be resolved at the appropriate later Product/UX gate rather than guessed early.

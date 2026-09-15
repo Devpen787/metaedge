@@ -1,64 +1,104 @@
 # MetaEdge Relaunch — Start Here
 
-Status: **Product-foundation draft**  
+Status: **Product & UX Foundation — P1 active**  
 Branch: `relaunch/product-foundation`  
 Base checkpoint: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
 
-## What MetaEdge is becoming
+## What changed
 
-MetaEdge develops financially competent agents that **discover opportunities, reason under uncertainty, take bounded action, manage positions, learn from outcomes, and progressively earn authority**.
+The relaunch is now explicitly **product/UX-first**.
 
-The product cycle is:
+We have enough archaeology and technical evidence to inform the product, but the next source of truth is not another state machine or contract replay. It is the user experience.
+
+The active progression is:
+
+```text
+V1 Wedge + Primary User
+→ User Jobs / JTBD
+→ Master Experience Loop
+→ Journey Registry
+→ UX Laws / Design Principles
+→ Information Architecture
+→ Detailed Journeys
+→ UX Breaker
+→ Golden Journeys
+→ Technical Derivation
+→ Legacy Migration
+→ Build / QA
+```
+
+## Current active task
+
+**P1 — review and approve `docs/01-product/V1_PRODUCT_WEDGE.md`.**
+
+Do not jump ahead because later-stage drafts already exist.
+
+## Working product thesis
+
+MetaEdge should help an active crypto participant turn possible edges from markets, wallets, traders, strategies, agents or other sources into a disciplined loop of understanding, safe testing, bounded participation, management and learning.
+
+Working user loop:
+
+**Notice → Understand → Choose → Test/Participate → Manage → Review → Evolve**
+
+The older product cycle remains useful:
 
 **Discover → Understand → Test → Act → Manage → Learn → Scale**
 
-A source of edge can be a market pattern, wallet, trader, strategy, agent, portfolio, cohort, or signal provider.
+## Current implementation rule
 
-## Current relaunch rule
+This branch remains **documentation/product-definition only** until a human explicitly approves implementation.
 
-This branch is **documentation/contracts only** until a human explicitly approves implementation.
+Do not refactor product code, change execution behavior, enable real trading, deploy, sign transactions, move funds or delete legacy implementation.
 
-Do not refactor product code, change execution behavior, enable live trading, deploy, sign transactions, move funds, or delete legacy implementation from this branch.
-
-## Authority order
-
-When documents conflict, use this order:
+## Product authority order
 
 1. `docs/00-constitution/PRODUCT_CONSTITUTION.md`
-2. approved product contracts in `docs/01-product/`
-3. approved journeys in `docs/02-journeys/`
-4. domain/state/security contracts
-5. current architecture/migration decisions
-6. research and archaeology as supporting evidence only
+2. approved P1–P3 product foundation artifacts;
+3. Golden user journeys;
+4. approved UX laws/design principles/information architecture;
+5. approved product capability contracts;
+6. technical/domain/security contracts derived from Golden journeys;
+7. architecture/migration decisions;
+8. research and archaeology as evidence only.
 
-Historical implementation and old agent handoffs are **not product authority** unless explicitly adopted by the relaunch documents.
+## Read now
 
-## Core product decisions under this foundation
-
-- Safety must bound action without turning ordinary uncertainty into permanent inactivity.
-- Weak evidence normally reduces exposure; only hard safety/integrity constraints may force a block.
-- Signals propose **target exposure**, not direct broker commands.
-- Many loops may observe and propose concurrently; one portfolio authority resolves aggregate exposure; one execution authority mutates trading state.
-- Copying means observing and transforming wallets, traders, strategies, agents, portfolios, cohorts, or signal providers under the user's own risk policy.
-- Paper and real may share strategy logic and evidence, but never share execution authority or mutable trade state.
-- Human psychology is market data; human emotion is not execution authority.
-- AI models are reasoning components, not durable memory or financial authority.
-- A no-trade decision is accountable and should be evaluated against its counterfactual outcome.
-
-## Read next
+For the current phase:
 
 - `docs/CURRENT_STATE.md`
-- `docs/00-constitution/PRODUCT_CONSTITUTION.md`
-- `docs/01-product/PRODUCT_MODEL.md`
-- `docs/01-product/COPY_AND_SOURCE_MODEL.md`
-- `docs/01-product/RISK_AND_EXPLORATION.md`
-- `docs/01-product/AGENT_MODEL.md`
-- `docs/01-product/PAPER_TO_REAL.md`
-- `docs/02-journeys/INDEX.md`
-- `docs/04-decision-system/PARALLEL_LOOPS.md`
-- `docs/07-research/EXTERNAL_SYSTEM_GAP_MATRIX.md`
-- `docs/09-decisions/DECISION_LOG.md`
+- `docs/01-product/PRODUCT_UX_FOUNDATION.md`
+- `docs/01-product/V1_PRODUCT_WEDGE.md`
+- `docs/10-ops/WORKBOARD.md`
+- `docs/10-ops/PRODUCT_UX_WORKFLOW.md`
+
+Useful working drafts for the next gates:
+
+- `docs/01-product/USER_JOBS.md`
+- `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
+- `docs/01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`
+- `docs/02-journeys/JOURNEY_REGISTRY.md`
+
+## What to do with existing J01–J14
+
+Treat them as **journey inventory and requirements research**.
+
+They contain valuable thinking, but they were drafted too close to domain/engineering concerns to count as approved UX journeys. They must be rewritten/reviewed using `docs/02-journeys/JOURNEY_TEMPLATE.md` before promotion.
+
+## What to do with technical work already produced
+
+Preserve it.
+
+Domain models, state machines, EvidenceProfile, portfolio aggregation, security matrices, contract replays and migration maps are now **technical hypotheses / constraints parked for P10+**.
+
+They may inform feasibility and prevent us repeating known failures, but they do not dictate the user experience.
 
 ## Legacy status
 
-The pre-relaunch codebase is a **quarry**: it contains valuable tested components, research, failure lessons, and historical evidence. Nothing is deleted yet. Every substantial capability must later earn `REUSE`, `ADAPT`, `REPLACE`, `REMOVE`, `DEFER`, or `UNKNOWN / NEEDS PROOF` status before entering the clean relaunch architecture.
+The pre-relaunch codebase remains a quarry: useful tested mechanics, historical evidence and failure lessons. Nothing is deleted yet.
+
+Later, after Golden journeys and technical derivation, every substantial capability earns `REUSE`, `ADAPT`, `REPLACE`, `REMOVE`, `DEFER`, or `NEEDS PROOF` status.
+
+## Anti-drift check
+
+If you cannot answer “what phase does this task belong to?” before doing the work, read `docs/10-ops/WORKBOARD.md` and stop until the phase is clear.

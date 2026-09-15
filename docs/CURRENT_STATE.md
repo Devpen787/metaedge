@@ -7,131 +7,141 @@ Updated: 2026-09-15
 - Repository: `Devpen787/metaedge`
 - Branch: `relaunch/product-foundation`
 - Base: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
-- Phase: **V1 journeys + domain contracts drafted / security, migration and contract replay validation underway**
+- Active phase: **P1 — V1 Wedge + Primary User**
 - Implementation: **NOT AUTHORIZED**
 - Real execution: **NOT AUTHORIZED**
 - Deployment changes: **NOT AUTHORIZED**
 
-## Product thesis
+## Relaunch method
 
-MetaEdge helps users and agents discover possible edges, understand evidence and uncertainty, test ideas safely, manage exposure as conditions change, learn from both action and inaction, and eventually move approved strategy logic into a separately governed execution path.
+MetaEdge now follows a product/UX-first sequence:
 
-## V1 candidate scope
+**Wedge → User/JTBD → Master Experience Loop → Journey Registry → UX Laws → Information Architecture → Detailed Journeys → UX Breaker → Golden Journeys → Technical Derivation → Migration → Build/QA.**
 
-Paper-first product covering onboarding, discovery, source investigation/following, strategy creation/copying, backtesting, shadowing, paper portfolios, paper trading/copying, position management, Paper Agent operation, review/learning, and strategy/source lifecycle management.
+See `docs/01-product/PRODUCT_UX_FOUNDATION.md`.
 
-## Canonical drafts now present
+## Current exact task
 
-- `docs/00-constitution/PRODUCT_CONSTITUTION.md`
-- `docs/01-product/PRODUCT_MODEL.md`
-- `docs/01-product/COPY_AND_SOURCE_MODEL.md`
-- `docs/01-product/RISK_AND_EXPLORATION.md`
-- `docs/01-product/AGENT_MODEL.md`
-- `docs/01-product/PAPER_TO_REAL.md`
-- `docs/01-product/SOURCE_REPUTATION.md`
-- `docs/02-journeys/` (J01–J14)
-- `docs/03-domain/DOMAIN_MODEL.md`
-- `docs/03-domain/AUTHORITY_MODEL.md`
-- `docs/03-domain/STATE_MACHINES.md`
-- `docs/03-domain/REAL_EXECUTION_STATE_MODEL.md`
-- `docs/03-domain/SYSTEM_STRATEGY_BOUNDARY.md`
-- `docs/03-domain/DECISION_STATE_CONTRACTS.md`
-- `docs/04-decision-system/EVIDENCE_PROFILE.md`
-- `docs/04-decision-system/PORTFOLIO_AGGREGATION.md`
-- `docs/04-decision-system/SCENARIO_STRESS_TESTS.md`
-- `docs/04-decision-system/CONTRACT_REPLAY_RESULTS_01.md`
-- `docs/05-security/SECURITY_INVARIANTS.md`
-- `docs/05-security/TEMPORAL_STATE_MATRIX.md`
-- `docs/05-security/ATTACK_SEQUENCE_MATRIX.md`
-- `docs/05-security/PAPER_REAL_ISOLATION.md`
-- `docs/06-platform/` MetaMask capability/authority/plugin research
-- `docs/07-research/` external-system archaeology + Trading in the Zone mapping
-- `docs/08-architecture/PRODUCTION_SEAM_MAP.md`
-- `docs/08-architecture/MIGRATION_MAP.md`
-- `docs/09-decisions/DECISION_LOG.md`
-- `docs/09-decisions/ADR-029-system-strategy-boundary.md`
+Review and approve/revise:
 
-## Key working decisions
+`docs/01-product/V1_PRODUCT_WEDGE.md`
 
-- No universal scalar confidence gate.
-- Evidence is represented as a multidimensional profile with contradictions and unknowns.
-- **Strategy decides opportunity/exposure; MetaEdge governs validity, coordination, risk, execution and recovery.**
-- Stress-test market examples are fixtures, not canonical MetaEdge trading rules.
-- Weak but valid evidence may map to observation, scout-sized experimentation or reduced exposure rather than permanent inactivity when the strategy permits it.
-- Producers emit Views; one portfolio authority resolves aggregate targets; one execution authority owns state mutation.
-- Initial aggregation candidate: deterministic budgeted sleeves + lineage-aware netting + portfolio constraints.
-- Source reputation is decomposable and objective-specific, not a universal leaderboard score.
-- Paper and future real execution share strategy/evidence logic but not mutable execution authority.
-- Paper routes/objects remain paper-only regardless of environment flags.
-- Pending/unknown external outcomes reconcile before equivalent retry.
-- MetaMask is an adapter/authority substrate beneath MetaEdge domain contracts, not the product's source of truth.
-- Decision quality, outcome quality and strategy quality remain distinct.
-- Rules/authority are rigid; market expectations stay flexible.
+P1 is not complete until the human owner approves the primary user, core problem, product promise, V1 proof loop, first wow moment and major exclusions.
 
-## Validation status
+## Working wedge hypothesis
 
-### Scenario suite
+MetaEdge is a paper-first crypto decision and agent workspace for active self-directed participants who find ideas across market moves, wallets, traders, narratives, strategies and agents but lack one disciplined workflow to understand, test, manage and learn from them.
 
-`SCENARIO_STRESS_TESTS.md` covers historical opportunity paralysis, false breakouts, recent-loss hesitation, winning-streak overconfidence, liquidation/reversal, source copying, duplicate lineage, stale data, risk exhaustion, partial fills, missed opportunity, and future pending/MFA execution.
+The product should reduce both:
 
-The suite tests **liveness as well as safety**.
+- blind/opaque action; and
+- analysis paralysis / chronically late participation.
 
-### Contract Replay 01
+## Working master experience
 
-The first strategy-neutral replay walked valid Views through portfolio, risk, execution and recovery contracts.
+**Notice → Understand → Choose → Test/Participate → Manage → Review → Evolve**
 
-Result: the architecture held conceptually, but exposed seven refinements now drafted in `DECISION_STATE_CONTRACTS.md`:
+This remains a working P3 artifact until P1/P2 are approved.
 
-1. machine-readable decision/zero-target dispositions;
-2. explicit aggregation run/policy lineage;
-3. durable lineage/dependency clusters;
-4. richer RiskDecision lineage;
-5. hard-block reason taxonomy separate from evidence confidence;
-6. explicit RiskState separate from EvidenceProfile;
-7. mandatory missed-opportunity eligibility semantics.
+## Product/UX operating artifacts
 
-This is important because MetaEdge must be able to explain **why exposure was zero or smaller than requested** at every decision cycle.
+### Active / current
 
-## Security / temporal tranche
+- `docs/01-product/PRODUCT_UX_FOUNDATION.md`
+- `docs/01-product/V1_PRODUCT_WEDGE.md`
+- `docs/10-ops/WORKBOARD.md`
+- `docs/10-ops/PRODUCT_UX_WORKFLOW.md`
 
-Security contracts now cover user isolation, monotonic authority, direct signal→order prevention, paper/real isolation, idempotency, unknown/pending reconciliation, restart/partial fill behavior, stale data recovery, wallet/account changes, in-flight revocation, agent self-expansion, evidence amplification and audit privacy.
+### Draft inputs for upcoming gates
 
-Verified legacy defect: V5 `/api/audit` returns the global last 50 audit events without user filtering. It is classified **REPLACE / do not migrate**.
+- `docs/01-product/USER_JOBS.md`
+- `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
+- `docs/01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`
+- `docs/02-journeys/JOURNEY_REGISTRY.md`
+- `docs/02-journeys/JOURNEY_TEMPLATE.md`
 
-## Legacy migration archaeology
+## Journey status
 
-Strong mechanics to adapt:
+No journey is Golden.
 
-- durable paper intents/events + anti-replay;
-- partial fills + `UNRESOLVED` reconciliation;
-- next-observation paper broker mechanics;
-- market observation provenance/integrity;
-- Postgres revision/commit-ambiguity patterns;
-- selected auth/session DoS hardening;
-- selected per-user MetaMask adapter isolation patterns.
+Existing J01–J14 files are now classified as **INVENTORY**. They remain valuable requirements/source material, but they are not yet approved product journeys.
 
-Seams to replace:
+The first end-to-end Golden candidate will likely connect:
 
-- stale `@metamask/agentic-cli@5.2.1` integration;
-- shared routes whose semantics switch between simulated and real mutation;
-- direct agent/copilot→trade execution bypassing portfolio aggregation;
-- global audit feed;
-- legacy UI tabs treated as product authority.
+**Discover → Understand → Choose → Shadow/Paper Try → Manage → Review**
 
-## Next work
+but the exact journey partition must be decided from the user's mental model rather than the current file split.
 
-1. Run Contract Replay 02 on reversal, multi-horizon conflict, strategy/policy changes during open/pending state, concurrent writers, storage ambiguity, source degradation and agent pause/stop.
-2. Replay historical MetaEdge false-negative windows so old under-participation would become visible through the new decision/missed-opportunity contracts.
-3. Compare portfolio aggregation candidates before freezing numeric rules.
-4. Turn source-reputation dimensions into concrete discovery views and filters.
-5. Expand migration archaeology only where a specific new domain needs a legacy implementation candidate.
-6. Review/freeze Constitution, Product Contract, System/Strategy boundary, domain and security drafts after replay findings.
-7. Only after those gates, produce the implementation plan and request explicit build approval.
+## Product authority
 
-## Still open
+The active authority order is:
 
-V1 persona, spot vs paper perps, discovery ordering, Arena timing, exploration-budget defaults, strategy-specific EvidenceProfile→View mappings, final aggregation formula, source-ranking presentation, canonical data providers, and future wallet-authority substrate.
+1. Product Constitution.
+2. Human-approved P1–P3 foundation artifacts.
+3. Golden journeys.
+4. Approved UX laws/design principles/information architecture.
+5. Approved product capability contracts.
+6. Technical/domain/security derivations.
+7. Architecture/migration decisions.
+8. Research/archaeology/historical implementation as evidence.
+
+## Preserved research/evidence
+
+The following work remains valuable input:
+
+- historical MetaEdge archaeology and failure lessons;
+- Hummingbot/Condor, LEAN, Freqtrade, NautilusTrader, Jesse, vn.py and copy-system research;
+- Colosseum/agent-project research;
+- current MetaMask Agent Wallet / permissions / plugins research;
+- Trading in the Zone product mapping;
+- copy/source model;
+- paper/real separation principles;
+- anti-paralysis lessons.
+
+## Parked technical hypotheses
+
+The following are preserved but **paused as product authority until P10**:
+
+- canonical domain model;
+- authority/state machines;
+- EvidenceProfile field schema;
+- portfolio aggregation formula;
+- source-reputation technical model;
+- security/temporal matrices;
+- scenario/contract replay results;
+- production seam and migration maps.
+
+They may be consulted for feasibility or known constraints, but cannot dictate P1–P9 UX decisions.
+
+## Decisions that remain useful across the reset
+
+- paper and real must remain unambiguously separate;
+- unknown external execution is not equivalent to failure/retry permission;
+- no universal scalar confidence gate;
+- copying is transformation, not blind cloning;
+- observed/inferred/unknown distinctions matter;
+- automation should earn authority progressively;
+- decision quality and outcome quality are different;
+- strategy-specific market rules must not become platform UX laws.
+
+## Paused work
+
+Do not continue until later gates:
+
+- Contract Replay 02;
+- further portfolio-formula freeze;
+- implementation migration planning;
+- new application code;
+- technical screen derivation from domain objects.
+
+## Next step after P1
+
+When the wedge is approved:
+
+1. update this file and `WORKBOARD.md`;
+2. promote P2 User Jobs to active review;
+3. do **not** jump directly to information architecture or implementation.
 
 ## Historical truth
 
-Pre-relaunch branches, V3/V5 research, old handoffs and the separate `meta-edge` repository remain reference evidence only unless explicitly adopted by relaunch contracts.
+Pre-relaunch branches, V3/V5 research, old handoffs and the separate `meta-edge` repository remain reference evidence only unless explicitly adopted through the current Product/UX → Golden → Technical Derivation process.

@@ -14,13 +14,9 @@ This log records product/architecture decisions. Research notes do not become de
 
 Status: `DECIDED`
 
-Decision:
+Decision: Use `relaunch/product-foundation`, branched from `codex/metaedge-v5-paper-checkpoint`, to define product truth before implementation.
 
-Use `relaunch/product-foundation`, branched from `codex/metaedge-v5-paper-checkpoint`, to define product truth before implementation.
-
-Consequence:
-
-Existing code remains reference/evidence until individually classified and adopted.
+Consequence: Existing code remains reference/evidence until individually classified and adopted.
 
 ---
 
@@ -28,11 +24,7 @@ Existing code remains reference/evidence until individually classified and adopt
 
 Status: `DECIDED`
 
-Decision:
-
-Organize MetaEdge around:
-
-**Discover → Understand → Test → Act → Manage → Learn → Scale**
+Decision: Organize MetaEdge around **Discover → Understand → Test → Act → Manage → Learn → Scale**.
 
 ---
 
@@ -40,9 +32,7 @@ Organize MetaEdge around:
 
 Status: `DECIDED`
 
-Decision:
-
-An edge may originate from markets, wallets, traders, strategies, agents, portfolios, cohorts, signal providers, behavioral patterns, catalysts, or cross-market relationships.
+Decision: An edge may originate from markets, wallets, traders, strategies, agents, portfolios, cohorts, signal providers, behavioral patterns, catalysts, or cross-market relationships.
 
 ---
 
@@ -50,11 +40,7 @@ An edge may originate from markets, wallets, traders, strategies, agents, portfo
 
 Status: `DECIDED`
 
-Decision:
-
-Wallet copying, trader copying, strategy copying, agent copying, portfolio/cohort following, and signal-provider following should share one downstream copy/portfolio/risk model where possible.
-
-Copying is transformation, not blind cloning.
+Decision: Wallet copying, trader copying, strategy copying, agent copying, portfolio/cohort following, and signal-provider following should share one downstream copy/portfolio/risk model where possible. Copying is transformation, not blind cloning.
 
 ---
 
@@ -62,11 +48,7 @@ Copying is transformation, not blind cloning.
 
 Status: `DECIDED`
 
-Decision:
-
-Do not use one numerical confidence threshold as the primary trade permission gate.
-
-Use evidence profiles, explicit hard blockers, and progressive participation/position sizing.
+Decision: Do not use one numerical confidence threshold as the primary trade permission gate. Use evidence profiles, explicit hard blockers, and progressive participation/position sizing.
 
 ---
 
@@ -74,9 +56,7 @@ Use evidence profiles, explicit hard blockers, and progressive participation/pos
 
 Status: `DECIDED`
 
-Decision:
-
-Opportunity/strategy loops decide what they want to do. Risk determines what is permitted and how much may be risked.
+Decision: Opportunity/strategy loops decide what they want to do. Risk determines what is permitted and how much may be risked.
 
 ---
 
@@ -84,9 +64,7 @@ Opportunity/strategy loops decide what they want to do. Risk determines what is 
 
 Status: `DECIDED`
 
-Decision:
-
-Strategies/source loops emit views/desired exposure. Portfolio coordination resolves conflicts and existing positions before execution.
+Decision: Strategies/source loops emit views/desired exposure. Portfolio coordination resolves conflicts and existing positions before execution.
 
 ---
 
@@ -94,9 +72,7 @@ Strategies/source loops emit views/desired exposure. Portfolio coordination reso
 
 Status: `DECIDED`
 
-Decision:
-
-Observation/reasoning loops may operate asynchronously and in parallel. Portfolio mutation and execution are serialized through canonical authorities.
+Decision: Observation/reasoning loops may operate asynchronously and in parallel. Portfolio mutation and execution are serialized through canonical authorities.
 
 ---
 
@@ -104,11 +80,7 @@ Observation/reasoning loops may operate asynchronously and in parallel. Portfoli
 
 Status: `DECIDED`
 
-Decision:
-
-Paper portfolios need bounded exploration capacity so weak-but-valid hypotheses can produce scout experiments rather than being permanently blocked for insufficient evidence.
-
-Exact budget/risk-unit values remain open.
+Decision: Paper portfolios need bounded exploration capacity so weak-but-valid hypotheses can produce scout experiments rather than being permanently blocked for insufficient evidence. Exact values remain open.
 
 ---
 
@@ -116,9 +88,7 @@ Exact budget/risk-unit values remain open.
 
 Status: `DECIDED`
 
-Decision:
-
-Eligible skipped opportunities remain under observation so MetaEdge can quantify missed opportunities, good abstention, entry delay, and over-conservatism.
+Decision: Eligible skipped opportunities remain under observation so MetaEdge can quantify missed opportunities, good abstention, entry delay, and over-conservatism.
 
 ---
 
@@ -126,9 +96,7 @@ Eligible skipped opportunities remain under observation so MetaEdge can quantify
 
 Status: `DECIDED`
 
-Decision:
-
-Fast-moving market events may justify bounded scout participation before slow systematic research completes. Slow research improves longer-term evidence, strategy lifecycle, and sizing.
+Decision: Fast-moving market events may justify bounded scout participation before slow systematic research completes. Slow research improves longer-term evidence, strategy lifecycle, and sizing.
 
 ---
 
@@ -136,9 +104,7 @@ Fast-moving market events may justify bounded scout participation before slow sy
 
 Status: `DECIDED`
 
-Decision:
-
-Strategy/source/evidence logic may be portable from paper to real proposals. Paper intents/fills/positions never become real intents or authority.
+Decision: Strategy/source/evidence logic may be portable from paper to real proposals. Paper intents/fills/positions never become real intents or authority.
 
 ---
 
@@ -146,9 +112,7 @@ Strategy/source/evidence logic may be portable from paper to real proposals. Pap
 
 Status: `DECIDED`
 
-Decision:
-
-When real trading eventually exists, paper should remain available as an ongoing calibration path for fill, slippage, latency, cost, and model-vs-real comparison.
+Decision: When real trading eventually exists, paper should remain available as an ongoing calibration path for fill, slippage, latency, cost, and model-vs-real comparison.
 
 ---
 
@@ -156,11 +120,7 @@ When real trading eventually exists, paper should remain available as an ongoing
 
 Status: `DECIDED`
 
-Decision:
-
-Fear, greed, attention, capitulation, FOMO, crowding, narrative rotation, and behavioral divergence may form a first-class evidence/strategy family.
-
-Operator emotion does not receive execution authority.
+Decision: Fear, greed, attention, capitulation, FOMO, crowding, narrative rotation, and behavioral divergence may form a first-class evidence/strategy family. Operator emotion does not receive execution authority.
 
 ---
 
@@ -168,9 +128,7 @@ Operator emotion does not receive execution authority.
 
 Status: `DECIDED`
 
-Decision:
-
-MetaEdge owns durable sensing, portfolio, risk, execution, reconciliation, and learning state. LLMs are replaceable reasoning/synthesis components.
+Decision: MetaEdge owns durable sensing, portfolio, risk, execution, reconciliation, and learning state. LLMs are replaceable reasoning/synthesis components.
 
 ---
 
@@ -178,9 +136,7 @@ MetaEdge owns durable sensing, portfolio, risk, execution, reconciliation, and l
 
 Status: `DECIDED`
 
-Decision:
-
-Agent authority should progress from Observer → Adviser → Paper Agent → Supervised Real → Bounded Autonomous → Adaptive Portfolio Agent rather than using a single Autopilot toggle.
+Decision: Agent authority should progress from Observer → Adviser → Paper Agent → Supervised Real → Bounded Autonomous → Adaptive Portfolio Agent rather than using a single Autopilot toggle.
 
 ---
 
@@ -188,9 +144,7 @@ Agent authority should progress from Observer → Adviser → Paper Agent → Su
 
 Status: `DECIDED`
 
-Decision:
-
-Review mature trading frameworks, copy systems, Colosseum/agent projects, and current MetaMask authority primitives before freezing the final architecture.
+Decision: Review mature trading frameworks, copy systems, Colosseum/agent projects, and current MetaMask authority primitives before freezing final architecture.
 
 ---
 
@@ -198,9 +152,7 @@ Review mature trading frameworks, copy systems, Colosseum/agent projects, and cu
 
 Status: `DECIDED`
 
-Decision:
-
-MetaEdge defines a vendor-neutral Real execution/authorization contract above MetaMask. Agent Wallet, Smart Accounts/Advanced Permissions, delegations, or future wallet systems are adapters that implement or further restrict that contract.
+Decision: MetaEdge defines a vendor-neutral real execution/authorization contract above MetaMask. Wallet systems may implement or further restrict that contract.
 
 ---
 
@@ -208,9 +160,7 @@ MetaEdge defines a vendor-neutral Real execution/authorization contract above Me
 
 Status: `DECIDED`
 
-Decision:
-
-Future Real execution must model asynchronous wallet states including pending requests and `AWAITING_MFA`. A request with ambiguous outcome must be reconciled before another financially equivalent submission is permitted.
+Decision: Future real execution must model asynchronous wallet states including pending requests and `AWAITING_MFA`. Ambiguous outcome reconciles before financially equivalent retry.
 
 ---
 
@@ -218,9 +168,7 @@ Future Real execution must model asynchronous wallet states including pending re
 
 Status: `DECIDED`
 
-Decision:
-
-Use wallet policy/security controls wherever available, but MetaEdge retains canonical account/portfolio/strategy risk.
+Decision: Use wallet policy/security controls where available, but MetaEdge retains canonical account/portfolio/strategy risk.
 
 ---
 
@@ -228,9 +176,7 @@ Use wallet policy/security controls wherever available, but MetaEdge retains can
 
 Status: `DECIDED`
 
-Decision:
-
-Do not make the relaunch depend on Agent Wallet native plugins. AI-host skills/plugins are a separate interaction layer and do not receive financial authority merely by being installed.
+Decision: Do not make the relaunch depend on Agent Wallet native plugins. AI-host skills/plugins are a separate interaction layer and do not receive financial authority merely by being installed.
 
 ---
 
@@ -238,11 +184,9 @@ Do not make the relaunch depend on Agent Wallet native plugins. AI-host skills/p
 
 Status: `DECIDED`
 
-Decision:
+Decision: Represent market/source evidence as a multidimensional profile with contradictions, unknowns, freshness, reliability, coverage and invalidators. No universal aggregate confidence score becomes the primary execution gate.
 
-Represent market/source evidence as a multidimensional `EvidenceProfile` with separate families, contradictions, unknowns, freshness, reliability, coverage and invalidators.
-
-No universal aggregate confidence score is permitted to become the primary execution gate.
+Current authority note: the **principle** remains decided; the exact technical field schema is parked for P10 Technical Derivation.
 
 ---
 
@@ -250,13 +194,9 @@ No universal aggregate confidence score is permitted to become the primary execu
 
 Status: `DECIDED`
 
-Decision:
+Decision: Use deterministic budgeted-sleeve aggregation as the initial technical candidate before opaque optimization/voting.
 
-Use a deterministic budgeted-sleeve aggregation model as the initial architecture candidate: normalize each producer to its sleeve, account for duplicate/correlated lineage, net signed contributions, then apply account-level risk constraints.
-
-Consequence:
-
-Opaque optimization and majority voting are deferred until replay/simulation shows they add value.
+Current authority note: the architecture candidate is parked for P10 and must be re-derived against Golden journeys before freeze.
 
 ---
 
@@ -264,11 +204,7 @@ Opaque optimization and majority voting are deferred until replay/simulation sho
 
 Status: `DECIDED`
 
-Decision:
-
-Evaluate wallets/traders/strategies/agents through decomposable dimensions such as coverage, tenure, realized performance, drawdown, leverage, concentration, consistency, copyability, transparency and regime dependence.
-
-Any ranking must declare the objective being optimized.
+Decision: Source quality/copyability is decomposable and objective-specific rather than one universal leaderboard score.
 
 ---
 
@@ -276,9 +212,7 @@ Any ranking must declare the objective being optimized.
 
 Status: `DECIDED`
 
-Decision:
-
-`Position` is derived canonical state from reconciled fills/events. A mutable position row is not sufficient execution truth by itself.
+Decision: Position state must ultimately derive from reconciled execution evidence rather than an ungrounded mutable position row.
 
 ---
 
@@ -286,9 +220,7 @@ Decision:
 
 Status: `DECIDED`
 
-Decision:
-
-Human-approved scope may be narrowed by portfolio, risk, execution adapter and wallet/venue policy, but no downstream layer may expand authority beyond what the upstream layer allowed.
+Decision: Downstream layers may restrict but never expand human-approved authority.
 
 ---
 
@@ -296,13 +228,7 @@ Human-approved scope may be narrowed by portfolio, risk, execution adapter and w
 
 Status: `DECIDED`
 
-Decision:
-
-Model future real execution with separate `ExecutionGrant`, `RealTradeIntent`, `RealExecutionPlan` and `ExecutionOperation` concepts.
-
-Consequence:
-
-Paper execution can remain portable at the strategy/view layer without sharing mutable authority/state with real execution.
+Decision: Future real architecture should keep authority grant, fresh real intent, execution plan/operation and reconciliation conceptually separate.
 
 ---
 
@@ -310,9 +236,63 @@ Paper execution can remain portable at the strategy/view layer without sharing m
 
 Status: `DECIDED`
 
+Decision: Preserve source/evidence lineage so multiple views derived from the same underlying event/source are not automatically treated as independent corroboration.
+
+---
+
+## DEC-030 — Product/UX definition precedes technical derivation
+
+Status: `DECIDED`
+
 Decision:
 
-Portfolio/evidence systems must preserve source/evidence lineage so multiple views derived from the same underlying event/source are not automatically treated as independent corroboration.
+Use the sequence:
+
+**Wedge → User/JTBD → Master Experience Loop → Journey Registry → UX Laws → Information Architecture → Detailed Journeys → UX Breaker → Golden Journeys → Technical Derivation → Migration → Build/QA.**
+
+Consequence:
+
+Later-stage technical drafts are preserved but cannot dictate P1–P9 product behavior.
+
+See `ADR-030-product-ux-first.md`.
+
+---
+
+## DEC-031 — Existing J01–J14 are inventory until re-reviewed as UX journeys
+
+Status: `DECIDED`
+
+Decision:
+
+Reclassify the current journey set as `INVENTORY`. Existing content is requirements/research input, not Golden product truth.
+
+Promotion requires user-language rewrite/review, UX breaker validation, connection validation and explicit human approval.
+
+---
+
+## DEC-032 — Golden journeys gate technical freeze and implementation
+
+Status: `DECIDED`
+
+Decision:
+
+No relevant domain/state/architecture contract becomes implementation authority before the user journey it serves is Golden.
+
+No application implementation is authorized until a later explicit build approval.
+
+---
+
+## DEC-033 — Use an explicit product/UX operating loop
+
+Status: `DECIDED`
+
+Decision:
+
+Substantial work follows:
+
+**Research/Evidence → Product/UX Spec → UX Breaker → Human Approval → Golden → Technical Derivation → Build → QA/Breaker.**
+
+Only one core product lane should create canonical UX decisions at a time. Supporting research may run in parallel but cannot independently advance the phase.
 
 ---
 
@@ -323,25 +303,27 @@ Portfolio/evidence systems must preserve source/evidence lineage so multiple vie
 - crypto spot only;
 - crypto spot + paper perps.
 
+Now resolve this during P1/P3 from user-experience value rather than architecture convenience.
+
 ## OPEN-002 — V1 discovery surface order
 
-Markets, wallets, traders, strategies, agents — exact launch order remains open.
+Markets, wallets, traders, strategies, agents, or a blended entry. Resolve from P1–P6.
 
 ## OPEN-003 — Arena timing
 
-V1 vs Phase 2.
+V1 vs Phase 2. Current bias: defer unless Golden core journeys demonstrate a need.
 
 ## OPEN-004 — Exploration sizing
 
-Exact `R` definitions, scout size, portfolio exploration budget and scaling rules.
+Exact `R` definitions, scout size, portfolio exploration budget and scaling rules. Technical/numeric design deferred until P10.
 
-## OPEN-005 — EvidenceProfile field semantics
+## OPEN-005 — Evidence representation
 
-The families are drafted. Strategy-specific mappings from evidence profile → requested exposure still require examples/replay testing.
+The no-universal-confidence principle is decided. Exact user-facing and technical representation must be derived from Golden journeys.
 
 ## OPEN-006 — Final portfolio aggregation formula
 
-Deterministic sleeve/netting is the default candidate. Exact normalization, duplicate caps, correlation handling and later optimizer comparison require replay/simulation.
+Technical candidate exists, but final formula is deferred until P10 and replay/simulation after UX approval.
 
 ## OPEN-007 — Source reputation presentation
 
@@ -349,8 +331,20 @@ Which objective-specific ranks/filters ship first and how incompleteness warning
 
 ## OPEN-008 — MetaMask future authority substrate
 
-Candidate implementations include Agent Wallet server-wallet + Guard, Smart Account Advanced Permissions, direct delegation, or multiple adapters.
+Candidate implementations include Agent Wallet server-wallet + Guard, Smart Account Advanced Permissions, direct delegation, or multiple adapters. Not a P1 decision.
 
 ## OPEN-009 — MetaEdge native Agent Wallet plugin
 
-Current recommendation: not required for V1; investigate later.
+Current recommendation: not required for V1; investigate later if a Golden journey needs it.
+
+## OPEN-010 — P1 primary user / wedge
+
+Working candidate: active crypto explorer who discovers ideas across multiple sources and wants one disciplined workflow to understand, test, manage and learn from them.
+
+Human approval required.
+
+## OPEN-011 — First V1 wow moment
+
+Working candidate: the user finds something interesting, understands why it matters and what is uncertain, then safely follows/shadows/paper-tests it with ongoing agent support within minutes.
+
+Human approval required.

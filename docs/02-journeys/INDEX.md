@@ -1,177 +1,82 @@
 # Journey Index
 
-Status: **Detailed journey tranche 1 drafted — not yet frozen for implementation**
+Status: **INVENTORY — no journey is Golden**
 
 Updated: 2026-09-15
 
-## Journey law
+## Important reset
 
-Product behavior must be defined through user journeys before UI/component implementation.
+The existing J01–J14 documents were useful early requirements/domain exploration, but they were drafted before the Product/UX-first process was made explicit.
 
-Every journey specifies:
+They are now **inventory/source material**, not approved product journeys.
 
-- USER JOB
-- PRECONDITIONS
-- AUTHORITATIVE STATE
-- USER-VISIBLE STATES
-- HAPPY PATH
-- EMPTY STATE
-- FAILURE
-- UNKNOWN
-- RETRY
-- PARTIAL
-- CANCEL
-- BACK / REFRESH / RESTART
-- OWNER / AUTHORITY
-- PRIVACY
-- RECOVERY
-- NEXT JOURNEY
+Use `JOURNEY_REGISTRY.md` as the canonical status record and `JOURNEY_TEMPLATE.md` when a journey reaches P7 detailed UX drafting.
 
-## Core flow
+## Journey authority law
 
-**Discover → Investigate → Follow / Shadow / Create → Paper Trade / Paper Copy → Manage Position → Review & Learn → Improve / Scale**
+A journey becomes product authority only after:
 
-Agent operation can participate across discovery, investigation, paper trading and position management under its explicit Paper session envelope.
+```text
+DRAFT
+→ PRODUCT_REVIEW
+→ UX_BREAKER
+→ APPROVED
+→ GOLDEN
+```
 
-## Candidate V1 journeys
+Human approval is required before Golden promotion.
 
-### J01 — Enter / onboarding
+## Current working experience loop
 
-Understand what MetaEdge is, obtain an app identity, and enter paper-first mode without requiring a wallet.
+**Notice → Understand → Choose → Test/Participate → Manage → Review → Evolve**
 
-Status: inventory only.
+The exact journey boundaries must be derived from the approved wedge/jobs and user mental model, not from existing backend concepts or file names.
 
-### J02 — Discover
+## Existing inventory
 
-Find interesting markets, wallets, traders, strategies, agents, portfolios, cohorts, or signals.
+- J01 Enter / onboarding
+- J02 Discover
+- J03 Investigate source/opportunity
+- J04 Follow source
+- J05 Create/copy strategy
+- J06 Backtest
+- J07 Shadow
+- J08 Paper portfolio/policy
+- J09 Paper try/trade
+- J10 Paper copy
+- J11 Manage position
+- J12 Review and learn
+- J13 Improve/pause/retire
+- J14 Paper Agent operation
 
-Status: **detailed draft** — `02-discover.md`.
+Detailed prior files remain in this directory where they exist.
 
-### J03 — Investigate source
+## First likely end-to-end candidate
 
-Understand what a source is doing, why it may matter, what evidence supports it, contradictions and unknowns.
+A strong first Golden candidate is likely to cover:
 
-Status: **detailed draft** — `03-investigate-source.md`.
+```text
+Discover something worth attention
+→ Understand it
+→ Decide how deeply to engage
+→ Follow / Shadow / Paper Try
+→ Manage what happens
+→ Review and learn
+→ Return / evolve
+```
 
-### J04 — Follow source
+During P4/P7 we may consolidate or split existing IDs to make this coherent.
 
-Persist a source and receive meaningful updates without creating exposure.
+## Do not do yet
 
-Status: **detailed draft** — `04-follow-source.md`.
+- Do not derive navigation from the old journey split.
+- Do not turn `PortfolioTarget`, `EvidenceProfile`, `RiskDecision`, etc. into screens by default.
+- Do not treat a technically complete J-file as UX-approved.
+- Do not resume implementation because the inventory looks comprehensive.
 
-### J05 — Create or copy strategy
+## Read
 
-Turn a user's own idea or an observed source into explicit, versioned strategy logic.
-
-Status: inventory only.
-
-### J06 — Backtest
-
-Evaluate a strategy against historical data with explicit assumptions, costs, data lineage and invalid-result states.
-
-Status: inventory only.
-
-### J07 — Shadow
-
-Track the counterfactual result of following a source/strategy under follower-specific policy without changing the paper portfolio.
-
-Status: **detailed draft** — `07-shadow.md`.
-
-### J08 — Create paper portfolio
-
-Define paper capital, risk policy, exploration budget and allowed markets.
-
-Status: inventory only.
-
-### J09 — Paper trade
-
-Generate/process bounded paper intents from manual/strategy/agent views via portfolio targets.
-
-Status: **detailed draft** — `09-paper-trade.md`.
-
-### J10 — Paper copy
-
-Transform qualifying source observations into follower-specific paper targets/intents.
-
-Status: **detailed draft** — `10-paper-copy.md`.
-
-### J11 — Manage position
-
-Scale in/out, hold, reduce, exit, hedge or reverse as evidence and aggregate portfolio target evolve.
-
-Status: **detailed draft** — `11-manage-position.md`.
-
-### J12 — Review and learn
-
-Explain outcome drivers, execution, risk, regime, behavior, source attribution and missed opportunities.
-
-Status: **detailed draft** — `12-review-and-learn.md`.
-
-### J13 — Improve / pause / retire
-
-Create a new strategy version, alter a copy policy, pause an agent/source or retire an experiment without rewriting history.
-
-Status: inventory only.
-
-### J14 — Agent operation
-
-Allow a Level-2 Paper Agent to autonomously manage bounded paper exposure under an already-approved session envelope, without per-tick human confirmation.
-
-Status: **detailed draft** — `14-agent-operation.md`.
-
-## Candidate Phase-2 journeys
-
-### Arena participation
-
-Enter a defined competition with fair scoring and explicit paper-only rules.
-
-### Strategy/source comparison
-
-Compare wallets, traders, strategies, agents and cohorts on risk-adjusted evidence rather than raw PnL alone.
-
-### Cohort intelligence
-
-Observe aggregate behavior across source groups and translate it into evidence/views.
-
-## Future real-money journeys — design now, do not implement yet
-
-### Real readiness
-
-Assess wallet, account, strategy, risk, execution and policy readiness.
-
-### Exact real preview
-
-Generate a fresh `RealTradeIntent` and exact execution preview without moving funds.
-
-### Real authorization
-
-Approve an exact action or narrowly bounded delegated capability.
-
-### Wallet/signing boundary
-
-Cross from MetaEdge domain authority into the wallet's own authorization mechanism.
-
-### Submission
-
-Submit one idempotent operation and persist its operation identifier before ambiguous outcomes can cause retries.
-
-### Reconciliation
-
-Resolve submitted/pending/partial/unknown/final outcomes into canonical real positions and PnL.
-
-### Revoke / stop
-
-Pause strategy authority, revoke delegation, kill execution and safely reconcile operations already in flight.
-
-## Next journey tranche
-
-Before implementation begins, draft and review:
-
-- J01 onboarding;
-- J05 create/copy strategy;
-- J06 backtest;
-- J08 paper portfolio + risk/exploration policy;
-- J13 improve/pause/retire;
-- future Real readiness/preview/authorization/reconciliation at domain-contract level.
-
-Then derive the canonical domain model and state machines from the complete journey set.
+- `../01-product/PRODUCT_UX_FOUNDATION.md`
+- `JOURNEY_REGISTRY.md`
+- `JOURNEY_TEMPLATE.md`
+- `../01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`

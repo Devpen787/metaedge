@@ -7,7 +7,7 @@ Updated: 2026-09-15
 - Repository: `Devpen787/metaedge`
 - Branch: `relaunch/product-foundation`
 - Base: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
-- Phase: **V1 journeys + domain contracts drafted / security, temporal and migration validation underway**
+- Phase: **V1 journeys + domain contracts drafted / security, migration and contract replay validation underway**
 - Implementation: **NOT AUTHORIZED**
 - Real execution: **NOT AUTHORIZED**
 - Deployment changes: **NOT AUTHORIZED**
@@ -35,9 +35,11 @@ Paper-first product covering onboarding, discovery, source investigation/followi
 - `docs/03-domain/STATE_MACHINES.md`
 - `docs/03-domain/REAL_EXECUTION_STATE_MODEL.md`
 - `docs/03-domain/SYSTEM_STRATEGY_BOUNDARY.md`
+- `docs/03-domain/DECISION_STATE_CONTRACTS.md`
 - `docs/04-decision-system/EVIDENCE_PROFILE.md`
 - `docs/04-decision-system/PORTFOLIO_AGGREGATION.md`
 - `docs/04-decision-system/SCENARIO_STRESS_TESTS.md`
+- `docs/04-decision-system/CONTRACT_REPLAY_RESULTS_01.md`
 - `docs/05-security/SECURITY_INVARIANTS.md`
 - `docs/05-security/TEMPORAL_STATE_MATRIX.md`
 - `docs/05-security/ATTACK_SEQUENCE_MATRIX.md`
@@ -60,64 +62,66 @@ Paper-first product covering onboarding, discovery, source investigation/followi
 - Initial aggregation candidate: deterministic budgeted sleeves + lineage-aware netting + portfolio constraints.
 - Source reputation is decomposable and objective-specific, not a universal leaderboard score.
 - Paper and future real execution share strategy/evidence logic but not mutable execution authority.
-- Paper routes/objects must remain paper-only regardless of environment flags.
+- Paper routes/objects remain paper-only regardless of environment flags.
 - Pending/unknown external outcomes reconcile before equivalent retry.
 - MetaMask is an adapter/authority substrate beneath MetaEdge domain contracts, not the product's source of truth.
 - Decision quality, outcome quality and strategy quality remain distinct.
 - Rules/authority are rigid; market expectations stay flexible.
 
-## Scenario validation suite
+## Validation status
 
-`docs/04-decision-system/SCENARIO_STRESS_TESTS.md` defines pass/fail scenarios for historical opportunity paralysis, false breakouts, recent-loss hesitation, winning-streak overconfidence, liquidation/reversal, source copying, duplicate lineage, stale data, risk exhaustion, partial fills, missed opportunity, and future pending/MFA execution.
+### Scenario suite
 
-The suite tests **liveness as well as safety**. A system that rejects invalid actions but cannot reach bounded participation from an eligible StrategyVersion/View under ordinary uncertainty fails the relaunch objective.
+`SCENARIO_STRESS_TESTS.md` covers historical opportunity paralysis, false breakouts, recent-loss hesitation, winning-streak overconfidence, liquidation/reversal, source copying, duplicate lineage, stale data, risk exhaustion, partial fills, missed opportunity, and future pending/MFA execution.
+
+The suite tests **liveness as well as safety**.
+
+### Contract Replay 01
+
+The first strategy-neutral replay walked valid Views through portfolio, risk, execution and recovery contracts.
+
+Result: the architecture held conceptually, but exposed seven refinements now drafted in `DECISION_STATE_CONTRACTS.md`:
+
+1. machine-readable decision/zero-target dispositions;
+2. explicit aggregation run/policy lineage;
+3. durable lineage/dependency clusters;
+4. richer RiskDecision lineage;
+5. hard-block reason taxonomy separate from evidence confidence;
+6. explicit RiskState separate from EvidenceProfile;
+7. mandatory missed-opportunity eligibility semantics.
+
+This is important because MetaEdge must be able to explain **why exposure was zero or smaller than requested** at every decision cycle.
 
 ## Security / temporal tranche
 
-New security contracts now explicitly cover:
+Security contracts now cover user isolation, monotonic authority, direct signal→order prevention, paper/real isolation, idempotency, unknown/pending reconciliation, restart/partial fill behavior, stale data recovery, wallet/account changes, in-flight revocation, agent self-expansion, evidence amplification and audit privacy.
 
-- user isolation;
-- monotonic authority;
-- no direct signal → order mutation;
-- paper/real isolation;
-- idempotency and duplicate protection;
-- `UNKNOWN != FAILED`;
-- partial-fill and restart reconciliation;
-- account/network changes between preview and execution;
-- grant revocation while operations are in flight;
-- stale data recovery;
-- agent self-expansion attempts;
-- duplicate evidence/source amplification;
-- audit/privacy isolation.
-
-Verified legacy defect: V5 `/api/audit` returns the global last 50 audit events without user filtering. This is classified as **REPLACE / do not migrate**.
+Verified legacy defect: V5 `/api/audit` returns the global last 50 audit events without user filtering. It is classified **REPLACE / do not migrate**.
 
 ## Legacy migration archaeology
 
-The first production seam map is complete for the highest-value legacy components.
+Strong mechanics to adapt:
 
-Strong mechanics to adapt include:
-
-- durable paper intents/events and anti-replay;
-- partial fills and `UNRESOLVED` reconciliation;
+- durable paper intents/events + anti-replay;
+- partial fills + `UNRESOLVED` reconciliation;
 - next-observation paper broker mechanics;
 - market observation provenance/integrity;
 - Postgres revision/commit-ambiguity patterns;
 - selected auth/session DoS hardening;
 - selected per-user MetaMask adapter isolation patterns.
 
-Seams to replace include:
+Seams to replace:
 
 - stale `@metamask/agentic-cli@5.2.1` integration;
 - shared routes whose semantics switch between simulated and real mutation;
-- direct agent/copilot → trade execution bypassing portfolio aggregation;
+- direct agent/copilot→trade execution bypassing portfolio aggregation;
 - global audit feed;
 - legacy UI tabs treated as product authority.
 
 ## Next work
 
-1. Run the scenario suite as deterministic contract replays — first at EvidenceProfile/View/PortfolioTarget/Risk level, without inventing canonical trading strategies.
-2. Replay historical MetaEdge false-negative windows to identify where old gates caused under-participation.
+1. Run Contract Replay 02 on reversal, multi-horizon conflict, strategy/policy changes during open/pending state, concurrent writers, storage ambiguity, source degradation and agent pause/stop.
+2. Replay historical MetaEdge false-negative windows so old under-participation would become visible through the new decision/missed-opportunity contracts.
 3. Compare portfolio aggregation candidates before freezing numeric rules.
 4. Turn source-reputation dimensions into concrete discovery views and filters.
 5. Expand migration archaeology only where a specific new domain needs a legacy implementation candidate.

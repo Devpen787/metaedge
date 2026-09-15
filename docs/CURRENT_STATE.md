@@ -8,7 +8,7 @@ Updated: 2026-09-15
 - Branch: `relaunch/product-foundation`
 - Base branch: `codex/metaedge-v5-paper-checkpoint`
 - Base SHA: `99246ada41bd0979ef7aaa603a730b09c30572f1`
-- Phase: **External archaeology complete (tranche 1) / canonical V1 journeys drafted**
+- Phase: **Canonical V1 journeys drafted / current MetaMask platform research complete (tranche 1)**
 - Implementation: **NOT AUTHORIZED**
 - Real trading: **NOT AUTHORIZED**
 - Deployment changes: **NOT AUTHORIZED**
@@ -70,6 +70,28 @@ Reviewed mature frameworks and current agent/copy projects support the relaunch 
 - Hyperliquid copy-agent implementations support source state → follower target exposure → policy caps → delta execution → reconciliation.
 - Colosseum projects add useful patterns for typed multi-agent handoffs, attention velocity, source reputation and execution evidence.
 
+## Current MetaMask research — tranche 1 conclusion
+
+Official Agent Wallet, Smart Accounts Kit, Agent Skills, and native plugin documentation were re-reviewed against the relaunch model.
+
+Key current facts:
+
+- Agent Wallet CLI is now `@metamask/agent-wallet`; the historical MetaEdge `@metamask/agentic-cli@5.2.1` integration is stale.
+- Server-wallet operations are asynchronous and may return `pollingId` or pause in `AWAITING_MFA`; pending requests must be watched/reconciled rather than blindly retried.
+- Guard Mode adds meaningful wallet-level controls, but it is defense-in-depth rather than MetaEdge portfolio/trading risk.
+- For Hyperliquid perps, MetaMask policy applies to the EVM funding/deposit leg; open/modify/close position operations occur at the venue and are not re-checked by the wallet outflow/allowlist/2FA policy based on leveraged position size.
+- MetaEdge must therefore own perps leverage, notional, loss, protection, concentration and account-level exposure policy.
+- Agent Wallet native CLI plugins now exist as a beta, in-process/unsandboxed extension system with command-level `wallet-read` / `wallet-submit` capabilities.
+- AI-host Agent Skills/plugins (Claude/Codex/Cursor/etc.) are a different layer from Agent Wallet native `mm plugins` and must not be conflated.
+- MetaMask Smart Accounts Kit 2.0.0 exposes ERC-7715 Advanced Permissions and ERC-7710 delegation as a second potential bounded-authority substrate.
+- MetaEdge should define a vendor-neutral `ExecutionGrant` / real-execution contract above any MetaMask-specific adapter.
+
+See:
+
+- `docs/06-platform/METAMASK_CAPABILITY_LEDGER.md`
+- `docs/06-platform/METAMASK_AUTHORITY_OPTIONS.md`
+- `docs/06-platform/METAMASK_PLUGINS_AND_SKILLS.md`
+
 ## Journey progress
 
 Detailed drafts now exist for the full candidate V1 journey set:
@@ -97,7 +119,7 @@ Detailed drafts now exist for the full candidate V1 journey set:
 4. Define the Evidence Profile taxonomy without recreating a hidden scalar confidence gate.
 5. Define portfolio view aggregation options and simulation plan.
 6. Define source-reputation dimensions for wallets/traders/strategies/agents.
-7. Perform a current MetaMask capability/authority pass before future Real contracts are frozen.
+7. Translate the MetaMask findings into future Real authority/reconciliation state machines without implementing them yet.
 8. Only then produce the clean implementation/migration plan.
 
 ## Open product/design decisions
@@ -111,7 +133,8 @@ Detailed drafts now exist for the full candidate V1 journey set:
 - Portfolio view aggregation method.
 - Source reputation / wallet-trader evaluation methodology.
 - Canonical market, flow, behavioral and on-chain providers.
-- Future MetaMask authority primitive(s) for bounded autonomous execution.
+- Future real authority substrate: Agent Wallet server-wallet, Smart Account/Advanced Permissions, direct delegation, or multiple adapters.
+- Whether a first-party MetaEdge Agent Wallet native plugin materially improves the future real execution path.
 
 ## Historical truth
 

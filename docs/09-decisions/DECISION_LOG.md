@@ -194,6 +194,58 @@ Review mature trading frameworks, copy systems, Colosseum/agent projects, and cu
 
 ---
 
+## DEC-018 — MetaMask is an execution/authority adapter, not product authority
+
+Status: `DECIDED`
+
+Decision:
+
+MetaEdge defines a vendor-neutral Real execution/authorization contract above MetaMask. Agent Wallet, Smart Accounts/Advanced Permissions, delegations, or future wallet systems are adapters that implement or further restrict that contract.
+
+Consequence:
+
+MetaEdge strategy, portfolio, risk, evidence, and execution lineage cannot live solely in `mm`, a MetaMask plugin, or a wallet policy.
+
+---
+
+## DEC-019 — Pending wallet work is first-class; do not retry ambiguity
+
+Status: `DECIDED`
+
+Decision:
+
+Future Real execution must model asynchronous wallet states including pending requests and `AWAITING_MFA`. A request with ambiguous outcome must be reconciled before another financially equivalent submission is permitted.
+
+Consequence:
+
+Timeout is not synonymous with failure. `UNKNOWN` is not permission to retry.
+
+---
+
+## DEC-020 — MetaMask Guard is defense-in-depth, not the trading risk engine
+
+Status: `DECIDED`
+
+Decision:
+
+Use wallet policy/security controls wherever available, but MetaEdge retains canonical account/portfolio/strategy risk.
+
+For Hyperliquid perps specifically, current MetaMask guidance confirms that wallet controls protect the EVM collateral-deposit leg while leveraged open/modify/close actions occur at the venue. Therefore MetaEdge must own position-level leverage, notional, slippage, loss, protection, concentration and reconciliation rules.
+
+---
+
+## DEC-021 — Agent Wallet native plugins are optional adapters, not core architecture
+
+Status: `DECIDED`
+
+Decision:
+
+Do not make the relaunch depend on Agent Wallet native plugins. The current plugin system is beta and plugins run in-process/unsandboxed. A future first-party MetaEdge plugin may be evaluated as a narrow least-capability adapter after the domain/execution contracts are stable.
+
+AI-host skills/plugins (Claude/Codex/Cursor/etc.) are a separate interaction layer and do not receive financial authority merely by being installed.
+
+---
+
 # Open decisions
 
 ## OPEN-001 — V1 market scope
@@ -235,6 +287,19 @@ How conflicting views combine: deterministic rules, optimizer, voting, budgeted 
 
 How wallet/trader/strategy/agent quality is evaluated without raw-PnL bias or false completeness assumptions.
 
-## OPEN-008 — MetaMask future authority primitive
+## OPEN-008 — MetaMask future authority substrate
 
-Exact future architecture for supervised and bounded autonomous execution after current official capability review.
+Candidate options now include:
+
+- dedicated Agent Wallet server-wallet + Guard;
+- MetaMask Smart Account + ERC-7715 Advanced Permissions;
+- direct ERC-7710 delegation/caveats for more expressive bounded authority;
+- multiple adapters selected by user/use case.
+
+Decision should be made only after the MetaEdge `ExecutionGrant` and future Real journeys/state machines are frozen.
+
+## OPEN-009 — MetaEdge native Agent Wallet plugin
+
+Does a first-party `mm` plugin materially improve safety, integration, provenance, or UX compared with a normal Agent Wallet adapter/service?
+
+Current recommendation: **not required for V1; investigate later.**

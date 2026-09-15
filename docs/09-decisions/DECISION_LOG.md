@@ -296,6 +296,34 @@ Only one core product lane should create canonical UX decisions at a time. Suppo
 
 ---
 
+## DEC-034 — V1 wedge is the competent wallet-capable trading agent
+
+Status: `DECIDED`
+
+Approved: 2026-09-15
+
+Decision:
+
+MetaEdge is an **agent-native trading workspace for wallet-capable agents that can trade fast, smart, and disciplined**.
+
+The initial human user is an **active crypto trader / agent operator**. The operator defines mandate, capital/wallet, markets, risk, authority, supervision and intervention. The agent performs the operating loop inside that envelope:
+
+**sense → understand → decide → act → manage → reconcile → learn**.
+
+V1 is paper-first, but wallet identity, assigned capital and bounded authority are first-class product concepts from the start.
+
+The operator must not become the agent's manual per-action execution loop.
+
+Approved first wow moment:
+
+> **“My agent saw something I would have missed, acted in time within the exact limits I gave it, and then managed the position without becoming reckless or frozen.”**
+
+Consequence:
+
+Discovery, wallet/trader intelligence, strategies, evidence, risk, portfolio coordination, MetaMask integration, review and learning are supporting capabilities for the competent agent wedge rather than independent V1 products.
+
+---
+
 # Open decisions
 
 ## OPEN-001 — V1 market scope
@@ -303,11 +331,11 @@ Only one core product lane should create canonical UX decisions at a time. Suppo
 - crypto spot only;
 - crypto spot + paper perps.
 
-Now resolve this during P1/P3 from user-experience value rather than architecture convenience.
+Resolve from later product/journey value rather than architecture convenience.
 
 ## OPEN-002 — V1 discovery surface order
 
-Markets, wallets, traders, strategies, agents, or a blended entry. Resolve from P1–P6.
+Markets, wallets, traders, strategies, agents, or a blended entry. Resolve from the agent/operator experience during P3–P7.
 
 ## OPEN-003 — Arena timing
 
@@ -331,20 +359,20 @@ Which objective-specific ranks/filters ship first and how incompleteness warning
 
 ## OPEN-008 — MetaMask future authority substrate
 
-Candidate implementations include Agent Wallet server-wallet + Guard, Smart Account Advanced Permissions, direct delegation, or multiple adapters. Not a P1 decision.
+Candidate implementations include Agent Wallet server-wallet + Guard, Smart Account Advanced Permissions, direct delegation, or multiple adapters. Not a P2 decision.
 
 ## OPEN-009 — MetaEdge native Agent Wallet plugin
 
 Current recommendation: not required for V1; investigate later if a Golden journey needs it.
 
-## OPEN-010 — P1 primary user / wedge
+## OPEN-012 — P2 operator attention model
 
-Working candidate: active crypto explorer who discovers ideas across multiple sources and wants one disciplined workflow to understand, test, manage and learn from them.
+Define conceptually which agent events are handled autonomously, which should notify the operator, and which require explicit human action.
 
-Human approval required.
+## OPEN-013 — P2 competence/trust evidence
 
-## OPEN-011 — First V1 wow moment
+Define what the operator must be able to see and understand before widening agent authority. Do not reduce this to one opaque score.
 
-Working candidate: the user finds something interesting, understands why it matters and what is uncertain, then safely follows/shadows/paper-tests it with ongoing agent support within minutes.
+## OPEN-014 — Agent creation timing
 
-Human approval required.
+Decide whether creating/improving agents is a primary first-session V1 job or a supporting/next-loop job. Current recommendation: start with a strong starter agent and make creation/adaptation progressive.

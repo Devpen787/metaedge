@@ -202,10 +202,6 @@ Decision:
 
 MetaEdge defines a vendor-neutral Real execution/authorization contract above MetaMask. Agent Wallet, Smart Accounts/Advanced Permissions, delegations, or future wallet systems are adapters that implement or further restrict that contract.
 
-Consequence:
-
-MetaEdge strategy, portfolio, risk, evidence, and execution lineage cannot live solely in `mm`, a MetaMask plugin, or a wallet policy.
-
 ---
 
 ## DEC-019 — Pending wallet work is first-class; do not retry ambiguity
@@ -215,10 +211,6 @@ Status: `DECIDED`
 Decision:
 
 Future Real execution must model asynchronous wallet states including pending requests and `AWAITING_MFA`. A request with ambiguous outcome must be reconciled before another financially equivalent submission is permitted.
-
-Consequence:
-
-Timeout is not synonymous with failure. `UNKNOWN` is not permission to retry.
 
 ---
 
@@ -230,8 +222,6 @@ Decision:
 
 Use wallet policy/security controls wherever available, but MetaEdge retains canonical account/portfolio/strategy risk.
 
-For Hyperliquid perps specifically, current MetaMask guidance confirms that wallet controls protect the EVM collateral-deposit leg while leveraged open/modify/close actions occur at the venue. Therefore MetaEdge must own position-level leverage, notional, slippage, loss, protection, concentration and reconciliation rules.
-
 ---
 
 ## DEC-021 — Agent Wallet native plugins are optional adapters, not core architecture
@@ -240,9 +230,89 @@ Status: `DECIDED`
 
 Decision:
 
-Do not make the relaunch depend on Agent Wallet native plugins. The current plugin system is beta and plugins run in-process/unsandboxed. A future first-party MetaEdge plugin may be evaluated as a narrow least-capability adapter after the domain/execution contracts are stable.
+Do not make the relaunch depend on Agent Wallet native plugins. AI-host skills/plugins are a separate interaction layer and do not receive financial authority merely by being installed.
 
-AI-host skills/plugins (Claude/Codex/Cursor/etc.) are a separate interaction layer and do not receive financial authority merely by being installed.
+---
+
+## DEC-022 — EvidenceProfile replaces universal confidence
+
+Status: `DECIDED`
+
+Decision:
+
+Represent market/source evidence as a multidimensional `EvidenceProfile` with separate families, contradictions, unknowns, freshness, reliability, coverage and invalidators.
+
+No universal aggregate confidence score is permitted to become the primary execution gate.
+
+---
+
+## DEC-023 — V1 portfolio aggregation starts deterministic and sleeve-based
+
+Status: `DECIDED`
+
+Decision:
+
+Use a deterministic budgeted-sleeve aggregation model as the initial architecture candidate: normalize each producer to its sleeve, account for duplicate/correlated lineage, net signed contributions, then apply account-level risk constraints.
+
+Consequence:
+
+Opaque optimization and majority voting are deferred until replay/simulation shows they add value.
+
+---
+
+## DEC-024 — Source reputation is a profile, not a universal score
+
+Status: `DECIDED`
+
+Decision:
+
+Evaluate wallets/traders/strategies/agents through decomposable dimensions such as coverage, tenure, realized performance, drawdown, leverage, concentration, consistency, copyability, transparency and regime dependence.
+
+Any ranking must declare the objective being optimized.
+
+---
+
+## DEC-025 — Position truth is derived from reconciled execution evidence
+
+Status: `DECIDED`
+
+Decision:
+
+`Position` is derived canonical state from reconciled fills/events. A mutable position row is not sufficient execution truth by itself.
+
+---
+
+## DEC-026 — Authority narrows monotonically toward execution
+
+Status: `DECIDED`
+
+Decision:
+
+Human-approved scope may be narrowed by portfolio, risk, execution adapter and wallet/venue policy, but no downstream layer may expand authority beyond what the upstream layer allowed.
+
+---
+
+## DEC-027 — Future real execution separates grant, intent and operation
+
+Status: `DECIDED`
+
+Decision:
+
+Model future real execution with separate `ExecutionGrant`, `RealTradeIntent`, `RealExecutionPlan` and `ExecutionOperation` concepts.
+
+Consequence:
+
+Paper execution can remain portable at the strategy/view layer without sharing mutable authority/state with real execution.
+
+---
+
+## DEC-028 — Duplicate lineage must not masquerade as independent confirmation
+
+Status: `DECIDED`
+
+Decision:
+
+Portfolio/evidence systems must preserve source/evidence lineage so multiple views derived from the same underlying event/source are not automatically treated as independent corroboration.
 
 ---
 
@@ -250,22 +320,12 @@ AI-host skills/plugins (Claude/Codex/Cursor/etc.) are a separate interaction lay
 
 ## OPEN-001 — V1 market scope
 
-Candidate options:
-
 - crypto spot only;
 - crypto spot + paper perps.
 
-Recommendation pending journey/research review.
-
 ## OPEN-002 — V1 discovery surface order
 
-Which should ship first:
-
-- markets;
-- wallets;
-- traders;
-- strategies;
-- agents.
+Markets, wallets, traders, strategies, agents — exact launch order remains open.
 
 ## OPEN-003 — Arena timing
 
@@ -273,33 +333,24 @@ V1 vs Phase 2.
 
 ## OPEN-004 — Exploration sizing
 
-Exact `R` definitions, scout size, portfolio exploration budget, and scaling rules.
+Exact `R` definitions, scout size, portfolio exploration budget and scaling rules.
 
-## OPEN-005 — Evidence taxonomy
+## OPEN-005 — EvidenceProfile field semantics
 
-Exact canonical evidence families and how evidence profiles are represented without recreating a hidden scalar confidence gate.
+The families are drafted. Strategy-specific mappings from evidence profile → requested exposure still require examples/replay testing.
 
-## OPEN-006 — Portfolio view aggregation
+## OPEN-006 — Final portfolio aggregation formula
 
-How conflicting views combine: deterministic rules, optimizer, voting, budgeted specialist sleeves, or hybrid approach.
+Deterministic sleeve/netting is the default candidate. Exact normalization, duplicate caps, correlation handling and later optimizer comparison require replay/simulation.
 
-## OPEN-007 — Source reputation methodology
+## OPEN-007 — Source reputation presentation
 
-How wallet/trader/strategy/agent quality is evaluated without raw-PnL bias or false completeness assumptions.
+Which objective-specific ranks/filters ship first and how incompleteness warnings appear in UX.
 
 ## OPEN-008 — MetaMask future authority substrate
 
-Candidate options now include:
-
-- dedicated Agent Wallet server-wallet + Guard;
-- MetaMask Smart Account + ERC-7715 Advanced Permissions;
-- direct ERC-7710 delegation/caveats for more expressive bounded authority;
-- multiple adapters selected by user/use case.
-
-Decision should be made only after the MetaEdge `ExecutionGrant` and future Real journeys/state machines are frozen.
+Candidate implementations include Agent Wallet server-wallet + Guard, Smart Account Advanced Permissions, direct delegation, or multiple adapters.
 
 ## OPEN-009 — MetaEdge native Agent Wallet plugin
 
-Does a first-party `mm` plugin materially improve safety, integration, provenance, or UX compared with a normal Agent Wallet adapter/service?
-
-Current recommendation: **not required for V1; investigate later.**
+Current recommendation: not required for V1; investigate later.

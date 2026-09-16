@@ -324,6 +324,32 @@ Discovery, wallet/trader intelligence, strategies, evidence, risk, portfolio coo
 
 ---
 
+## DEC-035 — Approved decisions require durable repo capture
+
+Status: `DECIDED`
+
+Approved: 2026-09-16
+
+Decision:
+
+MetaEdge must not depend on conversational memory to remember product decisions. Every meaningful human-approved product, UX, architecture, authority, scope, or workflow decision must be written into the repository before later work treats it as settled.
+
+Use `docs/09-decisions/DECISION_LOG.md` as the canonical decision ledger and follow `docs/10-ops/DECISION_CAPTURE.md`.
+
+When a decision changes product direction or phase, synchronize:
+
+1. the decision ledger;
+2. the authoritative product artifact;
+3. `docs/CURRENT_STATE.md` and/or `docs/10-ops/WORKBOARD.md`.
+
+Do not erase revised decisions. Preserve the history and mark old decisions `SUPERSEDED` when replaced.
+
+Consequence:
+
+Every phase should make it possible to reconstruct what is decided, what remains open, which artifact has authority, and what work is permitted next without relying on chat history.
+
+---
+
 # Open decisions
 
 ## OPEN-001 — V1 market scope

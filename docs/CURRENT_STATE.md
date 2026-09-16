@@ -1,13 +1,13 @@
 # Current State — MetaEdge Relaunch
 
-Updated: 2026-09-15
+Updated: 2026-09-16
 
 ## Workspace
 
 - Repository: `Devpen787/metaedge`
 - Branch: `relaunch/product-foundation`
 - Base: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
-- Active phase: **P2 — Human + Agent Jobs-to-be-Done**
+- Active phase: **P3 — Master Experience Loop**
 - Implementation: **NOT AUTHORIZED**
 - Real execution: **NOT AUTHORIZED**
 - Deployment changes: **NOT AUTHORIZED**
@@ -18,23 +18,17 @@ MetaEdge follows a product/UX-first sequence:
 
 **Wedge → User/JTBD → Master Experience Loop → Journey Registry → UX Laws → Information Architecture → Detailed Journeys → UX Breaker → Golden Journeys → Technical Derivation → Migration → Build/QA.**
 
-See `docs/01-product/PRODUCT_UX_FOUNDATION.md`.
+See `docs/01-product/PRODUCT_UX_FOUNDATION.md` and `docs/10-ops/WORKBOARD.md`.
 
 ## P1 — APPROVED
-
-`docs/01-product/V1_PRODUCT_WEDGE.md` is now product authority.
 
 Approved wedge:
 
 > **MetaEdge is an agent-native trading workspace for wallet-capable agents that can trade fast, smart, and disciplined.**
 
-Approved primary human operator:
+Approved primary operator:
 
-> **Active crypto trader / agent operator** who wants agents to monitor and trade more continuously than they can while remaining bounded, inspectable, and progressively trusted.
-
-Approved product promise:
-
-> **Build and operate wallet-capable trading agents that can trade fast, smart, and disciplined.**
+> **Active crypto trader / agent operator.**
 
 Approved first wow moment:
 
@@ -42,126 +36,133 @@ Approved first wow moment:
 
 The operator must not become the agent's manual execution loop.
 
-## Approved human vs agent split
+## P2 — APPROVED
 
-### Human operator
+`docs/01-product/USER_JOBS.md` is now product authority.
 
-Owns:
+### Human role
 
-- objectives / mandate;
-- paper capital and future wallet authority;
+The human remains in the loop by owning:
+
+- mission / objective;
+- wallet or paper capital;
 - allowed markets;
-- risk and autonomy boundaries;
-- supervision and intervention;
-- pause/stop/constrain/promote/retire decisions;
+- adjustable risk and authority guardrails;
+- supervision;
+- intervention;
+- pause/stop/revoke/promotion decisions;
 - judgment of whether the agent deserves more trust.
 
-### Trading agent
+**Human-in-the-loop does not mean human-in-every-click.**
 
-Owns, inside the approved envelope:
+### Agent role
 
-- sensing relevant markets/sources;
-- reasoning under uncertainty;
-- deciding what action/exposure is appropriate;
-- taking bounded paper action;
-- managing positions continuously;
-- reconciling operational ambiguity;
-- explaining material decisions;
-- learning from outcomes and missed opportunities without silently expanding authority.
+Inside explicitly granted authority, the agent does the heavy lifting:
 
-## Current exact task — P2
+- senses relevant markets/sources;
+- reasons under uncertainty;
+- decides;
+- executes when allowed;
+- manages positions continuously;
+- protects capital and exits when the trade stops deserving its risk;
+- reconciles ambiguity;
+- explains material decisions;
+- learns without silently widening authority.
 
-Review and approve/revise:
+### Approved operator attention model
 
-`docs/01-product/USER_JOBS.md`
+```text
+ordinary in-envelope action
+→ agent acts + records
 
-P2 now models MetaEdge as a **two-actor product**:
+material decision / unusual risk / degraded capability
+→ surface / notify
 
-1. human operator;
-2. wallet-capable trading agent.
+outside authority / authority expansion / later real-money escalation
+→ explicit human action under the authority model then in force
+```
 
-The key P2 question is not which screens exist. It is what each actor is trying to accomplish, what the relationship must make possible, and what the operator needs to trust the agent without babysitting it.
+The operator should normally see **state + material decisions + exceptions**, not every internal action.
 
-## P2 working priorities
+### Approved competence / trust model
 
-Current candidate primary jobs:
+Trust is not PnL alone.
 
-1. Operator delegates a clear mission with wallet/capital and boundaries.
-2. Agent senses, decides, and acts quickly inside that mandate.
-3. Agent manages exposure continuously while keeping the operator appropriately informed.
-4. Operator can intervene immediately when needed.
-5. Operator reviews competence and decides whether trust/authority should change.
+The operator should be able to judge the agent across:
 
-Supporting jobs such as source discovery, strategy adaptation, backtesting, copying, and agent creation must earn their place by supporting this core loop rather than becoming separate products.
+- quality of reasoning at decision time;
+- opportunity capture;
+- risk taken relative to potential reward;
+- capital preserved / downside avoided;
+- position management;
+- recognition of deterioration;
+- exit/reduction quality;
+- discipline/process adherence;
+- speed/timeliness;
+- execution quality;
+- missed opportunities / over-conservatism;
+- realized outcomes over time.
 
-## P2 decisions still open
+A losing trade can still be well judged. A profitable trade can still be reckless. Preserving capital can be a successful outcome. Failing to take justified bounded risk can also be a process failure.
 
-1. Is the operator's central JTBD **delegation** rather than discovery? Current recommendation: yes.
-2. How much should the operator see while an agent runs? Current recommendation: state + material decisions + exceptions, not every internal action.
-3. What deserves interruption? Working principle: ordinary in-envelope paper action is autonomous; material/unusual changes notify; authority boundary or future-real escalation requires explicit human action.
-4. What evidence of competence must the operator understand before trust can increase?
-5. Is agent creation/improvement a primary first-session job or a supporting/next-loop job? Current recommendation: supporting; first prove a strong starter agent.
+**Discipline does not mean conservatism.** Sometimes the correct behavior is to take meaningful bounded risk because the reward justifies it.
 
-## Product/UX operating artifacts
+## Current exact task — P3
 
-### Approved / active
+Rewrite and review:
 
-- `docs/01-product/PRODUCT_UX_FOUNDATION.md`
-- `docs/01-product/V1_PRODUCT_WEDGE.md` — **P1 APPROVED**
-- `docs/01-product/USER_JOBS.md` — **P2 ACTIVE REVIEW**
-- `docs/10-ops/WORKBOARD.md`
-- `docs/10-ops/PRODUCT_UX_WORKFLOW.md`
+`docs/01-product/MASTER_EXPERIENCE_LOOP.md`
 
-### Draft inputs for upcoming gates
+P3 must define the repeatable end-to-end relationship between the operator and wallet-capable agent before we partition that loop into journeys.
 
-- `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
-- `docs/01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`
-- `docs/02-journeys/JOURNEY_REGISTRY.md`
-- `docs/02-journeys/JOURNEY_TEMPLATE.md`
+It should answer:
 
-Those upcoming drafts must be revised around the approved wallet-agent wedge before their gates open.
+1. how an operator gets an agent from unconfigured to operating;
+2. how the agent runs autonomously inside its guardrails;
+3. how material decisions/exceptions return to the operator;
+4. how pause/intervention/guardrail changes fit without breaking continuity;
+5. how review changes trust/authority;
+6. where the loop restarts.
+
+## Product authority
+
+Current authority order:
+
+1. Product Constitution.
+2. Approved P1 wedge and P2 Human + Agent Jobs.
+3. P3 once approved.
+4. Golden journeys.
+5. Approved UX laws/design principles/information architecture.
+6. Approved product capability contracts.
+7. Technical/domain/security derivations.
+8. Architecture/migration decisions.
+9. Research/archaeology/historical implementation as evidence.
 
 ## Journey status
 
 No journey is Golden.
 
-Existing J01–J14 files remain **INVENTORY**: useful requirements/source material, not approved product journeys.
+Existing J01–J14 remain **INVENTORY** only. They may inform later work but are not approved UX truth.
 
-Future journey work must model the two-actor system explicitly:
+## Open items carried forward
 
-- **human operator** — mandate, authority, supervision, intervention, review;
-- **trading agent** — sensing, decision, action, management, reconciliation, learning.
+These remain explicitly unresolved:
 
-## Product authority
+- exact agent creation/improvement timing;
+- V1 market scope: spot vs spot + paper perps;
+- exact notification thresholds/channels;
+- quantitative competence metrics / authority-promotion thresholds;
+- discovery surface order;
+- Arena timing;
+- future wallet-authority implementation substrate.
 
-1. Product Constitution.
-2. Human-approved P1–P3 foundation artifacts.
-3. Golden journeys.
-4. Approved UX laws/design principles/information architecture.
-5. Approved product capability contracts.
-6. Technical/domain/security derivations.
-7. Architecture/migration decisions.
-8. Research/archaeology/historical implementation as evidence.
-
-## Preserved research/evidence
-
-Still valuable:
-
-- historical MetaEdge archaeology and failure lessons;
-- Hummingbot/Condor, LEAN, Freqtrade, NautilusTrader, Jesse, vn.py and copy-system research;
-- Colosseum/agent-project research;
-- current MetaMask Agent Wallet / permissions / plugins research;
-- Trading in the Zone product mapping;
-- copy/source model;
-- paper/real separation principles;
-- anti-paralysis lessons.
+Do not silently resolve them from technical convenience.
 
 ## Parked technical hypotheses
 
-Paused as product authority until P10:
+Preserved but paused until P10:
 
-- canonical domain model;
-- authority/state machines;
+- canonical domain/state models;
 - EvidenceProfile field schema;
 - portfolio aggregation formula;
 - source-reputation technical model;
@@ -169,26 +170,27 @@ Paused as product authority until P10:
 - scenario/contract replay results;
 - production seam and migration maps.
 
-They may be consulted for feasibility or known constraints, but cannot dictate P2–P9 UX decisions.
+## Decision capture rule
+
+`docs/10-ops/DECISION_CAPTURE.md` is an active operating rule.
+
+Approved decisions must be written into the repo and synchronized across the decision ledger, authoritative product artifact, and control state before later work treats them as settled.
 
 ## Paused work
 
-Do not continue yet:
+Do not continue until later gates:
 
 - Contract Replay 02;
-- further portfolio-formula freeze;
+- portfolio-formula freeze;
 - implementation migration planning;
 - new application code;
 - technical screen derivation from domain objects.
 
-## Next step after P2
+## Next step after P3
 
-When P2 is approved:
+After explicit human approval of the Master Experience Loop:
 
-1. update this file and `WORKBOARD.md`;
-2. promote/rewrite P3 `MASTER_EXPERIENCE_LOOP.md` around the human-operator + trading-agent relationship;
-3. do **not** jump to information architecture, screens, or implementation.
-
-## Historical truth
-
-Pre-relaunch branches, V3/V5 research, old handoffs and the separate `meta-edge` repository remain reference evidence only unless explicitly adopted through the current Product/UX → Golden → Technical Derivation process.
+1. record the decision;
+2. update `CURRENT_STATE.md` and `WORKBOARD.md`;
+3. activate P4 Journey Registry;
+4. do not jump directly to navigation, screen design or technical architecture.

@@ -6,7 +6,7 @@ Updated: 2026-09-16
 
 **P4 — Journey Registry**
 
-Current task: review and re-partition `docs/02-journeys/JOURNEY_REGISTRY.md` around the approved operator + wallet-capable trading-agent loops.
+Current task: review `docs/02-journeys/P4_JOURNEY_PARTITION_PROPOSAL.md` one decision at a time, then promote approved boundaries into `JOURNEY_REGISTRY.md`.
 
 ## Gate board
 
@@ -16,7 +16,7 @@ Current task: review and re-partition `docs/02-journeys/JOURNEY_REGISTRY.md` aro
 | P1 V1 Wedge + Primary User | `V1_PRODUCT_WEDGE.md` | **APPROVED** | approved 2026-09-15 |
 | P2 Human + Agent Jobs / JTBD | `USER_JOBS.md` | **APPROVED** | approved 2026-09-16 |
 | P3 Master Experience Loop | `MASTER_EXPERIENCE_LOOP.md` | **APPROVED** | approved 2026-09-16 |
-| P4 Journey Registry | `JOURNEY_REGISTRY.md` | **ACTIVE REVIEW** | journey inventory/partition + connection map approved |
+| P4 Journey Registry | `JOURNEY_REGISTRY.md` + `P4_JOURNEY_PARTITION_PROPOSAL.md` | **ACTIVE REVIEW** | journey inventory/partition + connection map approved |
 | P5 UX Laws / Design Principles | `UX_LAWS_AND_DESIGN_PRINCIPLES.md` | WORKING DRAFT / BLOCKED | P4 approved + breaker criteria approved |
 | P6 Information Architecture | future artifact | BLOCKED | P1–P5 approved |
 | P7 Detailed Journey Specs | `JOURNEY_TEMPLATE.md` + journey docs | BLOCKED | P6 ready; legacy J01–J14 remain inventory |
@@ -58,18 +58,38 @@ Approved agent operating loop:
 
 The product connects the loops across three timescales: fast agent/market operation, medium operator supervision, and slow trust/authority evolution.
 
-## What is active now — P4
+## P4 candidate partition under review
 
-P4 must answer, in product language:
+The current proposal recommends six **core operator journeys**:
 
-1. What are the actual operator journeys implied by the approved two-loop model?
-2. Which parts of the agent operating loop are user journeys versus behavior inside another journey?
-3. Where does the first-session experience begin and end?
-4. What are the valid entry, exit, return and intervention paths?
-5. Which old J01–J14 concepts remain useful, which should merge, and which should be deferred?
-6. What is the first complete end-to-end journey candidate that can later become Golden?
-7. Does every approved P1/P2 job have a journey home?
-8. Does the registry contain dead ends or orphaned states?
+1. **ME-J01 — Put an Agent to Work** — Delegate + Bound + Launch as one user job.
+2. **ME-J02 — Supervise Running Agents** — normal returning operating state.
+3. **ME-J03 — Understand a Material Agent Decision** — what changed, what the agent did, why, and what happens next.
+4. **ME-J04 — Intervene / Take Control** — pause/stop/tighten/change scope and intentionally handle existing exposure.
+5. **ME-J05 — Review Agent Competence** — reasoning, risk/reward, preservation, management, exits and outcome over event/period views.
+6. **ME-J06 — Evolve the Agent / Authority** — keep/tighten/widen/change/pause/retire and restart the loop.
+
+Supporting candidate branches:
+
+- S1 Research a Source / Market / Strategy Input;
+- S2 Validate an Agent / Strategy Before More Authority;
+- S3 Create / Adapt an Agent.
+
+None of these boundaries are approved merely because they are proposed.
+
+## What is active now — exact review order
+
+Review P4 one decision at a time:
+
+1. Should **Delegate + Bound + Launch** be one journey: **Put an Agent to Work**?
+2. Do the six proposed core journeys match the operator mental model?
+3. Is **Supervise Running Agents** the default returning path?
+4. Is **Understand a Material Agent Decision** distinct enough to deserve its own journey?
+5. Is **Intervene / Take Control** the right control journey, and later what should stop/pause mean for open exposure?
+6. Should competence review remain one journey with event + periodic entry modes?
+7. Is **Evolve Agent / Authority** the correct trust/lifecycle journey?
+8. Should S1/S2/S3 remain supporting branches or join the V1 spine?
+9. Which journey should become the first detailed/Golden candidate later? Current recommendation: ME-J01.
 
 ## P4 anti-drift rule
 

@@ -1,53 +1,59 @@
 # MetaEdge Relaunch — Start Here
 
-Status: **Product & UX Foundation — P1 active**  
+Status: **Product & UX Foundation — P4 active**  
 Branch: `relaunch/product-foundation`  
 Base checkpoint: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
 
-## What changed
+## What MetaEdge is now optimizing for
 
-The relaunch is now explicitly **product/UX-first**.
+MetaEdge is an **agent-native trading workspace for wallet-capable agents that can trade fast, smart, and disciplined**.
 
-We have enough archaeology and technical evidence to inform the product, but the next source of truth is not another state machine or contract replay. It is the user experience.
+The active human is an **active crypto trader / agent operator**. The human defines mission, wallet/capital, market scope, risk and authority guardrails. The agent performs the operating work inside those boundaries.
 
-The active progression is:
+V1 remains paper-first, but wallet identity, assigned capital and bounded authority are first-class concepts from the beginning.
+
+## Approved experience model
+
+### Operator control / trust loop
+
+**Delegate → Bound → Launch → Supervise / Intervene → Review → Evolve → Repeat**
+
+### Agent operating loop
+
+**Sense → Understand → Decide → Act → Manage → Reconcile → Learn → Repeat**
+
+Human-in-the-loop does **not** mean human-in-every-click. Ordinary in-envelope action may proceed autonomously; the operator keeps sovereign control through guardrails, supervision, intervention, pause/stop/revoke and authority evolution.
+
+Agent quality is not PnL alone. Sound reasoning, opportunity capture, risk/reward, capital preservation, management, exits, timing, discipline, execution and outcomes all matter.
+
+## Product/UX-first progression
 
 ```text
-V1 Wedge + Primary User
-→ User Jobs / JTBD
-→ Master Experience Loop
-→ Journey Registry
-→ UX Laws / Design Principles
-→ Information Architecture
-→ Detailed Journeys
-→ UX Breaker
-→ Golden Journeys
-→ Technical Derivation
-→ Legacy Migration
-→ Build / QA
+P1 V1 Wedge + Primary User              APPROVED
+→ P2 Human + Agent Jobs / JTBD          APPROVED
+→ P3 Master Experience Loop             APPROVED
+→ P4 Journey Registry                   ACTIVE
+→ P5 UX Laws / Design Principles        BLOCKED
+→ P6 Information Architecture           BLOCKED
+→ P7 Detailed Journeys                  BLOCKED
+→ P8 UX Breaker                         BLOCKED
+→ P9 Golden Journeys                    BLOCKED
+→ P10 Technical Derivation              PAUSED
+→ P11 Legacy Migration                  PAUSED
+→ P12 Build / QA                        NOT AUTHORIZED
 ```
 
 ## Current active task
 
-**P1 — review and approve `docs/01-product/V1_PRODUCT_WEDGE.md`.**
+**P4 — review and re-partition `docs/02-journeys/JOURNEY_REGISTRY.md`.**
 
-Do not jump ahead because later-stage drafts already exist.
+The goal is to turn the approved operator/agent loops into coherent user journeys, entry/exit paths and connections before designing navigation or screens.
 
-## Working product thesis
-
-MetaEdge should help an active crypto participant turn possible edges from markets, wallets, traders, strategies, agents or other sources into a disciplined loop of understanding, safe testing, bounded participation, management and learning.
-
-Working user loop:
-
-**Notice → Understand → Choose → Test/Participate → Manage → Review → Evolve**
-
-The older product cycle remains useful:
-
-**Discover → Understand → Test → Act → Manage → Learn → Scale**
+Do not preserve the old J01–J14 split just because those files exist.
 
 ## Current implementation rule
 
-This branch remains **documentation/product-definition only** until a human explicitly approves implementation.
+This branch remains **documentation/product-definition only** until a human explicitly approves implementation at a later gate.
 
 Do not refactor product code, change execution behavior, enable real trading, deploy, sign transactions, move funds or delete legacy implementation.
 
@@ -67,29 +73,30 @@ Do not refactor product code, change execution behavior, enable real trading, de
 For the current phase:
 
 - `docs/CURRENT_STATE.md`
-- `docs/01-product/PRODUCT_UX_FOUNDATION.md`
 - `docs/01-product/V1_PRODUCT_WEDGE.md`
-- `docs/10-ops/WORKBOARD.md`
-- `docs/10-ops/PRODUCT_UX_WORKFLOW.md`
-
-Useful working drafts for the next gates:
-
 - `docs/01-product/USER_JOBS.md`
 - `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
-- `docs/01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`
 - `docs/02-journeys/JOURNEY_REGISTRY.md`
+- `docs/10-ops/WORKBOARD.md`
+- `docs/10-ops/DECISION_CAPTURE.md`
+
+Useful but blocked for later gates:
+
+- `docs/01-product/UX_LAWS_AND_DESIGN_PRINCIPLES.md`
+- existing detailed J01–J14 drafts;
+- technical/domain/security/replay/migration docs.
 
 ## What to do with existing J01–J14
 
-Treat them as **journey inventory and requirements research**.
+Treat them as **legacy journey inventory and requirements research**.
 
-They contain valuable thinking, but they were drafted too close to domain/engineering concerns to count as approved UX journeys. They must be rewritten/reviewed using `docs/02-journeys/JOURNEY_TEMPLATE.md` before promotion.
+They contain valuable thinking, but they were drafted too close to domain/engineering concerns and before the wallet-agent wedge was fully locked. P4 may merge, split, rename, defer or replace their journey boundaries.
 
 ## What to do with technical work already produced
 
 Preserve it.
 
-Domain models, state machines, EvidenceProfile, portfolio aggregation, security matrices, contract replays and migration maps are now **technical hypotheses / constraints parked for P10+**.
+Domain models, state machines, EvidenceProfile, portfolio aggregation, security matrices, contract replays and migration maps are **technical hypotheses / constraints parked for P10+**.
 
 They may inform feasibility and prevent us repeating known failures, but they do not dictate the user experience.
 

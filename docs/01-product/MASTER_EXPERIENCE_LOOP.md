@@ -1,10 +1,10 @@
 # Master Experience Loop
 
-Status: **P3 ACTIVE REVIEW — current product gate**
+Status: **P3 APPROVED — product authority**
 
-Updated: 2026-09-16
+Approved: 2026-09-16
 
-P1 and P2 are approved. This document now defines the candidate repeatable experience between the **human operator** and the **wallet-capable trading agent**.
+P1 and P2 are approved. This document defines the repeatable experience between the **human operator** and the **wallet-capable trading agent**.
 
 This is a product/UX loop, not a backend state machine.
 
@@ -14,7 +14,7 @@ MetaEdge should feel like operating a capable trading agent, not like manually t
 
 There are two connected loops running at different speeds:
 
-### Operator control loop — slower
+### Operator control / trust loop — slower
 
 ```text
 DELEGATE
@@ -66,11 +66,7 @@ Operator questions:
 - What markets/source types matter?
 - What kind of behavior do I expect from it?
 
-Working V1 bias:
-
-The first experience should probably start from a strong **MetaEdge starter agent** rather than forcing the operator to engineer a strategy/agent from scratch.
-
-The operator may later adapt/create agents, but this remains an open timing decision.
+V1 should optimize for getting a capable agent to work quickly rather than requiring the operator to engineer a full strategy stack before seeing value. Exact starter-agent versus create/adapt entry mechanics remain a later journey decision.
 
 Success state:
 
@@ -206,7 +202,7 @@ The operator can:
 
 Intervention is a branch of the operating loop, not the normal path for every trade.
 
-The UX must make clear what happens to existing positions when the operator pauses or stops an agent.
+The UX must make clear what happens to existing positions when the operator pauses or stops an agent. Exact pause/stop exposure semantics remain a later journey/UX-law decision because “stop new actions,” “continue managing,” and “flatten” are financially different actions.
 
 Success state:
 
@@ -276,7 +272,7 @@ Success state:
 
 # Three product timescales
 
-The UX should respect three different speeds:
+The UX should respect three different speeds.
 
 ## Fast — market/agent time
 
@@ -309,13 +305,11 @@ Days/weeks/many decisions:
 - authority progression;
 - retirement/promotion.
 
-This separation is important: the product should not evaluate long-term agent trust from one fast-loop outcome.
+The product must not evaluate long-term agent trust from one fast-loop outcome.
 
 ---
 
-# Master loop candidate
-
-The working P3 expression is:
+# Approved master loop
 
 ```text
 OPERATOR
@@ -339,45 +333,41 @@ Short form:
 
 > **Delegate → Bound → Launch → Operate → Supervise/Intervene → Review → Evolve → Repeat**
 
+## Approved interpretation
+
+- **Delegate** defines the job.
+- **Bound** defines money, scope, risk and authority.
+- **Launch** deliberately puts the agent on duty.
+- **Operate** means the agent does the heavy lifting without turning the operator into its approval loop.
+- **Supervise** provides observability, not babysitting.
+- **Intervene** preserves immediate human control.
+- **Review** judges reasoning, risk/reward, capital preservation, management, timing, exits, execution and outcomes rather than PnL alone.
+- **Evolve** changes trust/authority deliberately and progressively.
+
+Human-in-the-loop means the human remains the authority owner and can change or revoke guardrails; it does not mean manual approval of every ordinary in-envelope action.
+
 ---
 
 # What P3 intentionally does not decide
 
-P3 does not yet define:
+P3 does not define:
 
 - exact screens/navigation;
 - exact journey partition;
+- whether Delegate and Bound are one screen/flow or separate UX moments;
+- exact default home surface;
 - exact market scope;
 - exact alert thresholds/channels;
+- exact review cadence/presentation;
 - exact competence score/metrics;
 - exact risk numbers;
+- exact pause/stop handling of existing exposure;
 - technical state machines;
 - real-wallet implementation;
 - strategy logic.
 
-Those remain later-gate work.
+These remain later-gate work and must not be silently resolved from architecture convenience.
 
----
+## P3 exit result
 
-# P3 questions for human review
-
-Before activating P4 Journey Registry, confirm or revise:
-
-1. Does **Delegate → Bound → Launch → Operate → Supervise/Intervene → Review → Evolve** match how you imagine using MetaEdge?
-2. Should **Delegate** and **Bound** feel like one setup flow or two clearly distinct moments?
-3. After launch, should the default home experience center first on **agents** (who is working / health / exposure / attention needed) rather than a market dashboard?
-4. Is review mainly periodic, event-triggered, or both? Working recommendation: **both** — immediate post-material-event review plus broader performance/discipline review over time.
-5. When an agent is stopped, should “stop” mean **stop new actions but continue managing existing exposure**, **flatten exposure**, or should the operator explicitly choose? Working recommendation: the operator must explicitly choose because those actions are financially different.
-
-## P3 exit criterion
-
-P3 becomes approved when the human owner agrees on:
-
-- the two connected loops;
-- the end-to-end operator loop;
-- how autonomous operation reconnects to human attention;
-- the role of intervention;
-- review → authority evolution;
-- the loop's main entry/restart points.
-
-Only then activate P4 Journey Registry.
+**APPROVED.** P4 Journey Registry is the next active gate. P4 must partition this approved two-loop model into coherent user journeys, connections and entry/exit paths without reverting to the legacy J01–J14 structure merely because those files already exist.

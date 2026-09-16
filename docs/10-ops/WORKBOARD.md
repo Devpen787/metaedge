@@ -4,9 +4,9 @@ Updated: 2026-09-16
 
 ## Current phase
 
-**P3 — Master Experience Loop**
+**P4 — Journey Registry**
 
-Current task: rewrite and review `docs/01-product/MASTER_EXPERIENCE_LOOP.md` around the approved operator + wallet-capable trading-agent relationship.
+Current task: review and re-partition `docs/02-journeys/JOURNEY_REGISTRY.md` around the approved operator + wallet-capable trading-agent loops.
 
 ## Gate board
 
@@ -15,18 +15,18 @@ Current task: rewrite and review `docs/01-product/MASTER_EXPERIENCE_LOOP.md` aro
 | P0 Product/UX OS | `PRODUCT_UX_FOUNDATION.md`, workflow, workboard | IN PLACE | operating method documented |
 | P1 V1 Wedge + Primary User | `V1_PRODUCT_WEDGE.md` | **APPROVED** | approved 2026-09-15 |
 | P2 Human + Agent Jobs / JTBD | `USER_JOBS.md` | **APPROVED** | approved 2026-09-16 |
-| P3 Master Experience Loop | `MASTER_EXPERIENCE_LOOP.md` | **ACTIVE REVIEW** | human approval of end-to-end operator/agent loop |
-| P4 Journey Registry | `JOURNEY_REGISTRY.md` | INVENTORY / BLOCKED | P1–P3 approved + connections reviewed |
-| P5 UX Laws / Design Principles | `UX_LAWS_AND_DESIGN_PRINCIPLES.md` | WORKING DRAFT / BLOCKED | P1–P4 approved + breaker criteria approved |
+| P3 Master Experience Loop | `MASTER_EXPERIENCE_LOOP.md` | **APPROVED** | approved 2026-09-16 |
+| P4 Journey Registry | `JOURNEY_REGISTRY.md` | **ACTIVE REVIEW** | journey inventory/partition + connection map approved |
+| P5 UX Laws / Design Principles | `UX_LAWS_AND_DESIGN_PRINCIPLES.md` | WORKING DRAFT / BLOCKED | P4 approved + breaker criteria approved |
 | P6 Information Architecture | future artifact | BLOCKED | P1–P5 approved |
-| P7 Detailed Journey Specs | `JOURNEY_TEMPLATE.md` + journey docs | BLOCKED | P6 ready; existing J01–J14 remain inventory |
+| P7 Detailed Journey Specs | `JOURNEY_TEMPLATE.md` + journey docs | BLOCKED | P6 ready; legacy J01–J14 remain inventory |
 | P8 UX Breaker / Connection Review | review artifacts | BLOCKED | at least one P7 journey in PRODUCT_REVIEW |
 | P9 Golden Journeys | Golden registry | BLOCKED | breaker resolved + human approval |
 | P10 Technical Derivation | domain/state/security | PAUSED / HYPOTHESIS ONLY | relevant Golden journey exists |
 | P11 Legacy Migration | seam map | PAUSED / HYPOTHESIS ONLY | P10 derived architecture ready |
 | P12 Build + QA | implementation | NOT AUTHORIZED | explicit implementation approval |
 
-## Approved foundation
+## Approved P1–P3 foundation
 
 ### P1 — Wedge
 
@@ -36,55 +36,71 @@ Primary operator: **active crypto trader / agent operator**.
 
 ### P2 — Human + Agent Jobs
 
-Approved operating model:
-
 ```text
 human defines mission + wallet/capital + adjustable guardrails
-→ agent does the heavy lifting
-→ agent may execute inside granted authority
+→ agent does the heavy lifting and may execute inside authority
 → operator sees state + material decisions + exceptions
 → operator can intervene / tighten / widen / pause / revoke
 → trust evolves from reasoning + risk/reward + preservation + management + outcomes
 ```
 
-Approved principle:
+**Human-in-the-loop does not mean human-in-every-click.**
 
-> **Human-in-the-loop does not mean human-in-every-click.**
+### P3 — Master Experience
 
-Approved trust principle:
+Approved human/trust loop:
 
-> **A competent agent is judged by sound reasoning, opportunity capture, appropriate risk-taking, capital preservation, position management, exits and realized outcomes — not PnL alone.**
+**Delegate → Bound → Launch → Supervise / Intervene → Review → Evolve → Repeat**
 
-## What is active now
+Approved agent operating loop:
 
-Only work needed to settle the **Master Experience Loop** may create new canonical product decisions.
+**Sense → Understand → Decide → Act → Manage → Reconcile → Learn → Repeat**
 
-P3 should answer, in user/product terms:
+The product connects the loops across three timescales: fast agent/market operation, medium operator supervision, and slow trust/authority evolution.
 
-1. How does an operator get an agent from unconfigured to operating?
-2. What does the agent's autonomous operating cycle look like from the operator's perspective?
-3. How do material decisions and exceptions re-enter the human loop?
-4. How does intervention change the loop without destroying continuity?
-5. How does review lead to unchanged, tighter or wider authority?
-6. Where does the loop restart?
-7. Which steps are truly core versus supporting branches?
+## What is active now — P4
 
-## P2 open items carried forward
+P4 must answer, in product language:
 
-These remain open and must not be silently invented:
+1. What are the actual operator journeys implied by the approved two-loop model?
+2. Which parts of the agent operating loop are user journeys versus behavior inside another journey?
+3. Where does the first-session experience begin and end?
+4. What are the valid entry, exit, return and intervention paths?
+5. Which old J01–J14 concepts remain useful, which should merge, and which should be deferred?
+6. What is the first complete end-to-end journey candidate that can later become Golden?
+7. Does every approved P1/P2 job have a journey home?
+8. Does the registry contain dead ends or orphaned states?
 
-- exact agent creation/improvement timing;
-- exact V1 market scope: spot vs spot + paper perps;
-- exact notification thresholds/channels;
-- quantitative competence metrics and authority-promotion thresholds.
+## P4 anti-drift rule
 
-They may be resolved only when the relevant later journey/UX work provides enough context.
+Do **not** preserve J01–J14 merely because files already exist.
+
+Do **not** design screens/navigation yet.
+
+Do **not** derive technical state machines yet.
+
+P4 is about the experience map and journey boundaries.
+
+## Open items carried forward
+
+Still unresolved unless P4 provides enough user-context to decide them:
+
+- agent creation/improvement timing;
+- spot vs spot + paper perps;
+- notification thresholds/channels;
+- quantitative competence metrics / authority-promotion thresholds;
+- exact pause/stop handling of existing exposure;
+- operator home/command-center emphasis;
+- exact review cadence/presentation;
+- discovery/source intelligence placement;
+- Arena timing;
+- future wallet-authority implementation substrate.
 
 ## Parked but preserved
 
-The following are useful inputs, not current authority:
+The following remain useful inputs, not current authority:
 
-- J01–J14 technical/detailed drafts;
+- legacy J01–J14 detailed drafts;
 - domain/state models;
 - EvidenceProfile implementation shape;
 - portfolio aggregation formula;
@@ -98,14 +114,14 @@ They return at P10/P11 after Golden journeys exist.
 
 Follow `docs/10-ops/DECISION_CAPTURE.md`.
 
-Any approved P3 decision must be synchronized across:
+Any approved P4 decision must be synchronized across:
 
 1. `docs/09-decisions/DECISION_LOG.md`;
-2. `MASTER_EXPERIENCE_LOOP.md`;
+2. `docs/02-journeys/JOURNEY_REGISTRY.md`;
 3. this workboard and `docs/CURRENT_STATE.md` when phase/control state changes.
 
 ## Next exact handoff
 
-After P3 approval:
+After P4 approval:
 
-> Promote `MASTER_EXPERIENCE_LOOP.md` to approved, update control state, then activate P4 Journey Registry. Do not jump to navigation, screens, architecture or implementation.
+> Promote the journey registry/connection map to approved, update control state, then activate P5 UX Laws / Design Principles. Do not jump to navigation, detailed screens, architecture or implementation.

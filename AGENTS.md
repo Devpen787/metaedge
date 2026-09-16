@@ -10,14 +10,15 @@ Read, in order:
 2. `docs/CURRENT_STATE.md`
 3. `docs/01-product/PRODUCT_UX_FOUNDATION.md`
 4. `docs/10-ops/WORKBOARD.md`
+5. `docs/10-ops/DECISION_CAPTURE.md`
 
 Then read only the artifacts relevant to the active gate.
 
 ## Current active gate
 
-**P1 — V1 Wedge + Primary User**
+**P2 — Human + Agent Jobs-to-be-Done**
 
-Do not advance later phases merely because supporting drafts already exist.
+P1 is approved. Do not advance P3 or later phases merely because supporting drafts already exist.
 
 ## Authority order
 
@@ -52,6 +53,20 @@ Follow:
 **Research/Evidence → Product/UX Spec → UX Breaker → Human Approval → Golden → Technical Derivation → Build → QA/Breaker**
 
 The operating method is in `docs/10-ops/PRODUCT_UX_WORKFLOW.md`.
+
+## Decision capture is mandatory
+
+Follow `docs/10-ops/DECISION_CAPTURE.md`.
+
+Every meaningful human-approved product/UX/architecture/authority/scope decision must be persisted in `docs/09-decisions/DECISION_LOG.md` before later work treats it as settled.
+
+When a decision changes direction or phase, synchronize:
+
+1. the decision ledger;
+2. the authoritative product artifact;
+3. `CURRENT_STATE.md` and/or `WORKBOARD.md`.
+
+Do not erase superseded decisions. Preserve history and mark replacements explicitly.
 
 ## Journey rules
 

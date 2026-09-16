@@ -7,7 +7,7 @@ Updated: 2026-09-16
 - Repository: `Devpen787/metaedge`
 - Branch: `relaunch/product-foundation`
 - Base: `codex/metaedge-v5-paper-checkpoint` @ `99246ada41bd0979ef7aaa603a730b09c30572f1`
-- Active phase: **P3 — Master Experience Loop**
+- Active phase: **P4 — Journey Registry**
 - Implementation: **NOT AUTHORIZED**
 - Real execution: **NOT AUTHORIZED**
 - Deployment changes: **NOT AUTHORIZED**
@@ -38,7 +38,7 @@ The operator must not become the agent's manual execution loop.
 
 ## P2 — APPROVED
 
-`docs/01-product/USER_JOBS.md` is now product authority.
+`docs/01-product/USER_JOBS.md` is product authority.
 
 ### Human role
 
@@ -69,7 +69,7 @@ Inside explicitly granted authority, the agent does the heavy lifting:
 - explains material decisions;
 - learns without silently widening authority.
 
-### Approved operator attention model
+### Operator attention model
 
 ```text
 ordinary in-envelope action
@@ -84,65 +84,85 @@ outside authority / authority expansion / later real-money escalation
 
 The operator should normally see **state + material decisions + exceptions**, not every internal action.
 
-### Approved competence / trust model
+### Competence / trust model
 
-Trust is not PnL alone.
+Trust is not PnL alone. The operator judges reasoning, opportunity capture, risk taken relative to reward, capital preserved, position management, recognition of deterioration, exit/reduction quality, discipline, speed, execution quality, misses/over-conservatism and realized outcomes over time.
 
-The operator should be able to judge the agent across:
+A losing trade can be well judged. A profitable trade can be reckless. Preserving capital can be success. Failing to take justified bounded risk can be a process failure.
 
-- quality of reasoning at decision time;
-- opportunity capture;
-- risk taken relative to potential reward;
-- capital preserved / downside avoided;
-- position management;
-- recognition of deterioration;
-- exit/reduction quality;
-- discipline/process adherence;
-- speed/timeliness;
-- execution quality;
-- missed opportunities / over-conservatism;
-- realized outcomes over time.
+**Discipline does not mean conservatism.** Sometimes the right action is to take meaningful bounded risk because the potential reward warrants it.
 
-A losing trade can still be well judged. A profitable trade can still be reckless. Preserving capital can be a successful outcome. Failing to take justified bounded risk can also be a process failure.
+## P3 — APPROVED
 
-**Discipline does not mean conservatism.** Sometimes the correct behavior is to take meaningful bounded risk because the reward justifies it.
+`docs/01-product/MASTER_EXPERIENCE_LOOP.md` is now product authority.
 
-## Current exact task — P3
+### Operator control / trust loop
 
-Rewrite and review:
+**Delegate → Bound → Launch → Supervise / Intervene → Review → Evolve Authority / Agent → Repeat**
 
-`docs/01-product/MASTER_EXPERIENCE_LOOP.md`
+Meaning:
 
-P3 must define the repeatable end-to-end relationship between the operator and wallet-capable agent before we partition that loop into journeys.
+- **Delegate** — define the job.
+- **Bound** — define wallet/capital, scope, risk and authority.
+- **Launch** — deliberately put the agent on duty.
+- **Supervise** — observe state/material decisions/exceptions without babysitting.
+- **Intervene** — retain immediate human control.
+- **Review** — judge competence beyond PnL.
+- **Evolve** — keep, tighten, widen, change, pause, retire, or later promote authority.
 
-It should answer:
+### Agent operating loop
 
-1. how an operator gets an agent from unconfigured to operating;
-2. how the agent runs autonomously inside its guardrails;
-3. how material decisions/exceptions return to the operator;
-4. how pause/intervention/guardrail changes fit without breaking continuity;
-5. how review changes trust/authority;
-6. where the loop restarts.
+**Sense → Understand → Decide → Act → Manage → Reconcile → Learn → Repeat**
+
+The agent loop runs faster than the human trust loop. MetaEdge must connect them without forcing the operator into every agent cycle and without letting the agent escape human-defined authority.
+
+### Three product timescales
+
+- **Fast:** market/agent operation — seconds/minutes/hours.
+- **Medium:** operator supervision/intervention — minutes/hours/days.
+- **Slow:** trust/authority evolution — days/weeks/many decisions.
+
+Long-term trust must not be inferred from one fast-loop outcome.
+
+## Current exact task — P4
+
+Review/re-partition:
+
+`docs/02-journeys/JOURNEY_REGISTRY.md`
+
+P4 must translate the approved two-loop model into coherent product journeys and connections before UX laws, information architecture, or screens are designed.
+
+It must answer:
+
+1. what the actual operator journeys are;
+2. which agent-loop behaviors live inside those journeys rather than becoming separate screens;
+3. where first-session and returning-user flows begin/end;
+4. valid entry, exit, return and intervention paths;
+5. which legacy J01–J14 concepts merge, survive, change or defer;
+6. what the first complete Golden-journey candidate should be;
+7. whether every approved job has a journey home;
+8. whether the map contains dead ends/orphaned states.
+
+## Journey status
+
+No journey is Golden.
+
+Legacy J01–J14 remain **INVENTORY** only. They may inform P4 but are not approved UX truth and must not dictate the new journey partition.
 
 ## Product authority
 
 Current authority order:
 
 1. Product Constitution.
-2. Approved P1 wedge and P2 Human + Agent Jobs.
-3. P3 once approved.
-4. Golden journeys.
-5. Approved UX laws/design principles/information architecture.
-6. Approved product capability contracts.
-7. Technical/domain/security derivations.
-8. Architecture/migration decisions.
-9. Research/archaeology/historical implementation as evidence.
-
-## Journey status
-
-No journey is Golden.
-
-Existing J01–J14 remain **INVENTORY** only. They may inform later work but are not approved UX truth.
+2. Approved P1 V1 wedge.
+3. Approved P2 Human + Agent Jobs.
+4. Approved P3 Master Experience Loop.
+5. Golden journeys.
+6. Approved UX laws/design principles/information architecture.
+7. Approved product capability contracts.
+8. Technical/domain/security derivations.
+9. Architecture/migration decisions.
+10. Research/archaeology/historical implementation as evidence.
 
 ## Open items carried forward
 
@@ -152,7 +172,10 @@ These remain explicitly unresolved:
 - V1 market scope: spot vs spot + paper perps;
 - exact notification thresholds/channels;
 - quantitative competence metrics / authority-promotion thresholds;
-- discovery surface order;
+- exact pause/stop handling of existing exposure;
+- operator home/command-center emphasis;
+- exact review cadence/presentation;
+- discovery/source intelligence placement;
 - Arena timing;
 - future wallet-authority implementation substrate.
 
@@ -186,11 +209,11 @@ Do not continue until later gates:
 - new application code;
 - technical screen derivation from domain objects.
 
-## Next step after P3
+## Next step after P4
 
-After explicit human approval of the Master Experience Loop:
+After explicit human approval of the journey registry/connection map:
 
 1. record the decision;
 2. update `CURRENT_STATE.md` and `WORKBOARD.md`;
-3. activate P4 Journey Registry;
-4. do not jump directly to navigation, screen design or technical architecture.
+3. activate P5 UX Laws / Design Principles;
+4. do not jump directly to information architecture, screen design or technical architecture.

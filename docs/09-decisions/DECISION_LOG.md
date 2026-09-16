@@ -268,6 +268,41 @@ Core V1 job sequence:
 
 P3 `MASTER_EXPERIENCE_LOOP.md` is now the active gate. Exact agent-creation timing remains open and does not block P3.
 
+## P3 Master Experience Loop decisions
+
+### DEC-040 — Two connected loops define the MetaEdge experience; P3 approved and P4 activated
+Status: `DECIDED`
+Approved: 2026-09-16
+
+MetaEdge uses two connected loops running at different speeds.
+
+**Operator control / trust loop:**
+
+**Delegate → Bound → Launch → Supervise / Intervene → Review → Evolve Authority / Agent → Repeat**
+
+**Agent operating loop:**
+
+**Sense → Understand → Decide → Act → Manage → Reconcile → Learn → Repeat**
+
+Approved interpretation:
+
+- **Delegate** defines the job the agent is being hired to do.
+- **Bound** defines wallet/capital, market scope, risk and authority guardrails.
+- **Launch** deliberately puts the agent on duty under those terms.
+- **Operate** is autonomous heavy lifting inside the envelope, not manual trading through an AI interface.
+- **Supervise** provides state, material decisions and exceptions without requiring the operator to follow every internal step.
+- **Intervene** preserves immediate human control and the ability to tighten, pause, stop, change or later widen authority.
+- **Review** judges sound reasoning, opportunity capture, risk/reward, capital preservation, position management, timing, exits, execution and outcomes rather than PnL alone.
+- **Evolve** deliberately changes trust, configuration or authority based on evidence over time.
+
+The UX must respect three timescales: fast market/agent operation, medium operator supervision, and slow trust/authority evolution.
+
+Consequence:
+
+`docs/01-product/MASTER_EXPERIENCE_LOOP.md` becomes product authority. P4 Journey Registry is now the active gate. P4 must partition the approved loop into coherent operator journeys and connections without treating the legacy J01–J14 split as sacred.
+
+Detailed screen grouping, exact home surface, notification thresholds, review presentation/cadence, and pause/stop behavior for existing exposure remain later journey/UX-law decisions.
+
 ## Open decisions
 
 ### OPEN-001 — V1 market scope
@@ -305,3 +340,12 @@ DEC-037 fixes the attention principle, not exact alert thresholds, delivery chan
 
 ### OPEN-016 — Competence metrics and authority-promotion thresholds
 DEC-038 fixes what competence means conceptually. Exact quantitative metrics, sample requirements and promotion thresholds remain open until later UX/replay work.
+
+### OPEN-017 — Pause/stop semantics with existing exposure
+Define, in journey/UX work, whether pause/stop means stop new actions, continue managing existing exposure, flatten, or require an explicit operator choice. These are financially different actions.
+
+### OPEN-018 — Operator home / command-center emphasis
+Determine during information-architecture work whether the default home centers on agents, portfolio/account state, attention-needed items, or another composition. Do not inherit the old dashboard by default.
+
+### OPEN-019 — Review cadence and presentation
+Review is required conceptually. Exact event-triggered versus periodic presentation, time windows and drill-down structure remain later UX decisions.

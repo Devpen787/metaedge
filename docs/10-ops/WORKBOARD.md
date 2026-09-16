@@ -1,12 +1,12 @@
 # MetaEdge Product / UX Workboard
 
-Updated: 2026-09-15
+Updated: 2026-09-16
 
 ## Current phase
 
-**P2 — Human + Agent Jobs-to-be-Done**
+**P3 — Master Experience Loop**
 
-Current task: review and approve `docs/01-product/USER_JOBS.md`.
+Current task: rewrite and review `docs/01-product/MASTER_EXPERIENCE_LOOP.md` around the approved operator + wallet-capable trading-agent relationship.
 
 ## Gate board
 
@@ -14,8 +14,8 @@ Current task: review and approve `docs/01-product/USER_JOBS.md`.
 |---|---|---|---|
 | P0 Product/UX OS | `PRODUCT_UX_FOUNDATION.md`, workflow, workboard | IN PLACE | operating method documented |
 | P1 V1 Wedge + Primary User | `V1_PRODUCT_WEDGE.md` | **APPROVED** | approved 2026-09-15 |
-| P2 Human + Agent Jobs / JTBD | `USER_JOBS.md` | **ACTIVE REVIEW** | human approval of core jobs + attention/trust model |
-| P3 Master Experience Loop | `MASTER_EXPERIENCE_LOOP.md` | WORKING DRAFT / BLOCKED | P2 approved + loop review |
+| P2 Human + Agent Jobs / JTBD | `USER_JOBS.md` | **APPROVED** | approved 2026-09-16 |
+| P3 Master Experience Loop | `MASTER_EXPERIENCE_LOOP.md` | **ACTIVE REVIEW** | human approval of end-to-end operator/agent loop |
 | P4 Journey Registry | `JOURNEY_REGISTRY.md` | INVENTORY / BLOCKED | P1–P3 approved + connections reviewed |
 | P5 UX Laws / Design Principles | `UX_LAWS_AND_DESIGN_PRINCIPLES.md` | WORKING DRAFT / BLOCKED | P1–P4 approved + breaker criteria approved |
 | P6 Information Architecture | future artifact | BLOCKED | P1–P5 approved |
@@ -26,41 +26,59 @@ Current task: review and approve `docs/01-product/USER_JOBS.md`.
 | P11 Legacy Migration | seam map | PAUSED / HYPOTHESIS ONLY | P10 derived architecture ready |
 | P12 Build + QA | implementation | NOT AUTHORIZED | explicit implementation approval |
 
-## P1 approved foundation
+## Approved foundation
 
-MetaEdge's wedge is:
+### P1 — Wedge
 
-> **Wallet-capable trading agents that can trade fast, smart, and disciplined.**
+MetaEdge is an **agent-native trading workspace for wallet-capable agents that can trade fast, smart, and disciplined**.
 
-Primary human operator:
+Primary operator: **active crypto trader / agent operator**.
 
-> **Active crypto trader / agent operator** who wants agents to monitor and trade continuously under explicit limits without becoming the agent's manual execution loop.
+### P2 — Human + Agent Jobs
 
-Core proof:
+Approved operating model:
 
 ```text
-operator gives mandate + paper wallet/capital + boundaries
-→ agent senses
-→ reasons under uncertainty
-→ acts inside envelope
-→ manages continuously
-→ operator supervises / intervenes when needed
-→ review determines whether trust/authority should change
+human defines mission + wallet/capital + adjustable guardrails
+→ agent does the heavy lifting
+→ agent may execute inside granted authority
+→ operator sees state + material decisions + exceptions
+→ operator can intervene / tighten / widen / pause / revoke
+→ trust evolves from reasoning + risk/reward + preservation + management + outcomes
 ```
+
+Approved principle:
+
+> **Human-in-the-loop does not mean human-in-every-click.**
+
+Approved trust principle:
+
+> **A competent agent is judged by sound reasoning, opportunity capture, appropriate risk-taking, capital preservation, position management, exits and realized outcomes — not PnL alone.**
 
 ## What is active now
 
-Only work that helps answer P2 questions may create new canonical product decisions.
+Only work needed to settle the **Master Experience Loop** may create new canonical product decisions.
 
-P2 questions:
+P3 should answer, in user/product terms:
 
-1. What is the primary human JTBD: delegation or discovery?
-2. Which operator jobs are truly primary in V1?
-3. Which trading-agent jobs are required to prove fast/smart/disciplined behavior?
-4. What should the operator see while an agent is running?
-5. What deserves interruption vs autonomous handling?
-6. What must the operator understand/control before trust can increase?
-7. Is agent creation/improvement a first-session primary job or supporting/next-loop job?
+1. How does an operator get an agent from unconfigured to operating?
+2. What does the agent's autonomous operating cycle look like from the operator's perspective?
+3. How do material decisions and exceptions re-enter the human loop?
+4. How does intervention change the loop without destroying continuity?
+5. How does review lead to unchanged, tighter or wider authority?
+6. Where does the loop restart?
+7. Which steps are truly core versus supporting branches?
+
+## P2 open items carried forward
+
+These remain open and must not be silently invented:
+
+- exact agent creation/improvement timing;
+- exact V1 market scope: spot vs spot + paper perps;
+- exact notification thresholds/channels;
+- quantitative competence metrics and authority-promotion thresholds.
+
+They may be resolved only when the relevant later journey/UX work provides enough context.
 
 ## Parked but preserved
 
@@ -76,8 +94,18 @@ The following are useful inputs, not current authority:
 
 They return at P10/P11 after Golden journeys exist.
 
+## Decision discipline
+
+Follow `docs/10-ops/DECISION_CAPTURE.md`.
+
+Any approved P3 decision must be synchronized across:
+
+1. `docs/09-decisions/DECISION_LOG.md`;
+2. `MASTER_EXPERIENCE_LOOP.md`;
+3. this workboard and `docs/CURRENT_STATE.md` when phase/control state changes.
+
 ## Next exact handoff
 
-After P2 approval:
+After P3 approval:
 
-> Promote `USER_JOBS.md` to approved, update this board and `CURRENT_STATE.md`, then rewrite/review `MASTER_EXPERIENCE_LOOP.md` around the operator + wallet-capable agent relationship. Do not jump to navigation, screen design, or technical architecture.
+> Promote `MASTER_EXPERIENCE_LOOP.md` to approved, update control state, then activate P4 Journey Registry. Do not jump to navigation, screens, architecture or implementation.

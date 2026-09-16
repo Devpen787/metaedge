@@ -16,19 +16,20 @@ Then read only the artifacts relevant to the active gate.
 
 ## Current active gate
 
-**P3 — Master Experience Loop**
+**P4 — Journey Registry**
 
-P1 and P2 are approved. Do not reopen them casually and do not advance later phases merely because supporting drafts already exist.
+P1–P3 are approved product authority. Do not reopen them casually and do not advance later phases merely because supporting drafts already exist.
 
-Current product authority includes:
+Approved product authority includes:
 
 - `docs/01-product/V1_PRODUCT_WEDGE.md`
 - `docs/01-product/USER_JOBS.md`
+- `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
 - `docs/09-decisions/DECISION_LOG.md`
 
-Current review artifact:
+Current review/control artifact:
 
-- `docs/01-product/MASTER_EXPERIENCE_LOOP.md`
+- `docs/02-journeys/JOURNEY_REGISTRY.md`
 
 ## Approved wedge
 
@@ -36,7 +37,7 @@ MetaEdge is an **agent-native trading workspace for wallet-capable agents that c
 
 The human is an active crypto trader / agent operator. The human remains in the loop through mandate, wallet/capital, adjustable guardrails, supervision and intervention — but is not the per-action approval loop.
 
-The agent does the heavy lifting and may execute when its granted authority permits it.
+The agent does the heavy lifting and may execute when granted authority permits it.
 
 ## Approved P2 laws
 
@@ -48,6 +49,18 @@ The agent does the heavy lifting and may execute when its granted authority perm
 - Agent trust is multidimensional: reasoning, opportunity capture, risk/reward, capital preservation, management, exits, discipline, speed, execution and outcomes.
 - A losing trade may be good process; a winning trade may be reckless.
 - Discipline does not mean conservatism; justified bounded risk-taking is part of competence.
+
+## Approved P3 master experience
+
+Operator control / trust loop:
+
+**Delegate → Bound → Launch → Supervise / Intervene → Review → Evolve → Repeat**
+
+Agent operating loop:
+
+**Sense → Understand → Decide → Act → Manage → Reconcile → Learn → Repeat**
+
+The human loop runs more slowly than the agent loop. The product connects them without forcing per-action approval and without allowing the agent to expand its own authority.
 
 ## Authority order
 
@@ -94,11 +107,13 @@ Synchronize:
 
 Do not overwrite history when a decision changes; mark prior decisions `SUPERSEDED` where appropriate.
 
-## Journey rules
+## P4 Journey Registry rules
 
 - Existing J01–J14 material is `INVENTORY`, not Golden product truth.
-- Use `docs/02-journeys/JOURNEY_TEMPLATE.md` for later rewrites.
-- Journey status lives in `docs/02-journeys/JOURNEY_REGISTRY.md`.
+- Do not preserve J01–J14 partitioning merely because files exist.
+- P4 defines journey boundaries, entry/exit/return paths and connection logic — not screens.
+- Agent-loop behaviors do not automatically become separate user journeys or pages.
+- Use `docs/02-journeys/JOURNEY_TEMPLATE.md` for later P7 rewrites.
 - A journey cannot self-promote to Golden.
 - Golden journeys require explicit human approval after breaker review.
 - Implementation cannot invent new user-visible transitions outside Golden journeys.
